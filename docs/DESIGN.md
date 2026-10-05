@@ -29,12 +29,17 @@ The game should look like Gran Turismo 2 (PlayStation, 1999): PS1 hardware limit
 - More saturated, vivid colors
 - Denser trackside detail: barriers, signs, trees, guardrails
 
-**HUD (GT2 layout, adjusted for thumbs):**
-- Top left: section/lap, total time, lap time
-- Top right: record and best lap
-- Tachometer, gear and speed (mph or km/h): bottom right in GT2, moved up to clear the touch controls
-- Minimap: bottom left in GT2, moved up to clear the touch controls
-- Orange/red bitmap font with dark label bars
+**HUD: inspired by GT2, not a copy.** It keeps GT2's chunky bitmap font, orange/red accents and analog tach, but is built for touge and for phones:
+- **Free roam is mostly clean**: speed, gear, a small tach and the time of day. Timers appear only during a run.
+- **Section banner**: crossing into a named section slides in its name and record (e.g. "CEDAR HAIRPINS · REC 3:12.480").
+- **Live split vs. personal best**: green when ahead, red when behind, updated at checkpoints.
+- **Drift Score mode**: the score builds up on screen during a slide and locks in (or drops) when it ends.
+- **Tach, gear and speed** sit up the right edge, clear of the pedal thumb; **minimap** sits up the left edge, clear of the steering thumb.
+- **Rev light**: the tach's redline area flashes for shift timing.
+- **Night**: HUD dims slightly so it doesn't overpower the headlights and fog.
+- Units toggle: mph or km/h.
+
+Menus (cabin, shops, garage) can borrow GT2's clean, list-style menu feel, with the cabin scene always visible behind them.
 
 ## 3. Home base: the cabin
 
