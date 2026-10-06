@@ -9,7 +9,7 @@ import { whiteTexture, drawEnvMap, toTexture } from './textures.js';
 
 const AXLE = 1.16; // half wheelbase
 const WHEEL_R = 0.289;
-const ARCH_R = 0.385;
+const ARCH_R = 0.37;
 const NOSE = 1.975;
 const TAIL = -1.975;
 
@@ -83,24 +83,24 @@ const HALF_WIDTH = [
   [0.6, 0.833],
   [-0.6, 0.833],
   [-1.5, 0.83],
-  [-1.75, 0.815],
-  [-1.9, 0.79],
-  [-1.975, 0.76],
+  [-1.75, 0.822],
+  [-1.92, 0.81],
+  [-1.975, 0.785],
 ];
 const BOTTOM = [
-  [1.975, 0.27],
-  [1.95, 0.22],
-  [1.85, 0.18],
+  [1.975, 0.25],
+  [1.95, 0.19],
+  [1.9, 0.165],
   [1.55, 0.16],
   [0.8, 0.14],
   [-0.8, 0.14],
   [-1.55, 0.16],
-  [-1.8, 0.22],
+  [-1.85, 0.22],
   [-1.975, 0.3],
 ];
 // Rub strip / pinstripe line along the doors and bumpers.
 const RUB = [
-  [1.975, 0.45],
+  [1.975, 0.47],
   [1.6, 0.45],
   [0.8, 0.435],
   [-0.8, 0.435],
@@ -110,9 +110,9 @@ const RUB = [
 // Top edge of the sides: wing tops along the bonnet, the window line, the rear deck, then the
 // short drop to the tail-light panel and the rear bumper.
 const BELT = [
-  [1.975, 0.5],
-  [1.94, 0.55],
-  [1.84, 0.595],
+  [1.975, 0.55],
+  [1.95, 0.565],
+  [1.86, 0.6],
   [1.73, 0.635],
   [1.41, 0.715],
   [1.1, 0.775],
@@ -122,16 +122,16 @@ const BELT = [
   [-0.6, 0.875],
   [-1.0, 0.875],
   [-1.3, 0.86],
-  [-1.68, 0.83],
-  [-1.72, 0.7],
-  [-1.76, 0.565],
+  [-1.8, 0.83],
+  [-1.84, 0.7],
+  [-1.88, 0.565],
   [-1.975, 0.54],
 ];
 // Centreline of the bonnet (slightly crowned) and the engine deck.
 const DECK = [
-  [1.975, 0.51],
-  [1.94, 0.565],
-  [1.84, 0.61],
+  [1.975, 0.555],
+  [1.95, 0.572],
+  [1.86, 0.612],
   [1.73, 0.65],
   [1.41, 0.73],
   [1.1, 0.79],
@@ -140,13 +140,13 @@ const DECK = [
   [-0.6, 0.875],
   [-1.0, 0.872],
   [-1.3, 0.86],
-  [-1.68, 0.835],
-  [-1.72, 0.705],
-  [-1.76, 0.57],
+  [-1.8, 0.835],
+  [-1.84, 0.705],
+  [-1.88, 0.57],
   [-1.975, 0.545],
 ];
-const TAIL_TOP = [-1.68, 0.83]; // trailing edge of the engine lid
-const TAIL_BOTTOM = [-1.76, 0.565]; // top of the rear bumper
+const TAIL_TOP = [-1.8, 0.83]; // trailing edge of the engine lid
+const TAIL_BOTTOM = [-1.88, 0.565]; // top of the rear bumper
 
 function section(z) {
   let bottom = profile(BOTTOM, z);
@@ -258,7 +258,7 @@ function bodyPolys() {
 // window behind a black B-pillar, then body-coloured sail panels (flying buttresses) running down
 // to the engine deck either side of a near-vertical rear window.
 
-const ROOF_Y = 1.255;
+const ROOF_Y = 1.21;
 const ROOF_HW = 0.6;
 const SCREEN_BASE_Z = 0.78;
 const SCREEN_TOP_Z = 0.07;
@@ -367,8 +367,8 @@ function detailPolys() {
   for (const poly of mirrorBox) for (const p of both({ ...poly, color: BLACK })) trim.push(p);
 
   // Big rear wing on two uprights, with kicked-up tips.
-  const lead = [-1.42, 0.985];
-  const trail = [-1.8, 1.02];
+  const lead = [-1.4, 0.885];
+  const trail = [-1.86, 0.975];
   const span = 0.74;
   const thick = 0.03;
   paint.push({ pts: [[span, lead[1], lead[0]], [-span, lead[1], lead[0]], [-span, trail[1], trail[0]], [span, trail[1], trail[0]]], out: [0, 1, 0.1] });
@@ -381,9 +381,10 @@ function detailPolys() {
     paint.push({ pts: [[side * (span - 0.01), lead[1] - thick, lead[0]], [side * (span - 0.01), trail[1] - thick, trail[0]], [side * (span - 0.01), trail[1] + 0.07, trail[0] - 0.01], [side * (span - 0.01), lead[1] + 0.01, lead[0] - 0.08]], out: [-side, 0, 0] });
     // Upright from the engine lid.
     const x = side * 0.56;
-    const dz = section(-1.6).deck;
+    const dz = section(-1.62).deck;
+    const wy = (z) => lead[1] + ((z - lead[0]) * (trail[1] - lead[1])) / (trail[0] - lead[0]) - thick;
     for (const dx of [0.025, -0.025]) {
-      paint.push({ pts: [[x + dx, dz, -1.52], [x + dx, 1.0, -1.5], [x + dx, 1.005, -1.66], [x + dx, dz, -1.64]], out: [dx > 0 ? 1 : -1, 0, 0] });
+      paint.push({ pts: [[x + dx, dz, -1.55], [x + dx, wy(-1.55), -1.55], [x + dx, wy(-1.68), -1.68], [x + dx, dz, -1.68]], out: [dx > 0 ? 1 : -1, 0, 0] });
     }
   }
 
@@ -411,12 +412,11 @@ function detailPolys() {
 
   // Nose: pinstripe, amber indicators set into the bumper, black intake and lower lip.
   const zn = NOSE + 0.006;
-  trim.push({ pts: [[0.7, 0.455, zn], [0.7, 0.463, zn], [-0.7, 0.463, zn], [-0.7, 0.455, zn]], color: [0.85, 0.82, 0.78], out: [0, 0, 1] });
+  trim.push({ pts: [[0.74, 0.495, zn], [0.74, 0.503, zn], [-0.74, 0.503, zn], [-0.74, 0.495, zn]], color: [0.85, 0.82, 0.78], out: [0, 0, 1] });
   for (const side of [1, -1]) {
-    trim.push({ pts: [[side * 0.62, 0.37, zn], [side * 0.62, 0.43, zn], [side * 0.42, 0.43, zn], [side * 0.42, 0.37, zn]], color: AMBER, out: [0, 0, 1] });
+    trim.push({ pts: [[side * 0.64, 0.375, zn], [side * 0.64, 0.435, zn], [side * 0.45, 0.435, zn], [side * 0.45, 0.375, zn]], color: AMBER, out: [0, 0, 1] });
   }
-  trim.push({ pts: [[0.5, 0.28, zn], [0.5, 0.345, zn], [-0.5, 0.345, zn], [-0.5, 0.28, zn]], color: BLACK, out: [0, 0, 1] });
-  trim.push({ pts: [[0.7, 0.2, 1.94], [0.7, 0.27, 1.97], [-0.7, 0.27, 1.97], [-0.7, 0.2, 1.94]], color: BLACK, out: [0, -0.2, 1] });
+  trim.push({ pts: [[0.5, 0.27, zn], [0.5, 0.35, zn], [-0.5, 0.35, zn], [-0.5, 0.27, zn]], color: BLACK, out: [0, 0, 1] });
   return { paint, trim, tail };
 }
 
@@ -457,8 +457,8 @@ function wheelGeometry() {
 
 // ---------- Pop-up headlights ----------
 
-const LAMP_X = 0.52;
-const LAMP_HW = 0.19;
+const LAMP_X = 0.49;
+const LAMP_HW = 0.175;
 const LAMP_LEN = 0.33;
 const LAMP_DEPTH = 0.15;
 const LAMP_HINGE_Z = 1.48;
