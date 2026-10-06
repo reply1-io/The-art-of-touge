@@ -9,7 +9,7 @@ import { whiteTexture, drawEnvMap, toTexture } from './textures.js';
 
 const AXLE = 1.16; // half wheelbase
 const WHEEL_R = 0.289;
-const ARCH_R = 0.335;
+const ARCH_R = 0.385;
 const NOSE = 1.975;
 const TAIL = -1.975;
 
@@ -71,72 +71,87 @@ function profile(table, z) {
 const mirrorX = (p) => [-p[0], p[1], p[2]];
 const both = (poly) => [poly, { ...poly, pts: poly.pts.map(mirrorX), out: poly.out ? [-poly.out[0], poly.out[1], poly.out[2]] : undefined }];
 
-// ---------- Body shell profile (side view and plan view) ----------
+// ---------- Body shell profile ----------
+// Heights and lengths measured from side photos of a 1987 AW11 and scaled to the real dimensions.
+// z is measured from the middle of the wheelbase (front axle +1.16, rear axle -1.16).
 
 const HALF_WIDTH = [
-  [1.975, 0.69],
-  [1.94, 0.775],
-  [1.82, 0.812],
-  [1.5, 0.826],
+  [1.975, 0.76],
+  [1.955, 0.8],
+  [1.88, 0.815],
+  [1.6, 0.825],
   [0.6, 0.833],
   [-0.6, 0.833],
   [-1.5, 0.83],
-  [-1.85, 0.815],
-  [-1.94, 0.79],
-  [-1.975, 0.745],
+  [-1.75, 0.815],
+  [-1.9, 0.79],
+  [-1.975, 0.76],
 ];
 const BOTTOM = [
-  [1.975, 0.33],
-  [1.93, 0.27],
-  [1.8, 0.25],
-  [0.6, 0.215],
-  [-0.6, 0.215],
-  [-1.8, 0.26],
+  [1.975, 0.27],
+  [1.95, 0.22],
+  [1.85, 0.18],
+  [1.55, 0.16],
+  [0.8, 0.14],
+  [-0.8, 0.14],
+  [-1.55, 0.16],
+  [-1.8, 0.22],
   [-1.975, 0.3],
 ];
+// Rub strip / pinstripe line along the doors and bumpers.
 const RUB = [
-  [1.975, 0.4],
-  [1.8, 0.43],
+  [1.975, 0.45],
+  [1.6, 0.45],
+  [0.8, 0.435],
+  [-0.8, 0.435],
+  [-1.6, 0.45],
   [-1.975, 0.46],
 ];
-// Shoulder crease that runs the full length of the car.
-const CREASE = [
-  [1.975, 0.47],
-  [1.93, 0.53],
-  [1.75, 0.6],
-  [1.2, 0.66],
-  [0.6, 0.69],
-  [-0.5, 0.71],
-  [-1.3, 0.74],
-  [-1.975, 0.75],
-];
-// Top of the sides: wings, doors (window line), rear quarters.
+// Top edge of the sides: wing tops along the bonnet, the window line, the rear deck, then the
+// short drop to the tail-light panel and the rear bumper.
 const BELT = [
-  [1.975, 0.52],
-  [1.93, 0.575],
-  [1.75, 0.625],
-  [1.2, 0.705],
-  [0.6, 0.79],
-  [-0.45, 0.8],
-  [-0.9, 0.88],
-  [-1.3, 0.905],
-  [-1.975, 0.915],
+  [1.975, 0.5],
+  [1.94, 0.55],
+  [1.84, 0.595],
+  [1.73, 0.635],
+  [1.41, 0.715],
+  [1.1, 0.775],
+  [0.79, 0.83],
+  [0.6, 0.855],
+  [0.3, 0.87],
+  [-0.6, 0.875],
+  [-1.0, 0.875],
+  [-1.3, 0.86],
+  [-1.68, 0.83],
+  [-1.72, 0.7],
+  [-1.76, 0.565],
+  [-1.975, 0.54],
 ];
-// Centreline of the bonnet (low wedge nose) and the engine deck.
+// Centreline of the bonnet (slightly crowned) and the engine deck.
 const DECK = [
-  [1.975, 0.53],
-  [1.93, 0.588],
-  [1.75, 0.642],
-  [1.2, 0.728],
-  [0.6, 0.805],
-  [-0.45, 0.805],
-  [-0.7, 0.93],
-  [-1.975, 0.935],
+  [1.975, 0.51],
+  [1.94, 0.565],
+  [1.84, 0.61],
+  [1.73, 0.65],
+  [1.41, 0.73],
+  [1.1, 0.79],
+  [0.79, 0.845],
+  [0.6, 0.87],
+  [-0.6, 0.875],
+  [-1.0, 0.872],
+  [-1.3, 0.86],
+  [-1.68, 0.835],
+  [-1.72, 0.705],
+  [-1.76, 0.57],
+  [-1.975, 0.545],
 ];
+const TAIL_TOP = [-1.68, 0.83]; // trailing edge of the engine lid
+const TAIL_BOTTOM = [-1.76, 0.565]; // top of the rear bumper
 
 function section(z) {
   let bottom = profile(BOTTOM, z);
   let rub = profile(RUB, z);
+  const belt = profile(BELT, z);
   for (const zc of [AXLE, -AXLE]) {
     const dz = z - zc;
     if (Math.abs(dz) < ARCH_R) {
@@ -145,25 +160,19 @@ function section(z) {
       rub = Math.max(rub, arch + 0.004);
     }
   }
-  return {
-    hw: profile(HALF_WIDTH, z),
-    bottom,
-    rub,
-    crease: profile(CREASE, z),
-    belt: profile(BELT, z),
-    deck: profile(DECK, z),
-  };
+  const crease = Math.max(rub + 0.02, belt - 0.045);
+  return { hw: profile(HALF_WIDTH, z), bottom, rub, crease, belt, deck: profile(DECK, z) };
 }
 
 // Left half of a body cross-section, from the sill up to the centreline.
 function ring(z) {
   const s = section(z);
   return [
-    [s.hw * 0.97, s.bottom, z],
+    [s.hw * 0.93, s.bottom, z],
     [s.hw, s.rub, z],
     [s.hw, s.crease, z],
-    [s.hw * 0.965, s.belt, z],
-    [s.hw * 0.55, s.deck - 0.006, z],
+    [s.hw * 0.975, s.belt, z],
+    [s.hw * 0.55, s.deck - 0.004, z],
     [0, s.deck, z],
   ];
 }
@@ -183,11 +192,12 @@ function topSurface(z, x) {
 function bodyPolys() {
   const paint = [];
   const trim = [];
-  // Stations: regular spacing plus dense sampling around the wheel arches.
-  const zs = new Set([NOSE, TAIL, 1.94, 1.93, -1.94]);
-  for (let z = NOSE; z > TAIL; z -= 0.07) zs.add(Number(z.toFixed(4)));
+  // Stations: regular spacing, the profile keyframes, and dense sampling around the wheel arches.
+  const zs = new Set([NOSE, TAIL]);
+  for (const t of [BELT, BOTTOM, HALF_WIDTH]) for (const [z] of t) zs.add(z);
+  for (let z = NOSE; z > TAIL; z -= 0.08) zs.add(Number(z.toFixed(4)));
   for (const zc of [AXLE, -AXLE]) {
-    for (let k = 0; k <= 14; k++) zs.add(Number((zc - ARCH_R + (2 * ARCH_R * k) / 14).toFixed(4)));
+    for (let k = 0; k <= 16; k++) zs.add(Number((zc - ARCH_R + (2 * ARCH_R * k) / 16).toFixed(4)));
   }
   const stations = [...zs].filter((z) => z <= NOSE && z >= TAIL).sort((a, b) => b - a);
   const rings = stations.map((z) => {
@@ -206,42 +216,36 @@ function bodyPolys() {
     [rings[0], 1],
     [rings[rings.length - 1], -1],
   ]) {
-    const c = r.reduce((acc, p) => [acc[0], acc[1] + p[1] / r.length, p[2]], [0, 0, 0]);
+    const c = [0, r.reduce((acc, p) => acc + p[1] / r.length, 0), r[0][2]];
     const closed = [...r, r[0]];
     for (let k = 0; k < closed.length - 1; k++) paint.push({ pts: [c, closed[k], closed[k + 1]], out: [0, 0, dir] });
   }
 
-  // Black rub strip along the sides, interrupted by the wheel arches.
+  // Dark rub strip with a light pinstripe above it, interrupted by the wheel arches.
   for (let i = 0; i < stations.length - 1; i++) {
     const z0 = stations[i];
     const z1 = stations[i + 1];
     const s0 = section(z0);
     const s1 = section(z1);
-    const base0 = profile(RUB, z0);
-    const base1 = profile(RUB, z1);
-    if (s0.bottom > base0 - 0.03 || s1.bottom > base1 - 0.03) continue;
+    const r0 = profile(RUB, z0);
+    const r1 = profile(RUB, z1);
+    if (s0.bottom > r0 - 0.03 || s1.bottom > r1 - 0.03) continue;
     for (const side of [1, -1]) {
-      trim.push({
-        pts: [
-          [side * (s0.hw + 0.006), base0 - 0.012, z0],
-          [side * (s0.hw + 0.006), base0 + 0.028, z0],
-          [side * (s1.hw + 0.006), base1 + 0.028, z1],
-          [side * (s1.hw + 0.006), base1 - 0.012, z1],
-        ],
-        color: BLACK,
-        out: [side, 0, 0],
-      });
+      const x0 = side * (s0.hw + 0.005);
+      const x1 = side * (s1.hw + 0.005);
+      trim.push({ pts: [[x0, r0 - 0.01, z0], [x0, r0 + 0.012, z0], [x1, r1 + 0.012, z1], [x1, r1 - 0.01, z1]], color: [0.16, 0.05, 0.05], out: [side, 0, 0] });
+      trim.push({ pts: [[x0, r0 + 0.017, z0], [x0, r0 + 0.024, z0], [x1, r1 + 0.024, z1], [x1, r1 + 0.017, z1]], color: [0.85, 0.82, 0.78], out: [side, 0, 0] });
     }
   }
 
   // Wheel-well liners so the arches read as dark openings.
   for (const zc of [AXLE, -AXLE]) {
     const pts = [];
-    for (let k = 0; k <= 12; k++) {
-      const a = Math.PI * (k / 12);
+    for (let k = 0; k <= 14; k++) {
+      const a = Math.PI * (k / 14);
       pts.push([0, WHEEL_R + Math.sin(a) * ARCH_R, zc + Math.cos(a) * ARCH_R]);
     }
-    pts.push([0, 0.2, zc - ARCH_R], [0, 0.2, zc + ARCH_R]);
+    pts.push([0, 0.12, zc - ARCH_R], [0, 0.12, zc + ARCH_R]);
     for (const side of [1, -1]) {
       trim.push({ pts: pts.map((p) => [side * 0.6, p[1], p[2]]), color: UNDER, out: [side, 0, 0] });
     }
@@ -249,85 +253,79 @@ function bodyPolys() {
   return { paint, trim };
 }
 
-// ---------- Greenhouse: raked windscreen, short roof, flying-buttress sail panels ----------
+// ---------- Greenhouse ----------
+// Very raked windscreen with black A-pillars, a short flat roof, door glass and a rear quarter
+// window behind a black B-pillar, then body-coloured sail panels (flying buttresses) running down
+// to the engine deck either side of a near-vertical rear window.
 
-const ROOF_Y = 1.235;
-const ROOF_HW = 0.595;
+const ROOF_Y = 1.255;
+const ROOF_HW = 0.6;
 const SCREEN_BASE_Z = 0.78;
-const SCREEN_TOP_Z = 0.02;
-const ROOF_REAR_Z = -0.6;
-const B_PILLAR_Z = -0.46;
+const SCREEN_TOP_Z = 0.07;
+const ROOF_REAR_Z = -0.68;
+const B_PILLAR = [-0.15, -0.21];
+const QUARTER_END_Z = -0.99;
+const SAIL_END_Z = -1.27;
 
 function greenhouseTop(z) {
   const baseY = section(SCREEN_BASE_Z).belt;
   if (z >= SCREEN_TOP_Z) {
     const t = (SCREEN_BASE_Z - z) / (SCREEN_BASE_Z - SCREEN_TOP_Z);
-    return { y: baseY + t * (ROOF_Y - baseY), hw: 0.72 + (ROOF_HW - 0.72) * t };
+    return { y: baseY + t * (ROOF_Y - baseY), hw: 0.74 + (ROOF_HW - 0.74) * t };
   }
-  // Very slight drop toward the back of the roof.
-  return { y: ROOF_Y - Math.max(0, -0.3 - z) * 0.03, hw: ROOF_HW };
+  return { y: ROOF_Y, hw: ROOF_HW };
 }
 
 function greenhousePolys() {
   const paint = [];
   const glass = [];
   const trim = [];
-  const zs = [0.78, 0.63, 0.48, 0.33, 0.18, 0.02, -0.14, -0.3, -0.46, -0.6];
+  const zs = [0.78, 0.6, 0.42, 0.24, 0.07, -0.07, -0.15, -0.21, -0.36, -0.52, -0.68];
   const rings = zs.map((z) => {
     const s = section(z);
     const t = greenhouseTop(z);
-    return { z, lb: [s.hw * 0.965, s.belt, z], lt: [t.hw, t.y, z] };
+    return { z, lb: [s.hw * 0.975, s.belt, z], lt: [t.hw, t.y, z] };
   });
+  const off = (p, dx, dy = 0) => [p[0] + dx, p[1] + dy, p[2]];
   for (let i = 0; i < rings.length - 1; i++) {
     const a = rings[i];
     const b = rings[i + 1];
     const mid = (a.z + b.z) / 2;
-    // Side windows run from the A-pillar back to the B-pillar; behind that is the body-coloured sail.
-    for (const p of both({ pts: [a.lb, a.lt, b.lt, b.lb] })) (mid > B_PILLAR_Z ? glass : paint).push(p);
-    const top = { pts: [a.lt, mirrorX(a.lt), mirrorX(b.lt), b.lt], out: [0, 1, mid > SCREEN_TOP_Z ? 0.6 : 0] };
-    (mid > SCREEN_TOP_Z ? glass : paint).push(top);
-    // Black window surround along the belt line.
-    if (mid > B_PILLAR_Z) {
-      for (const p of both({
-        pts: [a.lb, [a.lb[0] - 0.012, a.lb[1] + 0.03, a.z], [b.lb[0] - 0.012, b.lb[1] + 0.03, b.z], b.lb],
-        color: BLACK,
-        out: [1, 0.2, 0],
-      })) {
-        trim.push(p);
-      }
+    const screen = mid > SCREEN_TOP_Z;
+    for (const p of both({ pts: [a.lb, a.lt, b.lt, b.lb] })) glass.push(p);
+    const top = { pts: [a.lt, mirrorX(a.lt), mirrorX(b.lt), b.lt], out: [0, 1, screen ? 0.7 : 0] };
+    (screen ? glass : paint).push(top);
+    // Black frame: along the top of the side glass, and the A-pillars down the windscreen edges.
+    for (const p of both({ pts: [a.lt, b.lt, off(b.lt, 0.004, -0.045), off(a.lt, 0.004, -0.045)], color: BLACK, out: [1, 0.3, 0] })) trim.push(p);
+    if (screen) {
+      for (const p of both({ pts: [off(a.lt, 0, 0.004), off(b.lt, 0, 0.004), off(b.lt, -0.075, 0.004), off(a.lt, -0.075, 0.004)], color: BLACK, out: [0, 1, 0.7] })) trim.push(p);
     }
+    // Black window sill along the belt line.
+    for (const p of both({ pts: [a.lb, off(a.lb, -0.01, 0.025), off(b.lb, -0.01, 0.025), b.lb], color: BLACK, out: [1, 0.2, 0] })) trim.push(p);
   }
-  // B-pillar: a black band on the glass line.
-  const bp = rings.find((r) => r.z === B_PILLAR_Z);
-  for (const p of both({
-    pts: [bp.lb, bp.lt, [bp.lt[0], bp.lt[1], bp.z + 0.06], [bp.lb[0], bp.lb[1], bp.z + 0.06]].map((q) => [q[0] + 0.004, q[1], q[2]]),
-    color: BLACK,
-    out: [1, 0, 0],
-  })) {
-    trim.push(p);
-  }
+  // Black B-pillar between the door glass and the quarter window.
+  const b0 = rings.find((r) => r.z === B_PILLAR[0]);
+  const b1 = rings.find((r) => r.z === B_PILLAR[1]);
+  for (const p of both({ pts: [off(b0.lb, 0.005), off(b0.lt, 0.005), off(b1.lt, 0.005), off(b1.lb, 0.005)], color: BLACK, out: [1, 0, 0] })) trim.push(p);
 
-  // Flying buttresses: the sail panels run from the roof back down to the engine deck,
-  // with a near-vertical rear window between them.
+  // Behind the roof: the quarter window's rear edge, the sail panel and the buttress.
   const rear = rings[rings.length - 1];
-  const deckAt = (z) => section(z).deck;
-  const outerTop = [rear.lt, [0.665, 1.075, -0.95], [0.735, deckAt(-1.32) + 0.004, -1.32]];
-  const innerTop = [[0.5, rear.lt[1], ROOF_REAR_Z], [0.575, 1.075, -0.95], [0.665, deckAt(-1.32) + 0.004, -1.32]];
-  const outerBottom = [rear.lb, [section(-0.95).hw * 0.965, section(-0.95).belt, -0.95], [section(-1.32).hw * 0.965, section(-1.32).belt, -1.32]];
-  for (let k = 0; k < 2; k++) {
-    for (const p of both({ pts: [outerBottom[k], outerTop[k], outerTop[k + 1], outerBottom[k + 1]], out: [1, 0.1, 0] })) paint.push(p);
-    for (const p of both({ pts: [outerTop[k], innerTop[k], innerTop[k + 1], outerTop[k + 1]], out: [0.2, 1, -0.3] })) paint.push(p);
-    const inner = [innerTop[k], innerTop[k + 1], [innerTop[k + 1][0], deckAt(innerTop[k + 1][2]), innerTop[k + 1][2]], [innerTop[k][0], deckAt(innerTop[k][2]), innerTop[k][2]]];
-    for (const p of both({ pts: inner, out: [-1, 0, 0] })) paint.push(p);
-  }
-  // Rear window.
-  glass.push({ pts: [[0.5, rear.lt[1] - 0.01, ROOF_REAR_Z], [-0.5, rear.lt[1] - 0.01, ROOF_REAR_Z], [-0.5, deckAt(-0.68), -0.68], [0.5, deckAt(-0.68), -0.68]], out: [0, 0.25, -1] });
-  // Engine-lid louvres between the buttresses.
-  for (let z = -0.8; z > -1.3; z -= 0.09) {
-    const y0 = deckAt(z) + 0.004;
-    const y1 = deckAt(z - 0.035) + 0.004;
-    trim.push({ pts: [[0.42, y0, z], [-0.42, y0, z], [-0.42, y1, z - 0.035], [0.42, y1, z - 0.035]], color: BLACK, out: [0, 1, 0] });
-  }
+  const sec = (z) => section(z);
+  const A = rear.lt;
+  const Bq = [sec(QUARTER_END_Z).hw * 0.975, sec(QUARTER_END_Z).belt, QUARTER_END_Z];
+  const C = [sec(SAIL_END_Z).hw * 0.975, sec(SAIL_END_Z).belt, SAIL_END_Z];
+  const Ai = [0.47, ROOF_Y, ROOF_REAR_Z];
+  const Ci = [0.64, sec(SAIL_END_Z).deck, SAIL_END_Z];
+  for (const p of both({ pts: [rear.lb, A, Bq], out: [1, 0.2, 0] })) glass.push(p);
+  for (const p of both({ pts: [A, Bq, C], out: [1, 0.25, 0] })) paint.push(p);
+  // Black seal along the rear edge of the quarter glass.
+  for (const p of both({ pts: [off(A, 0.004), off(Bq, 0.004), off(Bq, 0.004, 0.035), off(A, 0.0, -0.035)], color: BLACK, out: [1, 0.2, 0] })) trim.push(p);
+  for (const p of both({ pts: [A, Ai, Ci, C], out: [0.2, 1, -0.4] })) paint.push(p);
+  const D = [0.47, sec(-0.74).deck, -0.74];
+  for (const p of both({ pts: [Ai, D, [0.64, sec(SAIL_END_Z).deck, SAIL_END_Z]], out: [-1, 0, 0] })) paint.push(p);
+  // Rear window between the buttresses.
+  glass.push({ pts: [[0.47, ROOF_Y - 0.01, ROOF_REAR_Z], [-0.47, ROOF_Y - 0.01, ROOF_REAR_Z], [-0.47, sec(-0.74).deck, -0.74], [0.47, sec(-0.74).deck, -0.74]], out: [0, 0.3, -1] });
+  void Ci;
   return { paint, glass, trim };
 }
 
@@ -337,114 +335,120 @@ function detailPolys() {
   const paint = [];
   const trim = [];
   const tail = [];
-  const head = [];
-  const sideX = (z) => section(z).hw + 0.004;
+  const sideX = (z) => section(z).hw + 0.005;
+  const onSide = (pts, color, dx = 0) => both({ pts: pts.map(([z, y]) => [sideX(z) + dx, y, z]), color, out: [1, 0, 0] });
 
-  // Side air intakes behind the doors (the AW11's signature scoops).
-  const intake = [
-    [-0.5, 0.79],
-    [-0.97, 0.815],
-    [-0.97, 0.6],
-    [-0.66, 0.585],
-  ];
-  for (const p of both({ pts: intake.map(([z, y]) => [sideX(z) + 0.002, y, z]), color: BLACK, out: [1, 0, 0] })) trim.push(p);
-  // Slats inside the intake.
-  for (const y of [0.64, 0.7, 0.76]) {
-    for (const p of both({
-      pts: [
-        [sideX(-0.6) + 0.006, y, -0.62],
-        [sideX(-0.95) + 0.006, y + 0.012, -0.95],
-        [sideX(-0.95) + 0.006, y + 0.022, -0.95],
-        [sideX(-0.6) + 0.006, y + 0.01, -0.62],
-      ],
-      color: [0.22, 0.22, 0.24],
-      out: [1, 0, 0],
-    })) {
-      trim.push(p);
-    }
+  // Side air intakes on the rear quarters, with horizontal slats.
+  for (const p of onSide([[-0.55, 0.81], [-0.97, 0.81], [-0.97, 0.55], [-0.55, 0.55]], BLACK)) trim.push(p);
+  for (let y = 0.58; y < 0.79; y += 0.035) {
+    for (const p of onSide([[-0.6, y], [-0.92, y], [-0.92, y + 0.012], [-0.6, y + 0.012]], [0.3, 0.3, 0.32], 0.003)) trim.push(p);
   }
-
   // Door shut lines and handle.
-  for (const z of [0.75, -0.455]) {
+  for (const z of [0.79, -0.18]) {
     const s = section(z);
-    for (const p of both({ pts: [[sideX(z), s.bottom + 0.03, z], [sideX(z), s.belt - 0.01, z], [sideX(z), s.belt - 0.01, z - 0.008], [sideX(z), s.bottom + 0.03, z - 0.008]], color: BLACK, out: [1, 0, 0] })) trim.push(p);
+    for (const p of onSide([[z, s.bottom + 0.04], [z, s.belt - 0.005], [z - 0.008, s.belt - 0.005], [z - 0.008, s.bottom + 0.04]], BLACK)) trim.push(p);
   }
-  for (const p of both({ pts: [[sideX(-0.33), 0.735, -0.3], [sideX(-0.33), 0.755, -0.3], [sideX(-0.33), 0.755, -0.4], [sideX(-0.33), 0.735, -0.4]], color: BLACK, out: [1, 0, 0] })) trim.push(p);
+  for (const p of onSide([[-0.04, 0.745], [-0.14, 0.745], [-0.14, 0.768], [-0.04, 0.768]], BLACK, 0.002)) trim.push(p);
+  // Amber side markers: on the front wing behind the arch and on the front bumper.
+  for (const p of onSide([[0.86, 0.6], [0.81, 0.6], [0.81, 0.64], [0.86, 0.64]], AMBER)) trim.push(p);
+  for (const p of onSide([[1.72, 0.38], [1.62, 0.38], [1.62, 0.42], [1.72, 0.42]], AMBER)) trim.push(p);
 
-  // Door mirrors at the base of the A-pillars.
+  // Door mirrors at the front corner of the door glass.
   const m = (x, y, z) => [x, y, z];
   const mirrorBox = [
-    { pts: [m(0.8, 0.8, 0.7), m(0.95, 0.82, 0.67), m(0.95, 0.91, 0.67), m(0.8, 0.9, 0.7)], out: [0, 0, 1] },
-    { pts: [m(0.8, 0.8, 0.61), m(0.95, 0.82, 0.61), m(0.95, 0.91, 0.61), m(0.8, 0.9, 0.61)], out: [0, 0, -1] },
-    { pts: [m(0.95, 0.82, 0.67), m(0.95, 0.82, 0.61), m(0.95, 0.91, 0.61), m(0.95, 0.91, 0.67)], out: [1, 0, 0] },
-    { pts: [m(0.8, 0.9, 0.7), m(0.95, 0.91, 0.67), m(0.95, 0.91, 0.61), m(0.8, 0.9, 0.61)], out: [0, 1, 0] },
-    { pts: [m(0.8, 0.8, 0.7), m(0.95, 0.82, 0.67), m(0.95, 0.82, 0.61), m(0.8, 0.8, 0.61)], out: [0, -1, 0] },
+    { pts: [m(0.83, 0.86, 0.47), m(0.97, 0.87, 0.45), m(0.97, 0.98, 0.45), m(0.83, 0.97, 0.47)], out: [0, 0, 1] },
+    { pts: [m(0.83, 0.86, 0.37), m(0.97, 0.87, 0.37), m(0.97, 0.98, 0.37), m(0.83, 0.97, 0.37)], out: [0, 0, -1] },
+    { pts: [m(0.97, 0.87, 0.45), m(0.97, 0.87, 0.37), m(0.97, 0.98, 0.37), m(0.97, 0.98, 0.45)], out: [1, 0, 0] },
+    { pts: [m(0.83, 0.97, 0.47), m(0.97, 0.98, 0.45), m(0.97, 0.98, 0.37), m(0.83, 0.97, 0.37)], out: [0, 1, 0] },
+    { pts: [m(0.83, 0.86, 0.47), m(0.97, 0.87, 0.45), m(0.97, 0.87, 0.37), m(0.83, 0.86, 0.37)], out: [0, -1, 0] },
+    // Black triangular mount in the corner of the window.
+    { pts: [m(0.82, 0.86, 0.66), m(0.82, 0.86, 0.38), m(0.8, 1.0, 0.45)], out: [1, 0, 0] },
   ];
   for (const poly of mirrorBox) for (const p of both({ ...poly, color: BLACK })) trim.push(p);
 
-  // Rear spoiler on the trailing edge of the engine lid.
-  const wingY = 1.0;
-  paint.push({ pts: [[0.7, wingY, -1.72], [-0.7, wingY, -1.72], [-0.7, wingY + 0.02, -1.95], [0.7, wingY + 0.02, -1.95]], out: [0, 1, 0] });
-  paint.push({ pts: [[0.7, wingY - 0.025, -1.72], [-0.7, wingY - 0.025, -1.72], [-0.7, wingY, -1.95], [0.7, wingY, -1.95]], out: [0, -1, 0] });
-  paint.push({ pts: [[0.7, wingY + 0.02, -1.95], [-0.7, wingY + 0.02, -1.95], [-0.7, wingY, -1.95], [0.7, wingY, -1.95]], out: [0, 0, -1] });
-  for (const x of [0.45, -0.45]) {
-    paint.push({ pts: [[x + 0.02, 0.93, -1.78], [x + 0.02, wingY, -1.8], [x + 0.02, wingY, -1.9], [x + 0.02, 0.93, -1.86]], out: [1, 0, 0] });
-    paint.push({ pts: [[x - 0.02, 0.93, -1.78], [x - 0.02, wingY, -1.8], [x - 0.02, wingY, -1.9], [x - 0.02, 0.93, -1.86]], out: [-1, 0, 0] });
-  }
-
-  // Tail: full-width black light panel with red lamps, black bumper strip, number plate.
-  const zt = TAIL - 0.006;
-  trim.push({ pts: [[0.745, 0.6, zt], [0.745, 0.81, zt], [-0.745, 0.81, zt], [-0.745, 0.6, zt]], color: BLACK, out: [0, 0, -1] });
+  // Big rear wing on two uprights, with kicked-up tips.
+  const lead = [-1.42, 0.985];
+  const trail = [-1.8, 1.02];
+  const span = 0.74;
+  const thick = 0.03;
+  paint.push({ pts: [[span, lead[1], lead[0]], [-span, lead[1], lead[0]], [-span, trail[1], trail[0]], [span, trail[1], trail[0]]], out: [0, 1, 0.1] });
+  paint.push({ pts: [[span, lead[1] - thick, lead[0]], [-span, lead[1] - thick, lead[0]], [-span, trail[1] - thick, trail[0]], [span, trail[1] - thick, trail[0]]], out: [0, -1, 0] });
+  paint.push({ pts: [[span, trail[1], trail[0]], [-span, trail[1], trail[0]], [-span, trail[1] - thick, trail[0]], [span, trail[1] - thick, trail[0]]], out: [0, 0, -1] });
+  paint.push({ pts: [[span, lead[1], lead[0]], [-span, lead[1], lead[0]], [-span, lead[1] - thick, lead[0]], [span, lead[1] - thick, lead[0]]], out: [0, 0, 1] });
   for (const side of [1, -1]) {
-    tail.push({ pts: [[side * 0.73, 0.62, zt - 0.003], [side * 0.73, 0.79, zt - 0.003], [side * 0.33, 0.79, zt - 0.003], [side * 0.33, 0.62, zt - 0.003]], out: [0, 0, -1] });
-    // Reversing lamp at the inner end of each cluster.
-    trim.push({ pts: [[side * 0.32, 0.64, zt - 0.003], [side * 0.32, 0.77, zt - 0.003], [side * 0.22, 0.77, zt - 0.003], [side * 0.22, 0.64, zt - 0.003]], color: [0.75, 0.75, 0.75], out: [0, 0, -1] });
+    // Tip plate rising toward the trailing edge.
+    paint.push({ pts: [[side * span, lead[1] - thick, lead[0]], [side * span, trail[1] - thick, trail[0]], [side * span, trail[1] + 0.07, trail[0] - 0.01], [side * span, lead[1] + 0.01, lead[0] - 0.08]], out: [side, 0, 0] });
+    paint.push({ pts: [[side * (span - 0.01), lead[1] - thick, lead[0]], [side * (span - 0.01), trail[1] - thick, trail[0]], [side * (span - 0.01), trail[1] + 0.07, trail[0] - 0.01], [side * (span - 0.01), lead[1] + 0.01, lead[0] - 0.08]], out: [-side, 0, 0] });
+    // Upright from the engine lid.
+    const x = side * 0.56;
+    const dz = section(-1.6).deck;
+    for (const dx of [0.025, -0.025]) {
+      paint.push({ pts: [[x + dx, dz, -1.52], [x + dx, 1.0, -1.5], [x + dx, 1.005, -1.66], [x + dx, dz, -1.64]], out: [dx > 0 ? 1 : -1, 0, 0] });
+    }
   }
-  trim.push({ pts: [[0.76, 0.43, zt], [0.76, 0.48, zt], [-0.76, 0.48, zt], [-0.76, 0.43, zt]], color: BLACK, out: [0, 0, -1] });
-  trim.push({ pts: [[0.17, 0.38, zt - 0.006], [0.17, 0.54, zt - 0.006], [-0.17, 0.54, zt - 0.006], [-0.17, 0.38, zt - 0.006]], color: PLATE, out: [0, 0, -1] });
 
-  // Nose: black lower lip, intake slot, amber indicators wrapping the corners, black bumper strip.
+  // Tail: lamp clusters at each end of a black panel that carries the number plate.
+  const [zt0, yt0] = TAIL_TOP;
+  const [zt1, yt1] = TAIL_BOTTOM;
+  const tz = (y) => zt0 + ((y - yt0) * (zt1 - zt0)) / (yt1 - yt0) - 0.006;
+  const onTail = (x0, x1, y0, y1, dz = 0) => [
+    [x0, y0, tz(y0) - dz],
+    [x1, y0, tz(y0) - dz],
+    [x1, y1, tz(y1) - dz],
+    [x0, y1, tz(y1) - dz],
+  ];
+  trim.push({ pts: onTail(0.79, -0.79, 0.585, 0.805), color: BLACK, out: [0, 0.3, -1] });
+  for (const side of [1, -1]) {
+    tail.push({ pts: onTail(side * 0.76, side * 0.43, 0.71, 0.795, 0.003), out: [0, 0.3, -1] });
+    trim.push({ pts: onTail(side * 0.76, side * 0.52, 0.6, 0.69, 0.003), color: AMBER, out: [0, 0.3, -1] });
+    trim.push({ pts: onTail(side * 0.52, side * 0.43, 0.6, 0.69, 0.003), color: [0.86, 0.86, 0.84], out: [0, 0.3, -1] });
+  }
+  trim.push({ pts: onTail(0.2, -0.2, 0.62, 0.74, 0.003), color: PLATE, out: [0, 0.3, -1] });
+  // Rear bumper: pinstripe and a black slotted valance underneath.
+  const zr = TAIL - 0.006;
+  trim.push({ pts: [[0.76, 0.465, zr], [0.76, 0.472, zr], [-0.76, 0.472, zr], [-0.76, 0.465, zr]], color: [0.85, 0.82, 0.78], out: [0, 0, -1] });
+  trim.push({ pts: [[0.74, 0.3, zr], [0.74, 0.39, zr], [-0.74, 0.39, zr], [-0.74, 0.3, zr]], color: BLACK, out: [0, 0, -1] });
+
+  // Nose: pinstripe, amber indicators set into the bumper, black intake and lower lip.
   const zn = NOSE + 0.006;
-  trim.push({ pts: [[0.69, 0.33, zn], [0.69, 0.37, zn], [-0.69, 0.37, zn], [-0.69, 0.33, zn]], color: BLACK, out: [0, 0, 1] });
-  trim.push({ pts: [[0.3, 0.38, zn], [0.3, 0.44, zn], [-0.3, 0.44, zn], [-0.3, 0.38, zn]], color: BLACK, out: [0, 0, 1] });
+  trim.push({ pts: [[0.7, 0.455, zn], [0.7, 0.463, zn], [-0.7, 0.463, zn], [-0.7, 0.455, zn]], color: [0.85, 0.82, 0.78], out: [0, 0, 1] });
   for (const side of [1, -1]) {
-    trim.push({ pts: [[side * 0.66, 0.39, zn], [side * 0.66, 0.45, zn], [side * 0.36, 0.45, zn], [side * 0.36, 0.39, zn]], color: AMBER, out: [0, 0, 1] });
-    trim.push({ pts: [[side * 0.79, 0.4, 1.9], [side * 0.79, 0.45, 1.9], [side * 0.72, 0.45, 1.955], [side * 0.72, 0.4, 1.955]], color: AMBER, out: [side, 0, 0.6] });
+    trim.push({ pts: [[side * 0.62, 0.37, zn], [side * 0.62, 0.43, zn], [side * 0.42, 0.43, zn], [side * 0.42, 0.37, zn]], color: AMBER, out: [0, 0, 1] });
   }
-  return { paint, trim, tail, head };
+  trim.push({ pts: [[0.5, 0.28, zn], [0.5, 0.345, zn], [-0.5, 0.345, zn], [-0.5, 0.28, zn]], color: BLACK, out: [0, 0, 1] });
+  trim.push({ pts: [[0.7, 0.2, 1.94], [0.7, 0.27, 1.97], [-0.7, 0.27, 1.97], [-0.7, 0.2, 1.94]], color: BLACK, out: [0, -0.2, 1] });
+  return { paint, trim, tail };
 }
 
-// ---------- Wheels: 14-inch alloys on 185/60 tyres ----------
+// ---------- Wheels: 14-inch ten-hole alloys on 185/60 tyres ----------
 
 function wheelGeometry() {
   const r = WHEEL_R;
   const w = 0.185;
-  const segs = 16;
+  const segs = 20;
   const polys = [];
   const tyre = [0.12, 0.12, 0.13];
   const wall = [0.17, 0.17, 0.18];
-  const rim = [0.8, 0.8, 0.82];
-  const dish = [0.62, 0.62, 0.65];
-  const hole = [0.1, 0.1, 0.11];
+  const alloy = [0.8, 0.78, 0.7];
+  const hole = [0.12, 0.12, 0.13];
   const p = (a, x, rad) => [x, Math.sin(a) * rad, Math.cos(a) * rad];
-  const out = (a, x) => [x, Math.sin(a), Math.cos(a)];
   const ox = w / 2;
   for (let s = 0; s < segs; s++) {
     const a0 = (s / segs) * Math.PI * 2;
     const a1 = ((s + 1) / segs) * Math.PI * 2;
     const am = (a0 + a1) / 2;
-    polys.push({ pts: [p(a0, ox, r), p(a1, ox, r), p(a1, -ox, r), p(a0, -ox, r)], color: tyre, out: out(am, 0) });
-    // Outer face: sidewall, polished lip, dish with eight holes, centre cap.
+    polys.push({ pts: [p(a0, ox, r), p(a1, ox, r), p(a1, -ox, r), p(a0, -ox, r)], color: tyre, out: [0, Math.sin(am), Math.cos(am)] });
+    // Outer face: sidewall, rim lip, ring of ten holes, solid dish, hub.
     const rings = [
-      [r, r * 0.8, wall],
-      [r * 0.8, r * 0.74, rim],
-      [r * 0.74, r * 0.42, s % 2 ? dish : hole],
-      [r * 0.42, r * 0.2, dish],
-      [r * 0.2, 0, rim],
+      [r, r * 0.76, wall, ox],
+      [r * 0.76, r * 0.7, alloy, ox + 0.005],
+      [r * 0.7, r * 0.46, s % 2 ? alloy : hole, ox + 0.01],
+      [r * 0.46, r * 0.18, alloy, ox + 0.014],
+      [r * 0.18, 0, [0.55, 0.54, 0.5], ox + 0.02],
     ];
-    for (const [ro, ri, c] of rings) {
-      const x = ri < r * 0.5 ? ox + 0.012 : ri < r * 0.75 ? ox - 0.01 : ox;
-      polys.push({ pts: [p(a0, x, ro), p(a1, x, ro), p(a1, x, ri), p(a0, x, ri)].filter((q, i) => ri > 0 || i < 3), color: c, out: [1, 0, 0] });
+    for (const [ro, ri, c, x] of rings) {
+      const pts = ri > 0 ? [p(a0, x, ro), p(a1, x, ro), p(a1, x, ri), p(a0, x, ri)] : [p(a0, x, ro), p(a1, x, ro), [x, 0, 0]];
+      polys.push({ pts, color: c, out: [1, 0, 0] });
     }
     polys.push({ pts: [[-ox, 0, 0], p(a0, -ox, r), p(a1, -ox, r)], color: tyre, out: [-1, 0, 0] });
   }
@@ -453,31 +457,35 @@ function wheelGeometry() {
 
 // ---------- Pop-up headlights ----------
 
-const LAMP_X = 0.48;
-const LAMP_HW = 0.2;
-const LAMP_LEN = 0.3;
-const LAMP_DEPTH = 0.13;
-const LAMP_HINGE_Z = 1.34;
-const LAMP_LIFT = 0.11; // how far the unit rises when open
-const LAMP_TILT = 0.3; // radians the unit tips up at the front when open
+const LAMP_X = 0.52;
+const LAMP_HW = 0.19;
+const LAMP_LEN = 0.33;
+const LAMP_DEPTH = 0.15;
+const LAMP_HINGE_Z = 1.48;
+const LAMP_LIFT = 0.12; // how far the unit rises when open
+const LAMP_TILT = 0.55; // radians the unit tips up at the front when open
 
 function popupParts() {
-  // In hinge space the painted lid lies in y = 0 from z = 0 forward. The rectangular lamp sits in the
-  // front face, hidden under the bonnet when closed; opening lifts the unit and tips its nose up,
-  // which leaves the lid on top and the lamp facing forward, like the real car.
+  // In hinge space the painted lid lies in y = 0 from z = 0 forward. The front face is raked back by
+  // LAMP_TILT so that when the unit lifts and tips up by that angle, the rectangular lamp faces
+  // straight ahead under an angled lid, like the real car. Closed, the whole unit hides under the lid.
   const x0 = -LAMP_HW;
   const x1 = LAMP_HW;
   const L = LAMP_LEN;
-  const d = -LAMP_DEPTH;
+  const d = LAMP_DEPTH;
+  const fz = (depth) => L - depth * Math.sin(LAMP_TILT);
+  const fy = (depth) => -depth * Math.cos(LAMP_TILT);
   const lid = [{ pts: [[x0, 0, 0], [x1, 0, 0], [x1, 0, L], [x0, 0, L]], out: [0, 1, 0] }];
   const box = [
-    { pts: [[x0, d, 0], [x1, d, 0], [x1, d, L], [x0, d, L]], color: BLACK, out: [0, -1, 0] },
-    { pts: [[x0, 0, L], [x1, 0, L], [x1, d, L], [x0, d, L]], color: BLACK, out: [0, 0, 1] },
-    { pts: [[x0, 0, 0], [x1, 0, 0], [x1, d, 0], [x0, d, 0]], color: BLACK, out: [0, 0, -1] },
-    { pts: [[x0, 0, 0], [x0, 0, L], [x0, d, L], [x0, d, 0]], color: BLACK, out: [-1, 0, 0] },
-    { pts: [[x1, 0, 0], [x1, 0, L], [x1, d, L], [x1, d, 0]], color: BLACK, out: [1, 0, 0] },
+    { pts: [[x0, fy(d), 0], [x1, fy(d), 0], [x1, fy(d), fz(d)], [x0, fy(d), fz(d)]], color: BLACK, out: [0, -1, 0] },
+    { pts: [[x0, 0, L], [x1, 0, L], [x1, fy(d), fz(d)], [x0, fy(d), fz(d)]], color: BLACK, out: [0, 0.3, 1] },
+    { pts: [[x0, 0, 0], [x1, 0, 0], [x1, fy(d), 0], [x0, fy(d), 0]], color: BLACK, out: [0, 0, -1] },
+    { pts: [[x0, 0, 0], [x0, 0, L], [x0, fy(d), fz(d)], [x0, fy(d), 0]], color: BLACK, out: [-1, 0, 0] },
+    { pts: [[x1, 0, 0], [x1, 0, L], [x1, fy(d), fz(d)], [x1, fy(d), 0]], color: BLACK, out: [1, 0, 0] },
   ];
-  const lamp = [{ pts: [[x0 + 0.03, -0.022, L + 0.002], [x1 - 0.03, -0.022, L + 0.002], [x1 - 0.03, d + 0.022, L + 0.002], [x0 + 0.03, d + 0.022, L + 0.002]], out: [0, 0, 1] }];
+  const a = 0.022;
+  const b = d - 0.02;
+  const lamp = [{ pts: [[x0 + 0.04, fy(a), fz(a) + 0.003], [x1 - 0.04, fy(a), fz(a) + 0.003], [x1 - 0.04, fy(b), fz(b) + 0.003], [x0 + 0.04, fy(b), fz(b) + 0.003]], out: [0, 0.3, 1] }];
   return { lid, box, lamp };
 }
 

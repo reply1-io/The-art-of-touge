@@ -279,5 +279,5 @@ function frame(now) {
 
 applySettings();
 // Debug/testing hook (used by automated browser tests).
-window.__touge = { car, run, track, settings, startGame, restartRun, setPaused, applySettings };
+window.__touge = { car, run, track, settings, startGame, restartRun, setPaused, applySettings, scene, carModel };
 requestAnimationFrame(frame);
