@@ -1,0 +1,426 @@
+:root {
+  --orange: #ffa23a;
+  --red: #c81818;
+  --ink: #f2ede4;
+  --panel: rgba(8, 8, 16, 0.86);
+  --ctl-bg: rgba(10, 10, 18, 0.32);
+  --ctl-border: rgba(255, 162, 58, 0.55);
+  --ctl-on: rgba(255, 162, 58, 0.42);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #0b0b12;
+  color: var(--ink);
+  font-family: 'Arial Black', Arial, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+canvas#game,
+canvas#hud {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+}
+
+canvas#hud {
+  pointer-events: none;
+}
+
+/* ---------- Touch controls ---------- */
+#controls {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+#controls .ctl,
+#steer-zone {
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.ctl {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--ctl-bg);
+  border: 2px solid var(--ctl-border);
+  border-radius: 10px;
+  color: var(--ink);
+  font-style: italic;
+  font-size: clamp(11px, 2.4vh, 18px);
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 0 #000;
+}
+
+.ctl small {
+  font-family: Arial, sans-serif;
+  font-style: normal;
+  font-size: clamp(7px, 1.5vh, 11px);
+  opacity: 0.8;
+  margin-top: 2px;
+}
+
+.ctl.on {
+  background: var(--ctl-on);
+  border-color: #ffd29a;
+}
+
+#steer-zone {
+  position: absolute;
+  left: calc(10px + var(--safe-l));
+  bottom: calc(10px + var(--safe-b));
+  width: 40vw;
+  height: 34vh;
+}
+
+#steer-slider {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 100%;
+  border: 2px dashed rgba(255, 162, 58, 0.35);
+  border-radius: 14px;
+  background: rgba(10, 10, 18, 0.18);
+}
+
+#steer-slider::before {
+  content: '';
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 50%;
+  height: 4px;
+  margin-top: -2px;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 2px;
+}
+
+#steer-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+  border-radius: 50%;
+  background: rgba(255, 162, 58, 0.7);
+  border: 2px solid #ffe2c0;
+}
+
+#steer-slider .hint {
+  position: absolute;
+  bottom: 6px;
+  width: 100%;
+  text-align: center;
+  font-size: 10px;
+  font-style: italic;
+  opacity: 0.55;
+}
+
+#steer-buttons {
+  display: none;
+  position: absolute;
+  inset: 0;
+  gap: 10px;
+}
+
+#steer-buttons .ctl {
+  flex: 1;
+  font-size: 28px;
+}
+
+#controls[data-steer='buttons'] #steer-slider {
+  display: none;
+}
+
+#controls[data-steer='buttons'] #steer-buttons {
+  display: flex;
+}
+
+#controls[data-steer='buttons'] #steer-zone {
+  pointer-events: none;
+}
+
+#shift-zone {
+  position: absolute;
+  left: calc(10px + var(--safe-l));
+  bottom: calc(34vh + 22px + var(--safe-b));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#shift-zone .ctl {
+  width: 13vh;
+  height: 13vh;
+  min-width: 52px;
+  min-height: 52px;
+  font-size: clamp(14px, 3.5vh, 24px);
+}
+
+#pedal-pad {
+  position: absolute;
+  right: calc(10px + var(--safe-r));
+  bottom: calc(10px + var(--safe-b));
+  width: 36vw;
+  height: 44vh;
+  display: grid;
+  grid-template-columns: 1fr 1.25fr;
+  grid-template-rows: 0.8fr 1.2fr;
+  gap: 8px;
+  pointer-events: none;
+}
+
+#pedal-pad [data-ctl='gas'] {
+  border-color: rgba(120, 255, 120, 0.55);
+}
+
+#pedal-pad [data-ctl='brake'] {
+  border-color: rgba(255, 90, 80, 0.6);
+}
+
+/* Without the clutch pedal, the handbrake takes the whole top row. */
+#controls:not([data-trans='manual-clutch']) [data-ctl='clutch'] {
+  display: none;
+}
+
+#controls:not([data-trans='manual-clutch']) [data-ctl='handbrake'] {
+  grid-column: 1 / span 2;
+}
+
+/* ---------- Top bar ---------- */
+#topbar {
+  position: fixed;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+}
+
+#topbar button {
+  font-family: inherit;
+  font-style: italic;
+  font-size: 11px;
+  color: var(--ink);
+  background: rgba(10, 10, 18, 0.5);
+  border: 1px solid rgba(255, 162, 58, 0.5);
+  border-radius: 6px;
+  padding: 7px 12px;
+}
+
+/* ---------- Overlays ---------- */
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 4, 10, 0.55);
+}
+
+.overlay.hidden {
+  display: none;
+}
+
+#title {
+  background: radial-gradient(ellipse at 50% 60%, rgba(30, 20, 40, 0.35), rgba(4, 4, 10, 0.85));
+}
+
+.title-box {
+  text-align: center;
+  padding: 16px;
+}
+
+.title-small {
+  font-style: italic;
+  color: var(--orange);
+  font-size: clamp(14px, 4vh, 26px);
+  letter-spacing: 0.3em;
+}
+
+.title-big {
+  font-style: italic;
+  font-size: clamp(48px, 18vh, 130px);
+  line-height: 0.95;
+  color: #fff;
+  text-shadow: 4px 4px 0 var(--red), 8px 8px 0 rgba(0, 0, 0, 0.6);
+  letter-spacing: 0.05em;
+}
+
+.title-sub {
+  margin-top: 1.5vh;
+  font-family: Arial, sans-serif;
+  font-size: clamp(11px, 2.6vh, 16px);
+  opacity: 0.85;
+}
+
+.title-car {
+  margin-top: 1vh;
+  font-style: italic;
+  color: var(--orange);
+  font-size: clamp(12px, 3vh, 18px);
+}
+
+.title-car span {
+  font-family: Arial, sans-serif;
+  font-style: normal;
+  color: var(--ink);
+  opacity: 0.75;
+  font-size: 0.8em;
+}
+
+.title-help {
+  margin-top: 2vh;
+  font-family: Arial, sans-serif;
+  font-size: clamp(10px, 2.2vh, 13px);
+  opacity: 0.7;
+}
+
+.big-btn {
+  margin-top: 3vh;
+  font-family: inherit;
+  font-style: italic;
+  font-size: clamp(14px, 3.6vh, 22px);
+  color: #fff;
+  background: var(--red);
+  border: 2px solid #ffb27a;
+  border-radius: 8px;
+  padding: 1.6vh 6vh;
+  letter-spacing: 0.08em;
+}
+
+.big-btn.alt {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.panel {
+  background: var(--panel);
+  border: 2px solid rgba(255, 162, 58, 0.5);
+  border-left: 6px solid var(--red);
+  border-radius: 8px;
+  padding: 2vh 3vh;
+  max-height: 94vh;
+  width: min(640px, 92vw);
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+
+.panel-title {
+  font-style: italic;
+  color: var(--orange);
+  font-size: clamp(16px, 4.5vh, 28px);
+  margin-bottom: 1vh;
+}
+
+.panel-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.panel-buttons .big-btn {
+  margin-top: 2vh;
+}
+
+.opt-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0.7vh 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.opt-label {
+  width: 30%;
+  font-style: italic;
+  font-size: clamp(10px, 2.5vh, 14px);
+}
+
+.opt-choices {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.opt-choices button {
+  font-family: Arial, sans-serif;
+  font-weight: bold;
+  font-size: clamp(10px, 2.3vh, 13px);
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+  padding: 0.9vh 1.4vh;
+}
+
+.opt-choices button.sel {
+  background: var(--orange);
+  color: #1a0a00;
+  border-color: #ffe2c0;
+}
+
+.results {
+  text-align: center;
+  width: min(420px, 80vw);
+}
+
+.res-time {
+  font-style: italic;
+  font-size: clamp(30px, 11vh, 64px);
+  color: #fff;
+  text-shadow: 3px 3px 0 var(--red);
+}
+
+.res-line {
+  font-family: Arial, sans-serif;
+  font-size: clamp(12px, 3vh, 18px);
+  margin-top: 1vh;
+}
+
+#rotate {
+  display: none;
+  background: #0b0b12;
+  z-index: 10;
+}
+
+.rotate-box {
+  text-align: center;
+  font-style: italic;
+  font-size: 20px;
+  color: var(--orange);
+}
+
+.rotate-icon {
+  font-size: 64px;
+  margin-bottom: 12px;
+}
+
+@media (orientation: portrait) and (pointer: coarse) {
+  #rotate {
+    display: flex;
+  }
+}

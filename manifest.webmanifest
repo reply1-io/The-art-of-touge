@@ -1,0 +1,11 @@
+{
+  "name": "The Art of Touge",
+  "short_name": "Art of Touge",
+  "description": "Mountain pass driving with Gran Turismo 2 era graphics.",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0b0b12",
+  "theme_color": "#0b0b12",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

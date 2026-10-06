@@ -1,0 +1,14 @@
+{
+  "name": "the-art-of-touge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A mobile touge driving game, played in the browser, with Gran Turismo 2 era graphics.",
+  "type": "module",
+  "scripts": {
+    "serve": "node tools/serve.mjs",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "three": "0.170.0"
+  }
+}

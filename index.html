@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0b12" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Art of Touge" />
+    <title>The Art of Touge</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <script type="importmap">
+      { "imports": { "three": "./vendor/three.module.min.js" } }
+    </script>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <canvas id="hud"></canvas>
+
+    <div id="controls" data-steer="slider" data-trans="manual">
+      <div id="steer-zone">
+        <div id="steer-slider"><div id="steer-knob"></div><span class="hint">STEER</span></div>
+        <div id="steer-buttons">
+          <div class="ctl" data-ctl="left">&#9664;</div>
+          <div class="ctl" data-ctl="right">&#9654;</div>
+        </div>
+      </div>
+      <div id="shift-zone">
+        <div class="ctl shift" data-ctl="shiftUp">&#9650;<small>UP</small></div>
+        <div class="ctl shift" data-ctl="shiftDown">&#9660;<small>DOWN</small></div>
+      </div>
+      <div id="pedal-pad">
+        <div class="ctl" data-ctl="handbrake">HAND<small>BRAKE</small></div>
+        <div class="ctl" data-ctl="clutch">CLUTCH<small>slide up from gas</small></div>
+        <div class="ctl" data-ctl="brake">BRAKE</div>
+        <div class="ctl" data-ctl="gas">GAS</div>
+      </div>
+    </div>
+
+    <div id="topbar">
+      <button type="button" id="btn-pause" aria-label="Pause">&#10074;&#10074;</button>
+      <button type="button" id="btn-camera" aria-label="Change camera">CAM</button>
+      <button type="button" id="btn-recover" aria-label="Put the car back on the road">RECOVER</button>
+    </div>
+
+    <div id="title" class="overlay">
+      <div class="title-box">
+        <div class="title-small">THE ART OF</div>
+        <div class="title-big">TOUGE</div>
+        <div class="title-sub">Cedar Hairpins &middot; Time Attack &middot; Prototype</div>
+        <div class="title-car">KAZAMA MR-II <span>'87 &middot; 1.6 twin-cam &middot; midship</span></div>
+        <button type="button" id="btn-start" class="big-btn">TAP TO DRIVE</button>
+        <div class="title-help">
+          Left thumb: steer &middot; Right thumb: gas / brake &middot; Slide up from GAS to kick the clutch
+        </div>
+      </div>
+    </div>
+
+    <div id="pause" class="overlay hidden">
+      <div class="panel">
+        <div class="panel-title">PAUSED</div>
+        <div id="settings"></div>
+        <div class="panel-buttons">
+          <button type="button" id="btn-resume" class="big-btn">RESUME</button>
+          <button type="button" id="btn-restart" class="big-btn alt">RESTART RUN</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="results" class="overlay hidden">
+      <div class="panel results">
+        <div class="panel-title" id="res-title">FINISH</div>
+        <div class="res-time" id="res-time">0:00.000</div>
+        <div class="res-line" id="res-best"></div>
+        <div class="panel-buttons">
+          <button type="button" id="btn-again" class="big-btn">RUN AGAIN</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="rotate" class="overlay">
+      <div class="rotate-box">
+        <div class="rotate-icon">&#8635;</div>
+        Turn your phone sideways
+      </div>
+    </div>
+
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
