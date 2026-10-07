@@ -172,9 +172,16 @@ function ring(z) {
     [s.hw, s.rub, z],
     [s.hw, s.crease, z],
     [s.hw * 0.975, s.belt, z],
-    [s.hw * 0.55, s.deck - 0.004, z],
+    [bonnetCrease(z, s.hw), s.deck - 0.006, z],
     [0, s.deck, z],
   ];
+}
+
+// The bonnet has two creases running from the windscreen corners in toward the nose badge.
+function bonnetCrease(z, hw) {
+  if (z <= 0.8) return hw * 0.55;
+  const t = Math.min(1, (z - 0.8) / 1.1);
+  return 0.6 - t * 0.3;
 }
 
 // Height of the top surface at (z, x), used to sit the headlight lids flush on the bonnet.
@@ -259,7 +266,9 @@ function bodyPolys() {
 // to the engine deck either side of a near-vertical rear window.
 
 const ROOF_Y = 1.21;
-const ROOF_HW = 0.6;
+const ROOF_HW = 0.46; // the cabin is much narrower than the body
+const GLASS_BASE_HW = 0.66; // side glass sits inboard of the body sides, leaving a shoulder
+const SCREEN_BASE_HW = 0.58;
 const SCREEN_BASE_Z = 0.78;
 const SCREEN_TOP_Z = 0.07;
 const ROOF_REAR_Z = -0.68;
@@ -271,7 +280,7 @@ function greenhouseTop(z) {
   const baseY = section(SCREEN_BASE_Z).belt;
   if (z >= SCREEN_TOP_Z) {
     const t = (SCREEN_BASE_Z - z) / (SCREEN_BASE_Z - SCREEN_TOP_Z);
-    return { y: baseY + t * (ROOF_Y - baseY), hw: 0.74 + (ROOF_HW - 0.74) * t };
+    return { y: baseY + t * (ROOF_Y - baseY), hw: SCREEN_BASE_HW + (ROOF_HW - SCREEN_BASE_HW) * t };
   }
   return { y: ROOF_Y, hw: ROOF_HW };
 }
@@ -284,7 +293,7 @@ function greenhousePolys() {
   const rings = zs.map((z) => {
     const s = section(z);
     const t = greenhouseTop(z);
-    return { z, lb: [s.hw * 0.975, s.belt, z], lt: [t.hw, t.y, z] };
+    return { z, lb: [GLASS_BASE_HW, topSurface(z, GLASS_BASE_HW), z], lt: [t.hw, t.y, z] };
   });
   const off = (p, dx, dy = 0) => [p[0] + dx, p[1] + dy, p[2]];
   for (let i = 0; i < rings.length - 1; i++) {
@@ -312,19 +321,19 @@ function greenhousePolys() {
   const rear = rings[rings.length - 1];
   const sec = (z) => section(z);
   const A = rear.lt;
-  const Bq = [sec(QUARTER_END_Z).hw * 0.975, sec(QUARTER_END_Z).belt, QUARTER_END_Z];
-  const C = [sec(SAIL_END_Z).hw * 0.975, sec(SAIL_END_Z).belt, SAIL_END_Z];
-  const Ai = [0.47, ROOF_Y, ROOF_REAR_Z];
-  const Ci = [0.64, sec(SAIL_END_Z).deck, SAIL_END_Z];
+  const Bq = [GLASS_BASE_HW, topSurface(QUARTER_END_Z, GLASS_BASE_HW), QUARTER_END_Z];
+  const C = [0.7, topSurface(SAIL_END_Z, 0.7), SAIL_END_Z];
+  const Ai = [0.38, ROOF_Y, ROOF_REAR_Z];
+  const Ci = [0.54, sec(SAIL_END_Z).deck, SAIL_END_Z];
   for (const p of both({ pts: [rear.lb, A, Bq], out: [1, 0.2, 0] })) glass.push(p);
   for (const p of both({ pts: [A, Bq, C], out: [1, 0.25, 0] })) paint.push(p);
   // Black seal along the rear edge of the quarter glass.
   for (const p of both({ pts: [off(A, 0.004), off(Bq, 0.004), off(Bq, 0.004, 0.035), off(A, 0.0, -0.035)], color: BLACK, out: [1, 0.2, 0] })) trim.push(p);
   for (const p of both({ pts: [A, Ai, Ci, C], out: [0.2, 1, -0.4] })) paint.push(p);
-  const D = [0.47, sec(-0.74).deck, -0.74];
-  for (const p of both({ pts: [Ai, D, [0.64, sec(SAIL_END_Z).deck, SAIL_END_Z]], out: [-1, 0, 0] })) paint.push(p);
+  const D = [0.38, sec(-0.74).deck, -0.74];
+  for (const p of both({ pts: [Ai, D, Ci], out: [-1, 0, 0] })) paint.push(p);
   // Rear window between the buttresses.
-  glass.push({ pts: [[0.47, ROOF_Y - 0.01, ROOF_REAR_Z], [-0.47, ROOF_Y - 0.01, ROOF_REAR_Z], [-0.47, sec(-0.74).deck, -0.74], [0.47, sec(-0.74).deck, -0.74]], out: [0, 0.3, -1] });
+  glass.push({ pts: [[0.38, ROOF_Y - 0.01, ROOF_REAR_Z], [-0.38, ROOF_Y - 0.01, ROOF_REAR_Z], [-0.38, sec(-0.74).deck, -0.74], [0.38, sec(-0.74).deck, -0.74]], out: [0, 0.3, -1] });
   void Ci;
   return { paint, glass, trim };
 }
@@ -356,13 +365,13 @@ function detailPolys() {
   // Door mirrors at the front corner of the door glass.
   const m = (x, y, z) => [x, y, z];
   const mirrorBox = [
-    { pts: [m(0.83, 0.86, 0.47), m(0.97, 0.87, 0.45), m(0.97, 0.98, 0.45), m(0.83, 0.97, 0.47)], out: [0, 0, 1] },
-    { pts: [m(0.83, 0.86, 0.37), m(0.97, 0.87, 0.37), m(0.97, 0.98, 0.37), m(0.83, 0.97, 0.37)], out: [0, 0, -1] },
-    { pts: [m(0.97, 0.87, 0.45), m(0.97, 0.87, 0.37), m(0.97, 0.98, 0.37), m(0.97, 0.98, 0.45)], out: [1, 0, 0] },
-    { pts: [m(0.83, 0.97, 0.47), m(0.97, 0.98, 0.45), m(0.97, 0.98, 0.37), m(0.83, 0.97, 0.37)], out: [0, 1, 0] },
-    { pts: [m(0.83, 0.86, 0.47), m(0.97, 0.87, 0.45), m(0.97, 0.87, 0.37), m(0.83, 0.86, 0.37)], out: [0, -1, 0] },
-    // Black triangular mount in the corner of the window.
-    { pts: [m(0.82, 0.86, 0.66), m(0.82, 0.86, 0.38), m(0.8, 1.0, 0.45)], out: [1, 0, 0] },
+    { pts: [m(0.64, 0.88, 0.7), m(0.77, 0.89, 0.68), m(0.77, 0.99, 0.68), m(0.64, 0.98, 0.7)], out: [0, 0, 1] },
+    { pts: [m(0.64, 0.88, 0.61), m(0.77, 0.89, 0.61), m(0.77, 0.99, 0.61), m(0.64, 0.98, 0.61)], out: [0, 0, -1] },
+    { pts: [m(0.77, 0.89, 0.68), m(0.77, 0.89, 0.61), m(0.77, 0.99, 0.61), m(0.77, 0.99, 0.68)], out: [1, 0, 0] },
+    { pts: [m(0.64, 0.98, 0.7), m(0.77, 0.99, 0.68), m(0.77, 0.99, 0.61), m(0.64, 0.98, 0.61)], out: [0, 1, 0] },
+    { pts: [m(0.64, 0.88, 0.7), m(0.77, 0.89, 0.68), m(0.77, 0.89, 0.61), m(0.64, 0.88, 0.61)], out: [0, -1, 0] },
+    // Black triangular mount in the front corner of the door glass.
+    { pts: [m(0.665, 0.86, 0.76), m(0.665, 0.86, 0.56), m(0.62, 1.0, 0.62)], out: [1, 0, 0] },
   ];
   for (const poly of mirrorBox) for (const p of both({ ...poly, color: BLACK })) trim.push(p);
 
@@ -457,17 +466,17 @@ function wheelGeometry() {
 
 // ---------- Pop-up headlights ----------
 
-const LAMP_X = 0.49;
-const LAMP_HW = 0.175;
-const LAMP_LEN = 0.33;
-const LAMP_DEPTH = 0.15;
-const LAMP_HINGE_Z = 1.48;
-const LAMP_LIFT = 0.12; // how far the unit rises when open
-const LAMP_TILT = 0.55; // radians the unit tips up at the front when open
+const LAMP_X = 0.6;
+const LAMP_HW = 0.14;
+const LAMP_LEN = 0.26;
+const LAMP_DEPTH = 0.155;
+const LAMP_HINGE_Z = 1.52;
+const LAMP_LIFT = 0; // the real units pivot without lifting
+const LAMP_TILT = 0.62; // radians the unit tips up at the front when open
 
 function popupParts() {
   // In hinge space the painted lid lies in y = 0 from z = 0 forward. The front face is raked back by
-  // LAMP_TILT so that when the unit lifts and tips up by that angle, the rectangular lamp faces
+  // LAMP_TILT so that when the unit tips up by that angle, the rectangular lamp faces
   // straight ahead under an angled lid, like the real car. Closed, the whole unit hides under the lid.
   const x0 = -LAMP_HW;
   const x1 = LAMP_HW;
@@ -485,7 +494,7 @@ function popupParts() {
   ];
   const a = 0.022;
   const b = d - 0.02;
-  const lamp = [{ pts: [[x0 + 0.04, fy(a), fz(a) + 0.003], [x1 - 0.04, fy(a), fz(a) + 0.003], [x1 - 0.04, fy(b), fz(b) + 0.003], [x0 + 0.04, fy(b), fz(b) + 0.003]], out: [0, 0.3, 1] }];
+  const lamp = [{ pts: [[x0 + 0.025, fy(a), fz(a) + 0.003], [x1 - 0.025, fy(a), fz(a) + 0.003], [x1 - 0.025, fy(b), fz(b) + 0.003], [x0 + 0.025, fy(b), fz(b) + 0.003]], out: [0, 0.3, 1] }];
   return { lid, box, lamp };
 }
 
