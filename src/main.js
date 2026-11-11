@@ -110,7 +110,7 @@ function renderChoices() {
           : key === 'steering'
             ? [['buttons', 'Buttons'], ['slider', 'Slider']]
             : key === 'shifter'
-              ? [['tap', 'Tap gears'], ['drag', 'Drag knob']]
+              ? [['drag', 'Drag knob'], ['tap', 'Tap gears']]
               : [['chase', 'Chase'], ['bumper', 'Bumper']];
     box.innerHTML = '';
     for (const [value, label] of options) {

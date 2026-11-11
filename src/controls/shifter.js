@@ -35,7 +35,7 @@ export class Shifter {
     this.gear = 0;
     this.pointer = null;
     this.blocked = 0; // slot direction that just grinded; must pull back before trying again
-    this.mode = 'tap'; // 'tap': touch a gear to select it; 'drag': move the knob through the gate
+    this.mode = 'drag'; // 'drag': move the knob through the gate; 'tap': touch a gear to select it
     root.addEventListener('pointerdown', (e) => this.#down(e));
     root.addEventListener('pointermove', (e) => this.#move(e));
     root.addEventListener('pointerup', (e) => this.#up(e));
