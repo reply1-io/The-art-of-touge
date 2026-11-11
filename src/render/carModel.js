@@ -65,46 +65,46 @@ const FRONT_AXLE = 1.28;
 const REAR_AXLE = -1.29;
 const WHEEL_R = 0.305;
 const ARCH_R = 0.37;
-const NOSE = 2.15;
-const TAIL = -2.19;
+const NOSE = 2.13;
+const TAIL = -2.17;
 
 const HALF_WIDTH = [
-  [2.15, 0.76],
-  [2.1, 0.8],
-  [1.95, 0.818],
-  [-1.95, 0.818],
-  [-2.12, 0.8],
-  [-2.19, 0.77],
+  [2.13, 0.79],
+  [2.1, 0.81],
+  [1.95, 0.82],
+  [-1.95, 0.82],
+  [-2.12, 0.81],
+  [-2.17, 0.79],
 ];
 const BOTTOM = [
-  [2.15, 0.36],
-  [2.08, 0.24],
-  [1.9, 0.2],
+  [2.13, 0.5],
+  [2.11, 0.3],
+  [1.95, 0.22],
   [-1.9, 0.21],
-  [-2.1, 0.26],
-  [-2.19, 0.38],
+  [-2.1, 0.3],
+  [-2.17, 0.5],
 ];
 // Top of the sides / shoulder line: wings along the bonnet, window line, boot.
 const BELT = [
-  [2.15, 0.7],
-  [2.11, 0.75],
-  [1.95, 0.77],
-  [0.75, 0.84],
-  [0.0, 0.875],
-  [-1.5, 0.92],
-  [-2.13, 0.925],
-  [-2.19, 0.86],
+  [2.13, 0.74],
+  [2.1, 0.765],
+  [1.9, 0.78],
+  [0.78, 0.86],
+  [0.0, 0.9],
+  [-1.5, 0.94],
+  [-2.12, 0.955],
+  [-2.17, 0.9],
 ];
 // Centreline: bonnet, (cabin floor under the glass), boot lid.
 const TOP = [
-  [2.15, 0.71],
-  [2.11, 0.765],
-  [1.95, 0.785],
-  [0.75, 0.855],
-  [0.0, 0.88],
-  [-1.5, 0.935],
-  [-2.13, 0.94],
-  [-2.19, 0.87],
+  [2.13, 0.745],
+  [2.1, 0.775],
+  [1.9, 0.795],
+  [0.78, 0.885],
+  [0.0, 0.91],
+  [-1.55, 0.97],
+  [-2.12, 0.975],
+  [-2.17, 0.91],
 ];
 
 function section(z) {
@@ -188,9 +188,9 @@ function bodyPolys() {
 // ---------- Greenhouse: upright E30 glasshouse with thin pillars ----------
 const ROOF_Y = 1.37;
 const ROOF_HW = 0.6;
-const SCREEN_BASE_Z = 0.72;
-const SCREEN_TOP_Z = -0.1;
-const ROOF_REAR_Z = -1.0;
+const SCREEN_BASE_Z = 0.78;
+const SCREEN_TOP_Z = 0.02;
+const ROOF_REAR_Z = -1.02;
 
 function cabinTop(z) {
   if (z >= SCREEN_TOP_Z) {
@@ -205,7 +205,7 @@ function greenhousePolys() {
   const paint = [];
   const glass = [];
   const trim = [];
-  const zs = [0.72, 0.5, 0.25, -0.1, -0.36, -0.42, -0.7, -1.0];
+  const zs = [0.78, 0.55, 0.3, 0.02, -0.46, -0.52, -0.78, -1.02];
   const rings = zs.map((z) => {
     const s = section(z);
     const t = cabinTop(z);
@@ -217,7 +217,7 @@ function greenhousePolys() {
     const b = rings[i + 1];
     const mid = (a.z + b.z) / 2;
     const screen = mid > SCREEN_TOP_Z;
-    const pillar = mid < -0.36 && mid > -0.42; // B-pillar
+    const pillar = mid < -0.46 && mid > -0.52; // B-pillar
     for (const p of both({ pts: [a.lb, a.lt, b.lt, b.lb], color: pillar ? BLACK : GLASS })) (pillar ? trim : glass).push(p);
     const top = { pts: [a.lt, mirror(a.lt), mirror(b.lt), b.lt], color: screen ? GLASS : WHITE, out: [0, 1, screen ? 0.8 : 0] };
     (screen ? glass : paint).push(top);
@@ -228,76 +228,114 @@ function greenhousePolys() {
   }
   // C-pillar and rear window.
   const r = rings[rings.length - 1];
-  const sC = section(-1.45);
-  const cBase = [sC.hw * 0.96, sC.belt, -1.45];
-  const rwBottom = [0.66, section(-1.52).top, -1.52];
+  const sC = section(-1.42);
+  const cBase = [sC.hw * 0.96, sC.belt, -1.42];
+  const rwBottom = [0.66, section(-1.58).top, -1.58];
   for (const p of both({ pts: [r.lb, r.lt, cBase], out: [1, 0.2, 0] })) paint.push(p);
   for (const p of both({ pts: [r.lt, rwBottom, cBase], out: [0.4, 1, -0.4] })) paint.push(p);
   glass.push({ pts: [[r.lt[0] - 0.02, ROOF_Y - 0.01, ROOF_REAR_Z], [-(r.lt[0] - 0.02), ROOF_Y - 0.01, ROOF_REAR_Z], mirror(rwBottom), rwBottom], color: GLASS, out: [0, 0.6, -1] });
   return { paint, glass, trim };
 }
 
-// ---------- Details: nose, tail, bumpers, mirrors ----------
+// ---------- Details: nose, tail, bumpers, mirrors, shoulder line ----------
+const RED = [0.85, 0.08, 0.08];
+const LENS_WHITE = [0.85, 0.85, 0.82];
+
+// Round lamps for the nose: [x, y, radius]. The E30 has two per side in a black surround, the outer
+// (dipped) lamp slightly larger than the inner (main beam).
+export const HEADLAMPS = [
+  [0.585, 0.635, 0.068],
+  [0.345, 0.635, 0.06],
+  [-0.345, 0.635, 0.06],
+  [-0.585, 0.635, 0.068],
+];
+
 function detailPolys() {
   const trim = [];
   const chrome = [];
-  const head = [];
   const tail = [];
   const zn = NOSE + 0.006;
-  // Black grille panel across the nose with the twin kidneys.
-  trim.push({ pts: [[0.74, 0.5, zn], [0.74, 0.69, zn], [-0.74, 0.69, zn], [-0.74, 0.5, zn]], color: BLACK, out: [0, 0, 1] });
-  for (const x of [0.085, -0.085]) {
-    chrome.push({ pts: [[x + 0.075, 0.5, zn + 0.004], [x + 0.065, 0.69, zn + 0.004], [x - 0.065, 0.69, zn + 0.004], [x - 0.075, 0.5, zn + 0.004]], color: CHROME, out: [0, 0, 1] });
-    trim.push({ pts: [[x + 0.058, 0.52, zn + 0.008], [x + 0.05, 0.67, zn + 0.008], [x - 0.05, 0.67, zn + 0.008], [x - 0.058, 0.52, zn + 0.008]], color: BLACK, out: [0, 0, 1] });
-  }
-  // Square headlamps, two each side.
-  for (const side of [1, -1]) {
-    for (const [x0, x1] of [
-      [0.22, 0.42],
-      [0.46, 0.66],
-    ]) {
-      head.push({ pts: [[side * x0, 0.53, zn + 0.006], [side * x1, 0.53, zn + 0.006], [side * x1, 0.67, zn + 0.006], [side * x0, 0.67, zn + 0.006]], out: [0, 0, 1] });
+  const front = (x0, x1, y0, y1, z, color) => trim.push({ pts: [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], color, out: [0, 0, 1] });
+  // Black headlamp surrounds, one each side of the grille.
+  for (const side of [1, -1]) front(side * 0.24, side * 0.7, 0.555, 0.715, zn, BLACK);
+  // Twin kidneys: chrome frames standing slightly proud, black slats inside.
+  for (const x of [0.075, -0.075]) {
+    const z = zn + 0.02;
+    chrome.push({ pts: [[x + 0.07, 0.545, z], [x + 0.065, 0.735, z], [x - 0.065, 0.735, z], [x - 0.07, 0.545, z]], color: CHROME, out: [0, 0, 1] });
+    trim.push({ pts: [[x + 0.052, 0.56, z + 0.004], [x + 0.048, 0.72, z + 0.004], [x - 0.048, 0.72, z + 0.004], [x - 0.052, 0.56, z + 0.004]], color: BLACK, out: [0, 0, 1] });
+    for (let k = 0; k < 3; k++) {
+      const sx = x - 0.03 + k * 0.03;
+      chrome.push({ pts: [[sx + 0.004, 0.565, z + 0.008], [sx + 0.004, 0.715, z + 0.008], [sx - 0.004, 0.715, z + 0.008], [sx - 0.004, 0.565, z + 0.008]], color: CHROME, out: [0, 0, 1] });
     }
-    // Amber corner indicators.
-    trim.push({ pts: [[side * 0.69, 0.53, zn + 0.004], [side * 0.74, 0.53, zn + 0.004], [side * 0.74, 0.67, zn + 0.004], [side * 0.69, 0.67, zn + 0.004]], color: AMBER, out: [0, 0, 1] });
+    // Sides of the kidney frame so it reads as a raised part.
+    for (const sgn of [1, -1]) chrome.push({ pts: [[x + sgn * 0.07, 0.545, zn], [x + sgn * 0.07, 0.545, z], [x + sgn * 0.065, 0.735, z], [x + sgn * 0.065, 0.735, zn]], color: CHROME, out: [sgn, 0, 0] });
   }
-  // Chrome-style bumpers (boxes standing proud of the body).
+  // Chrome-style bumpers with a black rubber strip, standing proud of the body.
   const bumper = (z0, z1, y0, y1, hw) => {
     const b = [];
+    const d = Math.sign(z1);
     const face = (pts, out) => b.push({ pts, color: CHROME, out });
-    face([[hw, y0, z1], [hw, y1, z1], [-hw, y1, z1], [-hw, y0, z1]], [0, 0, Math.sign(z1)]);
+    face([[hw, y0, z1], [hw, y1, z1], [-hw, y1, z1], [-hw, y0, z1]], [0, 0, d]);
     face([[hw, y1, z0], [hw, y1, z1], [-hw, y1, z1], [-hw, y1, z0]], [0, 1, 0]);
     face([[hw, y0, z0], [hw, y0, z1], [-hw, y0, z1], [-hw, y0, z0]], [0, -1, 0]);
     face([[hw, y0, z0], [hw, y1, z0], [hw, y1, z1], [hw, y0, z1]], [1, 0, 0]);
     face([[-hw, y0, z0], [-hw, y1, z0], [-hw, y1, z1], [-hw, y0, z1]], [-1, 0, 0]);
-    // Black rubber insert along the middle.
-    b.push({ pts: [[hw, y0 + 0.04, z1 + Math.sign(z1) * 0.004], [hw, y1 - 0.05, z1 + Math.sign(z1) * 0.004], [-hw, y1 - 0.05, z1 + Math.sign(z1) * 0.004], [-hw, y0 + 0.04, z1 + Math.sign(z1) * 0.004]], color: TRIM, out: [0, 0, Math.sign(z1)] });
+    b.push({ pts: [[hw, y0 + 0.045, z1 + d * 0.004], [hw, y1 - 0.05, z1 + d * 0.004], [-hw, y1 - 0.05, z1 + d * 0.004], [-hw, y0 + 0.045, z1 + d * 0.004]], color: TRIM, out: [0, 0, d] });
     return b;
   };
-  chrome.push(...bumper(NOSE - 0.05, NOSE + 0.1, 0.33, 0.47, 0.83));
-  chrome.push(...bumper(TAIL + 0.05, TAIL - 0.1, 0.35, 0.49, 0.83));
-  // Tail: red / amber lamp clusters with a black centre panel and number plate.
-  const zt = TAIL - 0.006;
-  trim.push({ pts: [[0.78, 0.58, zt], [0.78, 0.8, zt], [-0.78, 0.8, zt], [-0.78, 0.58, zt]], color: BLACK, out: [0, 0, -1] });
+  chrome.push(...bumper(NOSE - 0.06, NOSE + 0.09, 0.36, 0.53, 0.835));
+  chrome.push(...bumper(TAIL + 0.06, TAIL - 0.09, 0.37, 0.55, 0.835));
+  // Amber indicators set into the front bumper corners.
   for (const side of [1, -1]) {
-    tail.push({ pts: [[side * 0.77, 0.68, zt - 0.004], [side * 0.36, 0.68, zt - 0.004], [side * 0.36, 0.79, zt - 0.004], [side * 0.77, 0.79, zt - 0.004]], out: [0, 0, -1] });
-    trim.push({ pts: [[side * 0.77, 0.6, zt - 0.004], [side * 0.56, 0.6, zt - 0.004], [side * 0.56, 0.67, zt - 0.004], [side * 0.77, 0.67, zt - 0.004]], color: AMBER, out: [0, 0, -1] });
-    trim.push({ pts: [[side * 0.55, 0.6, zt - 0.004], [side * 0.36, 0.6, zt - 0.004], [side * 0.36, 0.67, zt - 0.004], [side * 0.55, 0.67, zt - 0.004]], color: [0.85, 0.85, 0.85], out: [0, 0, -1] });
+    trim.push({ pts: [[side * 0.62, 0.42, NOSE + 0.096], [side * 0.79, 0.42, NOSE + 0.096], [side * 0.79, 0.47, NOSE + 0.096], [side * 0.62, 0.47, NOSE + 0.096]], color: AMBER, out: [0, 0, 1] });
   }
-  trim.push({ pts: [[0.25, 0.6, zt - 0.006], [-0.25, 0.6, zt - 0.006], [-0.25, 0.71, zt - 0.006], [0.25, 0.71, zt - 0.006]], color: [0.9, 0.9, 0.85], out: [0, 0, -1] });
-  // Door mirrors.
+  // 318is front lip spoiler under the bumper.
+  trim.push({ pts: [[0.8, 0.24, NOSE + 0.05], [0.8, 0.36, NOSE + 0.02], [-0.8, 0.36, NOSE + 0.02], [-0.8, 0.24, NOSE + 0.05]], color: BLACK, out: [0, -0.3, 1] });
+
+  // Facelift tail lamps: wide banded units, red over amber and white, with dark ribs.
+  const zt = TAIL - 0.006;
+  const rear = (x0, x1, y0, y1, color, list = trim) => list.push({ pts: [[x0, y0, zt - 0.004], [x1, y0, zt - 0.004], [x1, y1, zt - 0.004], [x0, y1, zt - 0.004]], color, out: [0, 0, -1] });
+  rear(0.8, -0.8, 0.6, 0.84, BLACK);
   for (const side of [1, -1]) {
-    const x0 = side * 0.8;
+    const o = side * 0.785;
+    const i = side * 0.3;
+    const m = side * 0.56;
+    rear(o, i, 0.765, 0.83, RED, tail); // tail / brake
+    rear(o, m, 0.69, 0.755, AMBER); // indicator
+    rear(m, i, 0.69, 0.755, RED, tail);
+    rear(o, m, 0.615, 0.68, RED, tail);
+    rear(m, i, 0.615, 0.68, LENS_WHITE); // reversing lamp
+  }
+  // Number plate on the black panel between the lamps.
+  rear(0.25, -0.25, 0.63, 0.77, [0.92, 0.92, 0.86]);
+
+  // The "Sicke": the sharp shoulder crease that runs nose to tail just below the window line.
+  for (let z = NOSE - 0.05; z > TAIL + 0.05; z -= 0.12) {
+    const z1 = Math.max(TAIL + 0.05, z - 0.12);
+    const s0 = section(z);
+    const s1 = section(z1);
+    const y0 = s0.belt - 0.085;
+    const y1 = s1.belt - 0.085;
+    for (const p of both({ pts: [[s0.hw + 0.004, y0, z], [s0.hw + 0.004, y0 + 0.012, z], [s1.hw + 0.004, y1 + 0.012, z1], [s1.hw + 0.004, y1, z1]], color: [0.62, 0.62, 0.6], out: [1, 0, 0] })) trim.push(p);
+  }
+  // Door handles and front wing side repeaters.
+  for (const side of [1, -1]) {
+    trim.push({ pts: [[side * 0.825, 0.79, -0.25], [side * 0.825, 0.81, -0.25], [side * 0.825, 0.81, -0.38], [side * 0.825, 0.79, -0.38]], color: BLACK, out: [side, 0, 0] });
+    trim.push({ pts: [[side * 0.824, 0.66, 1.72], [side * 0.824, 0.69, 1.72], [side * 0.824, 0.69, 1.64], [side * 0.824, 0.66, 1.64]], color: AMBER, out: [side, 0, 0] });
+  }
+  // Door mirrors at the front corner of the door glass.
+  for (const side of [1, -1]) {
+    const x0 = side * 0.79;
     const x1 = side * 0.95;
     const box = [
-      [[x0, 0.88, 0.62], [x1, 0.89, 0.6], [x1, 0.98, 0.6], [x0, 0.98, 0.62]],
-      [[x0, 0.88, 0.52], [x1, 0.89, 0.52], [x1, 0.98, 0.52], [x0, 0.98, 0.52]],
-      [[x1, 0.89, 0.6], [x1, 0.89, 0.52], [x1, 0.98, 0.52], [x1, 0.98, 0.6]],
-      [[x0, 0.98, 0.62], [x1, 0.98, 0.6], [x1, 0.98, 0.52], [x0, 0.98, 0.52]],
+      [[x0, 0.9, 0.7], [x1, 0.91, 0.68], [x1, 1.0, 0.68], [x0, 1.0, 0.7]],
+      [[x0, 0.9, 0.6], [x1, 0.91, 0.6], [x1, 1.0, 0.6], [x0, 1.0, 0.6]],
+      [[x1, 0.91, 0.68], [x1, 0.91, 0.6], [x1, 1.0, 0.6], [x1, 1.0, 0.68]],
+      [[x0, 1.0, 0.7], [x1, 1.0, 0.68], [x1, 1.0, 0.6], [x0, 1.0, 0.6]],
     ];
     for (const pts of box) trim.push({ pts, color: BLACK });
   }
-  return { trim, chrome, head, tail };
+  return { trim, chrome, tail };
 }
 
 // ---------- BBS-style cross-spoke mesh wheel ----------
@@ -368,15 +406,23 @@ export class CarModel {
     const flat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     const glassMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x05070a });
     this.headMat = new THREE.MeshLambertMaterial({ color: 0xe8ecf0, emissive: 0x000000, flatShading: true });
-    this.tailMat = new THREE.MeshLambertMaterial({ color: 0x8a0d0d, emissive: 0x000000, flatShading: true });
+    this.tailMat = new THREE.MeshLambertMaterial({ color: 0xd0141c, emissive: 0x000000, flatShading: true });
 
     const shell = bodyPolys();
     const cabin = greenhousePolys();
     const detail = detailPolys();
     body.add(new THREE.Mesh(polyGeometry([...shell.paint, ...shell.trim, ...cabin.paint, ...cabin.trim, ...detail.trim, ...detail.chrome]), flat));
     body.add(new THREE.Mesh(polyGeometry(cabin.glass), glassMat));
-    body.add(new THREE.Mesh(polyGeometry(detail.head), this.headMat));
     body.add(new THREE.Mesh(polyGeometry(detail.tail), this.tailMat));
+    // Round headlamps with chrome rings.
+    const ringMat = new THREE.MeshLambertMaterial({ color: 0xb9bcc2 });
+    for (const [x, y, r] of HEADLAMPS) {
+      const ring = new THREE.Mesh(new THREE.CircleGeometry(r + 0.012, 14), ringMat);
+      ring.position.set(x, y, NOSE + 0.01);
+      const lamp = new THREE.Mesh(new THREE.CircleGeometry(r, 14), this.headMat);
+      lamp.position.set(x, y, NOSE + 0.014);
+      body.add(ring, lamp);
+    }
 
     const tyreMat = new THREE.MeshLambertMaterial({ color: 0x151517 });
     const faceMat = new THREE.MeshLambertMaterial({ map: bbsTexture() });

@@ -51,7 +51,7 @@ body {
   display: none !important;
 }
 
-/* ---------- Touch controls ---------- */
+/* ---------- Touch controls (layout follows the player's sketch) ---------- */
 #controls {
   position: fixed;
   inset: 0;
@@ -64,83 +64,72 @@ body {
 }
 
 .btn {
-  font: 700 clamp(11px, 2.6vh, 17px) system-ui, sans-serif;
+  font: 800 clamp(12px, 3.2vh, 20px) system-ui, sans-serif;
   letter-spacing: 0.06em;
-  color: var(--ink);
-  background: var(--btn);
-  border: 2px solid var(--edge);
-  border-radius: 14px;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.16);
+  border: 3px solid rgba(255, 255, 255, 0.8);
+  border-radius: 10px;
   padding: 0;
 }
 
 .btn.on {
-  background: var(--btn-on);
-  border-color: #ffd36b;
+  background: rgba(255, 255, 255, 0.28);
 }
 
+/* Steering: a plain slider bar with a knob, inside a larger invisible touch area. */
 #steer {
   position: absolute;
-  left: calc(12px + var(--sl));
-  bottom: calc(12px + var(--sb));
-  width: 38vw;
-  height: 30vh;
-  border-radius: 18px;
-  border: 2px dashed rgba(255, 255, 255, 0.18);
-  background: rgba(12, 16, 30, 0.18);
-}
-
-#steer span {
-  position: absolute;
-  bottom: 6px;
-  width: 100%;
-  text-align: center;
-  font-size: 10px;
-  letter-spacing: 0.2em;
-  color: var(--dim);
+  left: calc(2vw + var(--sl));
+  bottom: calc(2vh + var(--sb));
+  width: 34vw;
+  height: 28vh;
 }
 
 #steer-track {
   position: absolute;
-  left: 8%;
-  right: 8%;
-  top: 50%;
-  height: 4px;
-  margin-top: -2px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.22);
+  left: 6%;
+  right: 6%;
+  top: 55%;
+  height: 12px;
+  margin-top: -6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.55);
 }
 
 #steer-knob {
   position: absolute;
   left: 50%;
-  top: 50%;
-  width: 46px;
-  height: 46px;
-  margin: -23px 0 0 -23px;
+  top: 55%;
+  width: 48px;
+  height: 48px;
+  margin: -24px 0 0 -24px;
   border-radius: 50%;
-  background: rgba(255, 176, 0, 0.75);
-  border: 2px solid #ffe2a3;
+  background: #111;
+  border: 3px solid rgba(255, 255, 255, 0.85);
 }
 
 #clutch {
   position: absolute;
-  left: calc(12px + var(--sl));
-  bottom: calc(30vh + 24px + var(--sb));
-  width: 19vw;
-  height: 17vh;
+  left: calc(5vw + var(--sl));
+  bottom: calc(32vh + var(--sb));
+  width: 20vw;
+  height: 14vh;
+  border-color: #ff8a1c;
+  /* The fill shows how far the clutch is engaged. */
+  background: linear-gradient(to right, rgba(255, 138, 28, 0.35) var(--engaged, 100%), rgba(0, 0, 0, 0.16) var(--engaged, 100%));
 }
 
 #shifter {
   position: absolute;
-  left: calc(50% - 15vh);
-  bottom: calc(12px + var(--sb));
+  right: calc(4vw + var(--sr));
+  top: 20vh;
   width: 30vh;
-  height: 30vh;
-  min-width: 132px;
-  min-height: 132px;
-  border-radius: 16px;
-  background: rgba(12, 16, 30, 0.18);
-  border: 2px solid rgba(255, 255, 255, 0.16);
+  height: 32vh;
+  min-width: 120px;
+  min-height: 128px;
 }
 
 #shifter-gate {
@@ -152,19 +141,19 @@ body {
 
 #shifter-knob {
   position: absolute;
-  width: 15%;
-  height: 15%;
+  width: 18%;
+  height: 16%;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #fafafa, #707070 70%);
-  border: 2px solid #222;
+  background: radial-gradient(circle at 35% 30%, #4a4a4a, #0c0c0c 70%);
+  border: 2px solid rgba(255, 255, 255, 0.85);
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
 
 #dr {
   position: absolute;
-  left: calc(50% - 13vh);
-  bottom: calc(12px + var(--sb));
+  right: calc(4vw + var(--sr));
+  top: 22vh;
   display: flex;
   gap: 10px;
 }
@@ -177,64 +166,90 @@ body {
   font-size: clamp(18px, 5vh, 30px);
 }
 
-#handbrake {
-  position: absolute;
-  right: calc(12px + 22vw + 12px + var(--sr));
-  bottom: calc(12px + 24vh + 12px + var(--sb));
-  width: 15vw;
-  height: 17vh;
-}
-
-#brake {
-  position: absolute;
-  right: calc(12px + 22vw + 12px + var(--sr));
-  bottom: calc(12px + var(--sb));
-  width: 15vw;
-  height: 24vh;
-  border-color: rgba(255, 77, 77, 0.6);
+.btn.tall span {
+  display: inline-block;
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: 0.05em;
+  font-size: clamp(14px, 4.2vh, 26px);
 }
 
 #gas {
   position: absolute;
-  right: calc(12px + var(--sr));
-  bottom: calc(12px + var(--sb));
-  width: 22vw;
-  height: 42vh;
-  border-color: rgba(60, 207, 110, 0.7);
+  right: calc(3vw + var(--sr));
+  bottom: calc(3vh + var(--sb));
+  width: 11vw;
+  height: 40vh;
+  border-color: #2bd15a;
+}
+
+#brake {
+  position: absolute;
+  right: calc(3vw + 11vw + 2.5vw + var(--sr));
+  bottom: calc(3vh + var(--sb));
+  width: 11vw;
+  height: 40vh;
+  border-color: #ff3b30;
+}
+
+#handbrake {
+  position: absolute;
+  right: calc(3vw + 22vw + 5vw + var(--sr));
+  bottom: calc(3vh + var(--sb));
+  width: 10vw;
+  height: 20vh;
+  font-size: clamp(10px, 2.6vh, 15px);
+  border-color: #ffd23f;
 }
 
 #start {
   position: absolute;
-  left: calc(19vw + 24px + var(--sl));
-  bottom: calc(30vh + 24px + var(--sb));
-  width: 15vw;
-  height: 17vh;
-  background: rgba(200, 30, 30, 0.75);
+  left: 50%;
+  top: 40%;
+  transform: translate(-50%, -50%);
+  width: 20vw;
+  height: 16vh;
+  background: rgba(200, 30, 30, 0.8);
   border-color: #ffb3b3;
 }
 
-/* ---------- Top bar and toast ---------- */
+/* ---------- Top bar (menu and camera icons) and toast ---------- */
 #topbar {
   position: fixed;
   top: max(8px, env(safe-area-inset-top, 0px));
-  left: 50%;
-  transform: translateX(-50%);
+  left: calc(10px + var(--sl));
   display: flex;
-  gap: 8px;
+  gap: 10px;
 }
 
 #topbar button {
-  font: 700 12px system-ui, sans-serif;
-  color: var(--ink);
-  background: rgba(12, 16, 30, 0.55);
-  border: 1px solid var(--edge);
-  border-radius: 8px;
-  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  padding: 2px;
+  color: #fff;
+  font: 800 10px system-ui, sans-serif;
+  letter-spacing: 0.1em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+#topbar svg {
+  width: 38px;
+  height: 38px;
+  fill: rgba(0, 0, 0, 0.25);
+  stroke: #fff;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
 }
 
 #toast {
   position: fixed;
-  top: 34%;
+  top: 26%;
   left: 50%;
   transform: translateX(-50%);
   font: 800 clamp(16px, 4.5vh, 26px) system-ui, sans-serif;

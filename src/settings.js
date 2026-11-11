@@ -7,6 +7,7 @@ const TUNE_KEY = 'touge.tuning.v2';
 const DEFAULTS = {
   mode: 'manual', // 'manual' | 'autoClutch' | 'auto'
   camera: 'chase', // 'chase' | 'bumper'
+  sound: true,
 };
 
 function read(key) {

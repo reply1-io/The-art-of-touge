@@ -11,6 +11,7 @@ import { TestTrack } from './world/testTrack.js';
 import { Input } from './controls/input.js';
 import { Shifter } from './controls/shifter.js';
 import { Hud } from './ui/hud.js';
+import { CarAudio } from './audio/carAudio.js';
 import { TuningPanel } from './ui/tuning.js';
 import { loadSettings, saveSettings, loadTuning, saveTuning } from './settings.js';
 
@@ -52,6 +53,7 @@ function blobShadow() {
 const hud = new Hud($('hud'));
 const input = new Input($('controls'));
 const rig = new CameraRig(camera);
+const audio = new CarAudio();
 rig.mode = settings.camera;
 
 let world;
@@ -97,7 +99,12 @@ function toast(text, seconds = 1.4) {
 function renderChoices() {
   for (const box of document.querySelectorAll('.choices')) {
     const key = box.dataset.setting;
-    const options = key === 'mode' ? MODES.map((m) => [m, MODE_LABELS[m]]) : [['chase', 'Chase'], ['bumper', 'Bumper']];
+    const options =
+      key === 'mode'
+        ? MODES.map((m) => [m, MODE_LABELS[m]])
+        : key === 'sound'
+          ? [[true, 'On'], [false, 'Off']]
+          : [['chase', 'Chase'], ['bumper', 'Bumper']];
     box.innerHTML = '';
     for (const [value, label] of options) {
       const b = document.createElement('button');
@@ -117,6 +124,7 @@ function renderChoices() {
 
 function applySettings() {
   rig.mode = settings.camera;
+  audio.setMuted(!settings.sound);
   if (vehicle && vehicle.mode !== settings.mode) {
     vehicle.setMode(settings.mode);
     if (settings.mode === 'auto') vehicle.trans.setDrive('D', 0);
@@ -143,7 +151,12 @@ function resetCar() {
 function setPaused(p) {
   paused = p;
   $('pause').classList.toggle('hidden', !p);
-  if (p) input.releaseAll();
+  if (p) {
+    input.releaseAll();
+    audio.suspend();
+  } else {
+    audio.resume();
+  }
   last = performance.now();
 }
 
@@ -152,6 +165,8 @@ $('btn-drive').addEventListener('click', () => {
   $('controls').classList.remove('hidden');
   $('topbar').classList.remove('hidden');
   running = true;
+  audio.start();
+  audio.setMuted(!settings.sound);
   const el = document.documentElement;
   if (el.requestFullscreen && !document.fullscreenElement) {
     el.requestFullscreen({ navigationUI: 'hide' })
@@ -166,7 +181,6 @@ $('btn-restart').addEventListener('click', () => {
   resetCar();
   setPaused(false);
 });
-$('btn-reset').addEventListener('click', resetCar);
 $('btn-cam').addEventListener('click', () => {
   settings.camera = settings.camera === 'chase' ? 'bumper' : 'chase';
   saveSettings(settings);
@@ -252,7 +266,9 @@ function frame(now) {
     toastTimer -= dt;
     if (toastTimer <= 0) $('toast').classList.remove('show');
   }
+  if (active) audio.update(vehicle, dt);
   $('start').classList.toggle('hidden', vehicle.engine.running);
+  $('clutch').style.setProperty('--engaged', `${Math.round((1 - vehicle.trans.coupling) * 100)}%`);
 
   // Interpolate the car between physics steps for smooth motion on any refresh rate.
   const alpha = active ? accumulator / DT : 1;
@@ -275,8 +291,7 @@ function frame(now) {
           redline: CAR.engine.redline,
           speedMph: vehicle.forwardSpeed * 2.23694,
           gear: tr.label,
-          coupling: tr.coupling,
-          showClutch: tr.mode !== 'auto',
+          showGear: tr.mode === 'auto',
           running: vehicle.engine.running,
           needClutchToStart: tr.mode === 'manual' && tr.gear !== 0,
           lapTime,

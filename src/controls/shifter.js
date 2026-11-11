@@ -1,23 +1,24 @@
 // On-screen H-pattern shifter. You drag the knob through the gate like a real lever:
 // along the neutral rail left/right, and up or down only where a gear slot is.
 //
-//   R   1   3   5
-//   |   |   |   |
-//   +---N---+---+     (neutral rail)
-//       |   |
-//       2   4
+//   1   3   5
+//   |   |   |
+//   +---N---+       (neutral rail)
+//   |   |   |
+//   2   4   R
 //
-// Gate coordinates: columns x = 0..3, y = -1 (up) .. 0 (rail) .. +1 (down).
+// Gate coordinates: columns x = 0..2, y = -1 (up) .. 0 (rail) .. +1 (down).
 
 const SLOTS = {
-  '0,-1': -1, // reverse, top left
-  '1,-1': 1,
-  '1,1': 2,
-  '2,-1': 3,
-  '2,1': 4,
-  '3,-1': 5,
+  '0,-1': 1,
+  '0,1': 2,
+  '1,-1': 3,
+  '1,1': 4,
+  '2,-1': 5,
+  '2,1': -1, // reverse, bottom right
 };
-const GEAR_POS = { [-1]: [0, -1], 0: [1.5, 0], 1: [1, -1], 2: [1, 1], 3: [2, -1], 4: [2, 1], 5: [3, -1] };
+const COLS = 2; // highest column index
+const GEAR_POS = { [-1]: [2, 1], 0: [1, 0], 1: [0, -1], 2: [0, 1], 3: [1, -1], 4: [1, 1], 5: [2, -1] };
 const ENGAGE = 0.82; // how far into a slot the knob must go before the gear is selected
 const SNAP = 0.32; // how close to a column the knob must be to enter it
 
@@ -45,13 +46,13 @@ export class Shifter {
   #toPx([x, y]) {
     const w = this.root.clientWidth;
     const h = this.root.clientHeight;
-    return [w * (0.16 + (x / 3) * 0.68), h * (0.5 + y * 0.34)];
+    return [w * (0.18 + (x / COLS) * 0.64), h * (0.5 + y * 0.3)];
   }
 
   #fromPx(px, py) {
     const w = this.root.clientWidth;
     const h = this.root.clientHeight;
-    return [((px / w - 0.16) / 0.68) * 3, (py / h - 0.5) / 0.34];
+    return [((px / w - 0.18) / 0.64) * COLS, (py / h - 0.5) / 0.3];
   }
 
   #draw() {
@@ -62,9 +63,8 @@ export class Shifter {
     const g = c.getContext('2d');
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, c.width, c.height);
-    g.strokeStyle = 'rgba(0,0,0,0.4)';
     g.lineCap = 'round';
-    g.lineWidth = Math.max(10, this.root.clientWidth * 0.09);
+    const lw = Math.max(5, this.root.clientWidth * 0.045);
     const line = (a, b) => {
       const [x0, y0] = this.#toPx(a);
       const [x1, y1] = this.#toPx(b);
@@ -73,19 +73,31 @@ export class Shifter {
       g.lineTo(x1, y1);
       g.stroke();
     };
-    line([0, 0], [3, 0]);
-    for (const key of Object.keys(SLOTS)) {
-      const [x, y] = key.split(',').map(Number);
-      line([x, 0], [x, y]);
+    // Dark outline first, then the white gate, so it reads on any background.
+    for (const [style, width] of [
+      ['rgba(0,0,0,0.6)', lw + 4],
+      ['rgba(255,255,255,0.9)', lw],
+    ]) {
+      g.strokeStyle = style;
+      g.lineWidth = width;
+      line([0, 0], [COLS, 0]);
+      for (const key of Object.keys(SLOTS)) {
+        const [x, y] = key.split(',').map(Number);
+        line([x, 0], [x, y]);
+      }
     }
-    g.fillStyle = 'rgba(255,255,255,0.75)';
-    g.font = `700 ${Math.max(11, this.root.clientWidth * 0.08)}px system-ui, sans-serif`;
+    g.font = `900 ${Math.max(14, this.root.clientWidth * 0.14)}px system-ui, sans-serif`;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
+    g.lineWidth = 4;
+    g.strokeStyle = 'rgba(0,0,0,0.7)';
     for (const [key, gear] of Object.entries(SLOTS)) {
       const [x, y] = key.split(',').map(Number);
-      const [px, py] = this.#toPx([x, y * 1.32]);
-      g.fillText(gear === -1 ? 'R' : String(gear), px, py);
+      const [px, py] = this.#toPx([x, y * 1.42]);
+      const label = gear === -1 ? 'R' : String(gear);
+      g.strokeText(label, px, py);
+      g.fillStyle = gear === this.gear ? '#2bd15a' : gear === -1 ? '#ff8a80' : '#ffffff';
+      g.fillText(label, px, py);
     }
     this.#placeKnob();
   }
@@ -100,7 +112,7 @@ export class Shifter {
   setGear(gear) {
     this.gear = gear;
     this.pos = [...(GEAR_POS[gear] || GEAR_POS[0])];
-    this.#placeKnob();
+    this.#draw();
   }
 
   #down(e) {
@@ -140,13 +152,13 @@ export class Shifter {
     let [x, y] = this.pos;
     if (Math.abs(y) < 0.1) {
       // On the neutral rail: slide sideways, or drop into a slot if close to a column.
-      const col = Math.round(clamp(tx, 0, 3));
+      const col = Math.round(clamp(tx, 0, COLS));
       const dir = Math.sign(ty);
       if (Math.abs(ty) > 0.15 && Math.abs(tx - col) < SNAP && SLOTS[`${col},${dir}`] !== undefined) {
         x = col;
         y = ty;
       } else {
-        x = clamp(tx, 0, 3);
+        x = clamp(tx, 0, COLS);
         y = 0;
       }
     } else {
@@ -168,6 +180,7 @@ export class Shifter {
       if (this.onGear(slot)) {
         this.gear = slot;
         this.pos[1] = Math.sign(y);
+        this.#draw();
       } else {
         this.blocked = Math.sign(y);
         this.pos[1] = Math.sign(y) * 0.55;
@@ -175,6 +188,7 @@ export class Shifter {
     } else if (slot === undefined && this.gear !== 0) {
       this.onGear(0);
       this.gear = 0;
+      this.#draw();
     }
     this.#placeKnob();
   }

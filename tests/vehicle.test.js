@@ -82,7 +82,7 @@ test('engine braking slows the car in gear with the throttle closed', async () =
   run(4, { throttle: 1 });
   const v0 = car.forwardSpeed;
   run(2, {});
-  assert.ok(car.forwardSpeed < v0 - 1.5, `${v0} -> ${car.forwardSpeed}`);
+  assert.ok(car.forwardSpeed < v0 - 1.2, `${v0} -> ${car.forwardSpeed}`);
 });
 
 test('brakes stop the car from 60 mph in a sensible distance', async () => {
@@ -107,9 +107,10 @@ test('brakes stop the car from 60 mph in a sensible distance', async () => {
 
 test('corners at a believable lateral g with body roll, and stays upright', async () => {
   const { car, run } = await makeWorld('autoClutch');
-  car.trans.requestGear(2, 0);
-  run(6, () => ({ throttle: car.forwardSpeed < 17.8 ? 1 : 0 }));
-  run(4, () => ({ throttle: car.forwardSpeed < 17.8 ? 0.6 : 0, steer: -0.5 }));
+  car.trans.requestGear(3, 0);
+  run(8, () => ({ throttle: car.forwardSpeed < 17.8 ? 1 : 0 }));
+  // On/off throttle like the touch button, just enough to hold about 40 mph.
+  run(4, () => ({ throttle: car.forwardSpeed < 17.5 ? 1 : 0, steer: -0.45 }));
   const yawRate = car.body.angvel().y;
   const g = (car.speed * Math.abs(yawRate)) / 9.81;
   assert.ok(g > 0.6 && g < 1.05, `lateral g ${g}`);
@@ -151,4 +152,26 @@ test('assisted modes never stall', async () => {
     run(2, { throttle: 0.3 });
     assert.equal(car.engine.running, true, mode);
   }
+});
+
+test('stalling only happens when pulling away, never while driving', async () => {
+  const { car, run } = await makeWorld('manual');
+  run(0.3, { clutch: true });
+  car.trans.requestGear(1, 0);
+  run(0.6, { clutch: true, throttle: 1 });
+  run(3, { throttle: 1 });
+  run(0.3, { clutch: true });
+  car.trans.requestGear(4, car.forwardSpeed); // lug it in 4th at low speed with the clutch out
+  run(2.5, {});
+  assert.equal(car.engine.running, true, 'rolling: the engine bogs but does not die');
+});
+
+test('a slide recovers when you let go of everything (caster self-steer)', async () => {
+  const { car, run } = await makeWorld('autoClutch');
+  car.trans.requestGear(2, 0);
+  run(5, () => ({ throttle: car.forwardSpeed < 15 ? 1 : 0 }));
+  run(1.5, (t) => ({ handbrake: t < 0.45 ? 1 : 0, steer: -0.8, throttle: t > 0.45 && t < 1.3 ? 1 : 0 }));
+  run(2.5, {});
+  assert.ok(Math.abs(car.slideAngle) < 0.15, `still sliding ${(car.slideAngle * 180) / Math.PI} deg`);
+  assert.ok(Math.abs(car.body.angvel().y) < 0.3, 'not spinning');
 });

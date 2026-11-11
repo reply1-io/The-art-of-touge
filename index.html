@@ -18,7 +18,7 @@
     <canvas id="hud"></canvas>
 
     <div id="controls" class="hidden">
-      <div id="steer" class="zone"><div id="steer-track"></div><div id="steer-knob"></div><span>STEER</span></div>
+      <div id="steer"><div id="steer-track"></div><div id="steer-knob"></div></div>
       <button type="button" id="clutch" class="btn">CLUTCH</button>
       <div id="shifter">
         <canvas id="shifter-gate"></canvas>
@@ -29,15 +29,20 @@
         <button type="button" data-drive="R" class="btn">R</button>
       </div>
       <button type="button" id="handbrake" class="btn">HAND<br />BRAKE</button>
-      <button type="button" id="brake" class="btn">BRAKE</button>
-      <button type="button" id="gas" class="btn">GAS</button>
+      <button type="button" id="brake" class="btn tall"><span>BRAKE</span></button>
+      <button type="button" id="gas" class="btn tall"><span>GAS</span></button>
       <button type="button" id="start" class="btn hidden">START</button>
     </div>
 
     <div id="topbar" class="hidden">
-      <button type="button" id="btn-pause" aria-label="Pause">II</button>
-      <button type="button" id="btn-cam">CAM</button>
-      <button type="button" id="btn-reset">RESET</button>
+      <button type="button" id="btn-pause" aria-label="Menu">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="3" width="26" height="26" rx="3" /><path d="M9 11h14M9 16h14M9 21h14" /></svg>
+        <span>MENU</span>
+      </button>
+      <button type="button" id="btn-cam" aria-label="Change camera">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="8" width="26" height="19" rx="3" /><circle cx="16" cy="17.5" r="5.5" /><path d="M21 8V5h5v3" /></svg>
+        <span>CAMERA</span>
+      </button>
     </div>
 
     <div id="toast"></div>
@@ -58,7 +63,7 @@
 
     <section id="pause" class="screen hidden">
       <div class="panel">
-        <h2>PAUSED</h2>
+        <h2>MENU</h2>
         <div class="field">
           <span class="label">Transmission</span>
           <div class="choices" data-setting="mode"></div>
@@ -66,6 +71,10 @@
         <div class="field">
           <span class="label">Camera</span>
           <div class="choices" data-setting="camera"></div>
+        </div>
+        <div class="field">
+          <span class="label">Sound</span>
+          <div class="choices" data-setting="sound"></div>
         </div>
         <div class="row">
           <button type="button" id="btn-resume" class="big">RESUME</button>

@@ -54,6 +54,9 @@ export class Vehicle {
     this.engine = new Engine(spec.engine);
     this.trans = new Transmission(spec, mode);
     this.steer = 0; // road-wheel angle, + = left
+    this.throttlePedal = 0;
+    this.brakePedal = 0;
+    this.launching = true;
     this.wheels = [
       { x: spec.trackFront / 2, z: spec.frontAxleZ, front: true, left: true },
       { x: -spec.trackFront / 2, z: spec.frontAxleZ, front: true, left: false },
@@ -114,6 +117,8 @@ export class Vehicle {
       w.compression = w.prevCompression = 0;
     }
     this.steer = 0;
+    this.throttlePedal = this.brakePedal = 0;
+    this.launching = true;
     this.engine.omega = this.spec.engine.idleRpm / RAD_TO_RPM;
     this.engine.running = true;
     this.trans.gear = this.trans.mode === 'auto' ? (this.trans.drive === 'R' ? -1 : 1) : 0;
@@ -164,10 +169,23 @@ export class Vehicle {
     b.resetForces(true);
     b.resetTorques(true);
 
+    // ---- Pedals: on/off buttons, but a foot still takes a moment to press a pedal down ----
+    this.throttlePedal += clamp((input.throttle ? 1 : 0) - this.throttlePedal, -10 * dt, 4 * dt);
+    this.brakePedal += clamp((input.brake ? 1 : 0) - this.brakePedal, -10 * dt, 6 * dt);
+
     // ---- Steering: speed-sensitive lock, rate-limited like a real rack ----
+    // Caster: with no hand on the wheel the front wheels swing toward the direction of travel, which
+    // is what lets a real car catch a slide (the wheel spins into the countersteer by itself).
     const lock = s.maxSteer * t.steering * (1 - t.steerSpeedFalloff * clamp(Math.abs(fwdSpeed) / 38, 0, 1));
-    const target = -clamp(input.steer, -1, 1) * Math.min(lock, s.maxSteer * 1.2);
-    const rate = 3.2 * dt;
+    const wheelInput = clamp(input.steer, -1, 1);
+    let target = -wheelInput * Math.min(lock, s.maxSteer * 1.2);
+    if (Math.abs(fwdSpeed) > 3) {
+      const yawRate = dot(angvel, axisY);
+      const frontLateral = dot(linvel, axisX) + yawRate * s.frontAxleZ;
+      const travel = clamp(Math.atan2(frontLateral, Math.abs(fwdSpeed)), -s.maxSteer, s.maxSteer);
+      target += (1 - Math.abs(wheelInput)) * travel * 0.85;
+    }
+    const rate = 5 * dt;
     this.steer += clamp(target - this.steer, -rate, rate);
     // Ackermann: the inside wheel turns more.
     for (const w of this.wheels) {
@@ -250,9 +268,12 @@ export class Vehicle {
     const Iw = s.wheelInertia;
     const r = s.wheelRadius;
     const Ie = s.engine.inertia;
-    const allowStall = tr.mode === 'manual';
-    const throttle = tr.throttleCut ? 0 : clamp(input.throttle, 0, 1);
-    const brake = clamp(input.brake, 0, 1);
+    // The engine can only stall when pulling away from (or coming to) a stop, never while driving.
+    if (speed < 0.6) this.launching = true;
+    else if (speed > 4) this.launching = false;
+    const allowStall = tr.mode === 'manual' && this.launching;
+    const throttle = tr.throttleCut ? 0 : this.throttlePedal;
+    const brake = this.brakePedal;
     const hand = clamp(input.handbrake, 0, 1);
     const [WL, WR] = [this.wheels[2], this.wheels[3]];
     for (const w of this.wheels) {
@@ -270,14 +291,14 @@ export class Vehicle {
         const ground = Math.max(Math.abs(w.vx), 3);
         const slipRatio = (w.omega * r - w.vx) / ground;
         const slipAngle = Math.atan2(w.vy, Math.max(Math.abs(w.vx), 3));
-        const sx = slipRatio / 0.11;
+        const sx = slipRatio / 0.14;
         const sy = Math.tan(slipAngle) / Math.tan(0.14);
         const sMag = Math.hypot(sx, sy);
         const loadSens = clamp(1 - 0.1 * (w.load / (cornerMass * G) - 1), 0.75, 1.12);
         let fx = 0;
         let fy = 0;
         if (sMag > 1e-6) {
-          const f = w.mu * loadSens * w.load * tyreCurve(sMag, 0.86);
+          const f = w.mu * loadSens * w.load * tyreCurve(sMag, 0.9);
           fx = (f * sx) / sMag;
           fy = (-f * sy) / sMag;
         }
