@@ -7,6 +7,7 @@ import { Vehicle } from './physics/vehicle.js';
 import { MODES, MODE_LABELS } from './physics/transmission.js';
 import { CarModel } from './render/carModel.js';
 import { CameraRig } from './render/camera.js';
+import { VhsRenderer } from './render/vhs.js';
 import { TestTrack } from './world/testTrack.js';
 import { Input } from './controls/input.js';
 import { Shifter } from './controls/shifter.js';
@@ -26,6 +27,7 @@ const tune = loadTuning();
 // ---------- Rendering ----------
 const renderer = new THREE.WebGLRenderer({ canvas: $('view'), antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+const vhs = new VhsRenderer(renderer, 2);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9ab8d6);
 scene.fog = new THREE.Fog(0x9ab8d6, 80, 420);
@@ -78,6 +80,7 @@ function resize() {
   const w = window.innerWidth;
   const h = window.innerHeight;
   renderer.setSize(w, h, false);
+  vhs.setSize(w, h);
   camera.aspect = w / Math.max(1, h);
   // Shift the picture up so the car sits above the touch controls instead of behind them.
   camera.setViewOffset(w, h, 0, h * 0.2, w, h);
@@ -102,9 +105,13 @@ function renderChoices() {
     const options =
       key === 'mode'
         ? MODES.map((m) => [m, MODE_LABELS[m]])
-        : key === 'sound'
+        : key === 'sound' || key === 'vhs'
           ? [[true, 'On'], [false, 'Off']]
-          : [['chase', 'Chase'], ['bumper', 'Bumper']];
+          : key === 'steering'
+            ? [['buttons', 'Buttons'], ['slider', 'Slider']]
+            : key === 'shifter'
+              ? [['tap', 'Tap gears'], ['drag', 'Drag knob']]
+              : [['chase', 'Chase'], ['bumper', 'Bumper']];
     box.innerHTML = '';
     for (const [value, label] of options) {
       const b = document.createElement('button');
@@ -125,6 +132,10 @@ function renderChoices() {
 function applySettings() {
   rig.mode = settings.camera;
   audio.setMuted(!settings.sound);
+  vhs.strength = settings.vhs ? 1 : 0;
+  $('vhs').classList.toggle('off', !settings.vhs);
+  $('controls').dataset.steering = settings.steering;
+  shifter?.setMode(settings.shifter);
   if (vehicle && vehicle.mode !== settings.mode) {
     vehicle.setMode(settings.mode);
     if (settings.mode === 'auto') vehicle.trans.setDrive('D', 0);
@@ -281,7 +292,7 @@ function frame(now) {
   track.sync();
   if (window.__touge?.debugCam) window.__touge.debugCam(camera, carModel.root);
   else rig.update(dt, carModel.root, vehicle.body.linvel());
-  renderer.render(scene, camera);
+  vhs.render(scene, camera, now / 1000);
 
   const tr = vehicle.trans;
   hud.draw(
@@ -314,6 +325,7 @@ async function boot() {
   shadow = blobShadow();
   scene.add(shadow);
   shifter = new Shifter($('shifter'), (gear) => vehicle.trans.requestGear(gear, vehicle.forwardSpeed));
+  shifter.setMode(settings.shifter);
   tuning = new TuningPanel($('tuning'), tune, () => saveTuning(tune));
   tuning.toggle(false);
   vehicle.reset(SPAWN.pos, SPAWN.yaw);

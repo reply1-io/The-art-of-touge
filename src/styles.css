@@ -45,6 +45,7 @@ body {
 
 #hud {
   pointer-events: none;
+  image-rendering: pixelated;
 }
 
 .hidden {
@@ -63,19 +64,24 @@ body {
   touch-action: none;
 }
 
+/* Neon buttons: each glows in its own colour, and glows harder while pressed. */
 .btn {
-  font: 800 clamp(12px, 3.2vh, 20px) system-ui, sans-serif;
-  letter-spacing: 0.06em;
+  --glow: #ffffff;
+  font: 400 clamp(18px, 5vh, 30px) 'VT323', ui-monospace, monospace;
+  letter-spacing: 0.08em;
   color: #fff;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-  background: rgba(0, 0, 0, 0.16);
-  border: 3px solid rgba(255, 255, 255, 0.8);
+  text-shadow: 0 0 6px var(--glow), 0 0 14px var(--glow);
+  background: rgba(0, 0, 0, 0.22);
+  border: 2px solid var(--glow);
   border-radius: 10px;
   padding: 0;
+  box-shadow: 0 0 8px var(--glow), 0 0 18px color-mix(in srgb, var(--glow) 45%, transparent), inset 0 0 10px color-mix(in srgb, var(--glow) 35%, transparent);
+  transition: box-shadow 0.06s, background 0.06s;
 }
 
 .btn.on {
-  background: rgba(255, 255, 255, 0.28);
+  background: color-mix(in srgb, var(--glow) 32%, transparent);
+  box-shadow: 0 0 14px var(--glow), 0 0 34px var(--glow), inset 0 0 18px var(--glow);
 }
 
 /* Steering: a plain slider bar with a knob, inside a larger invisible touch area. */
@@ -95,8 +101,8 @@ body {
   height: 12px;
   margin-top: -6px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.85);
-  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.55);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 8px #4fd8ff, 0 0 18px #4fd8ff;
 }
 
 #steer-knob {
@@ -108,7 +114,32 @@ body {
   margin: -24px 0 0 -24px;
   border-radius: 50%;
   background: #111;
-  border: 3px solid rgba(255, 255, 255, 0.85);
+  border: 3px solid #4fd8ff;
+  box-shadow: 0 0 10px #4fd8ff, 0 0 22px #4fd8ff;
+}
+
+#left,
+#right {
+  position: absolute;
+  bottom: calc(3vh + var(--sb));
+  width: 15vw;
+  height: 26vh;
+  font-size: clamp(24px, 8vh, 48px);
+  --glow: #4fd8ff;
+}
+
+#left {
+  left: calc(3vw + var(--sl));
+}
+
+#right {
+  left: calc(3vw + 15vw + 2.5vw + var(--sl));
+}
+
+#controls[data-steering='buttons'] #steer,
+#controls[data-steering='slider'] #left,
+#controls[data-steering='slider'] #right {
+  display: none;
 }
 
 #clutch {
@@ -117,19 +148,19 @@ body {
   bottom: calc(32vh + var(--sb));
   width: 20vw;
   height: 14vh;
-  border-color: #ff8a1c;
+  --glow: #ff8a1c;
   /* The fill shows how far the clutch is engaged. */
   background: linear-gradient(to right, rgba(255, 138, 28, 0.35) var(--engaged, 100%), rgba(0, 0, 0, 0.16) var(--engaged, 100%));
 }
 
 #shifter {
   position: absolute;
-  right: calc(4vw + var(--sr));
-  top: 20vh;
-  width: 30vh;
-  height: 32vh;
-  min-width: 120px;
-  min-height: 128px;
+  right: calc(3vw + var(--sr));
+  top: 13vh;
+  width: 34vh;
+  height: 42vh;
+  min-width: 130px;
+  min-height: 150px;
 }
 
 #shifter-gate {
@@ -159,6 +190,7 @@ body {
 }
 
 #dr .btn {
+  --glow: #39ff7a;
   width: 12vh;
   height: 16vh;
   min-width: 56px;
@@ -180,7 +212,7 @@ body {
   bottom: calc(3vh + var(--sb));
   width: 11vw;
   height: 40vh;
-  border-color: #2bd15a;
+  --glow: #39ff7a;
 }
 
 #brake {
@@ -189,7 +221,7 @@ body {
   bottom: calc(3vh + var(--sb));
   width: 11vw;
   height: 40vh;
-  border-color: #ff3b30;
+  --glow: #ff3b3b;
 }
 
 #handbrake {
@@ -198,8 +230,9 @@ body {
   bottom: calc(3vh + var(--sb));
   width: 10vw;
   height: 20vh;
-  font-size: clamp(10px, 2.6vh, 15px);
-  border-color: #ffd23f;
+  font-size: clamp(14px, 3.6vh, 20px);
+  line-height: 1;
+  --glow: #ffd23f;
 }
 
 #start {
@@ -209,8 +242,8 @@ body {
   transform: translate(-50%, -50%);
   width: 20vw;
   height: 16vh;
-  background: rgba(200, 30, 30, 0.8);
-  border-color: #ffb3b3;
+  background: rgba(120, 10, 10, 0.6);
+  --glow: #ff4d4d;
 }
 
 /* ---------- Top bar (menu and camera icons) and toast ---------- */
@@ -231,9 +264,9 @@ body {
   border: none;
   padding: 2px;
   color: #fff;
-  font: 800 10px system-ui, sans-serif;
-  letter-spacing: 0.1em;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  font: 400 15px 'VT323', ui-monospace, monospace;
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 6px #fff, 0 0 12px #9fe8ff;
 }
 
 #topbar svg {
@@ -244,7 +277,7 @@ body {
   stroke-width: 2.4;
   stroke-linecap: round;
   stroke-linejoin: round;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
+  filter: drop-shadow(0 0 4px #9fe8ff) drop-shadow(0 0 8px #4fd8ff);
 }
 
 #toast {
@@ -252,9 +285,9 @@ body {
   top: 26%;
   left: 50%;
   transform: translateX(-50%);
-  font: 800 clamp(16px, 4.5vh, 26px) system-ui, sans-serif;
+  font: 400 clamp(22px, 6vh, 36px) 'VT323', ui-monospace, monospace;
   color: #ffd36b;
-  text-shadow: 0 2px 6px #000;
+  text-shadow: 0 0 8px #ff9d00, 0 2px 4px #000;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.2s;
@@ -263,6 +296,49 @@ body {
 
 #toast.show {
   opacity: 1;
+}
+
+/* ---------- VHS overlay: scanlines, flicker and the PLAY readout, over everything ---------- */
+#vhs {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+  background:
+    repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.16) 0, rgba(0, 0, 0, 0.16) 1px, transparent 1px, transparent 3px),
+    radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.45) 100%);
+  animation: vhs-flicker 0.12s steps(2) infinite;
+}
+
+#vhs.off {
+  display: none;
+}
+
+#vhs-play {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  font: 400 clamp(18px, 5vh, 28px) 'VT323', ui-monospace, monospace;
+  letter-spacing: 0.15em;
+  color: #fff;
+  text-shadow: 0 0 6px #fff, 2px 0 0 rgba(255, 0, 80, 0.7), -2px 0 0 rgba(0, 200, 255, 0.7);
+  opacity: 0.85;
+}
+
+@keyframes vhs-flicker {
+  0% {
+    opacity: 0.92;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #vhs {
+    animation: none;
+  }
 }
 
 /* ---------- Screens ---------- */

@@ -1,7 +1,7 @@
 // Touch controls (primary) and keyboard (desktop testing), merged into one input state.
 //
-// Touch: drag anywhere in the steering box (relative to where your thumb lands); GAS, BRAKE and
-// HANDBRAKE are simple on/off buttons; hold CLUTCH for clutch in.
+// Touch: steer with the left / right buttons (or drag the slider, relative to where your thumb
+// lands); GAS, BRAKE and HANDBRAKE are simple on/off buttons; hold CLUTCH for clutch in.
 // Keyboard: arrows or WASD, Space handbrake, Shift clutch, 1-5 gears, R reverse, N neutral,
 // E start engine, C camera, Esc pause, Backspace reset, ` tuning panel.
 
@@ -25,7 +25,7 @@ export class Input {
     this.steerEl.addEventListener('pointerup', (e) => this.#steerUp(e));
     this.steerEl.addEventListener('pointercancel', (e) => this.#steerUp(e));
 
-    for (const id of ['gas', 'brake', 'handbrake', 'clutch']) {
+    for (const id of ['gas', 'brake', 'handbrake', 'clutch', 'left', 'right']) {
       const el = root.querySelector(`#${id}`);
       el.addEventListener('pointerdown', (e) => {
         e.preventDefault();
@@ -109,13 +109,14 @@ export class Input {
   // Returns this frame's driver inputs. steer: -1 full left .. +1 full right.
   poll(dt) {
     const k = this.keys;
-    const keyLeft = k.has('ArrowLeft') || k.has('KeyA');
-    const keyRight = k.has('ArrowRight') || k.has('KeyD');
+    // Steering buttons behave like keys: the wheel eases in while held and returns when let go.
+    const keyLeft = k.has('ArrowLeft') || k.has('KeyA') || this.#isHeld('left');
+    const keyRight = k.has('ArrowRight') || k.has('KeyD') || this.#isHeld('right');
     let target = this.steerTarget;
     if (keyLeft || keyRight) target = (keyRight ? 1 : 0) - (keyLeft ? 1 : 0);
     // Smoothing: thumb steering follows quickly, keys ramp in; both return to centre when let go.
     const keyboard = keyLeft || keyRight;
-    const rate = (this.steerPointer !== null ? 9 : keyboard ? 2.8 : 6) * dt;
+    const rate = (this.steerPointer !== null ? 9 : keyboard ? 3.2 : 6) * dt;
     this.steerValue += clamp(target - this.steerValue, -rate, rate);
     if (this.knobEl) {
       const half = this.steerEl.clientWidth / 2 - 26;

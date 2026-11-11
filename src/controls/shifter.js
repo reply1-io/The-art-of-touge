@@ -35,6 +35,7 @@ export class Shifter {
     this.gear = 0;
     this.pointer = null;
     this.blocked = 0; // slot direction that just grinded; must pull back before trying again
+    this.mode = 'tap'; // 'tap': touch a gear to select it; 'drag': move the knob through the gate
     root.addEventListener('pointerdown', (e) => this.#down(e));
     root.addEventListener('pointermove', (e) => this.#move(e));
     root.addEventListener('pointerup', (e) => this.#up(e));
@@ -46,13 +47,13 @@ export class Shifter {
   #toPx([x, y]) {
     const w = this.root.clientWidth;
     const h = this.root.clientHeight;
-    return [w * (0.18 + (x / COLS) * 0.64), h * (0.5 + y * 0.3)];
+    return [w * (0.18 + (x / COLS) * 0.64), h * (0.5 + y * 0.25)];
   }
 
   #fromPx(px, py) {
     const w = this.root.clientWidth;
     const h = this.root.clientHeight;
-    return [((px / w - 0.18) / 0.64) * COLS, (py / h - 0.5) / 0.3];
+    return [((px / w - 0.18) / 0.64) * COLS, (py / h - 0.5) / 0.25];
   }
 
   #draw() {
@@ -86,19 +87,32 @@ export class Shifter {
         line([x, 0], [x, y]);
       }
     }
-    g.font = `900 ${Math.max(14, this.root.clientWidth * 0.14)}px system-ui, sans-serif`;
+    g.font = `${Math.max(18, this.root.clientWidth * 0.17)}px 'VT323', ui-monospace, monospace`;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.lineWidth = 4;
-    g.strokeStyle = 'rgba(0,0,0,0.7)';
+    const rad = Math.min(this.root.clientWidth * 0.13, this.root.clientHeight * 0.11);
     for (const [key, gear] of Object.entries(SLOTS)) {
       const [x, y] = key.split(',').map(Number);
-      const [px, py] = this.#toPx([x, y * 1.42]);
+      const [px, py] = this.#toPx([x, y * 1.62]);
       const label = gear === -1 ? 'R' : String(gear);
-      g.strokeText(label, px, py);
-      g.fillStyle = gear === this.gear ? '#2bd15a' : gear === -1 ? '#ff8a80' : '#ffffff';
-      g.fillText(label, px, py);
+      const on = gear === this.gear;
+      const color = on ? '#39ff7a' : gear === -1 ? '#ff6b6b' : '#ffffff';
+      g.shadowColor = color;
+      g.shadowBlur = on ? 14 : 8;
+      if (this.mode === 'tap') {
+        // Each gear is a glowing round button.
+        g.lineWidth = 2.5;
+        g.strokeStyle = color;
+        g.fillStyle = on ? 'rgba(57,255,122,0.25)' : 'rgba(0,0,0,0.25)';
+        g.beginPath();
+        g.arc(px, py, rad, 0, Math.PI * 2);
+        g.fill();
+        g.stroke();
+      }
+      g.fillStyle = on ? '#eafff0' : color;
+      g.fillText(label, px, py + 1);
     }
+    g.shadowBlur = 0;
     this.#placeKnob();
   }
 
@@ -115,7 +129,40 @@ export class Shifter {
     this.#draw();
   }
 
+  setMode(mode) {
+    this.mode = mode;
+    this.#draw();
+  }
+
+  // Tap mode: the gear nearest the touch (or neutral in the middle) is requested straight away.
+  #tap(e) {
+    const r = this.root.getBoundingClientRect();
+    const [gx, gy] = this.#fromPx(e.clientX - r.left, e.clientY - r.top);
+    let target = null;
+    if (Math.abs(gy) < 0.45) target = 0;
+    else {
+      const col = Math.round(clamp(gx, 0, COLS));
+      const slot = SLOTS[`${col},${Math.sign(gy)}`];
+      if (slot !== undefined && Math.abs(gx - col) < 0.5) target = slot;
+    }
+    if (target === null || target === this.gear) return;
+    if (this.onGear(target)) {
+      this.setGear(target);
+    } else {
+      // Grind: the lever jumps toward the slot and bounces back.
+      const [x, y] = GEAR_POS[target];
+      this.pos = [x, y * 0.5];
+      this.#placeKnob();
+      setTimeout(() => this.setGear(this.gear), 180);
+    }
+  }
+
   #down(e) {
+    if (this.mode === 'tap') {
+      e.preventDefault();
+      this.#tap(e);
+      return;
+    }
     if (this.pointer !== null) return;
     this.pointer = e.pointerId;
     try {

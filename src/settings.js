@@ -1,13 +1,16 @@
 // Player settings and tuning values, saved on the device.
 import { TUNABLE_DEFAULTS } from './config.js';
 
-const KEY = 'touge.settings.v2';
+const KEY = 'touge.settings.v3';
 const TUNE_KEY = 'touge.tuning.v2';
 
 const DEFAULTS = {
   mode: 'manual', // 'manual' | 'autoClutch' | 'auto'
   camera: 'chase', // 'chase' | 'bumper'
   sound: true,
+  steering: 'buttons', // 'buttons' | 'slider'
+  shifter: 'tap', // 'tap' | 'drag'
+  vhs: true,
 };
 
 function read(key) {

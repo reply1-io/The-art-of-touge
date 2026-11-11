@@ -12,6 +12,9 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="./icon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&display=swap" />
   </head>
   <body>
     <canvas id="view"></canvas>
@@ -19,6 +22,8 @@
 
     <div id="controls" class="hidden">
       <div id="steer"><div id="steer-track"></div><div id="steer-knob"></div></div>
+      <button type="button" id="left" class="btn">&#9664;</button>
+      <button type="button" id="right" class="btn">&#9654;</button>
       <button type="button" id="clutch" class="btn">CLUTCH</button>
       <div id="shifter">
         <canvas id="shifter-gate"></canvas>
@@ -46,6 +51,7 @@
     </div>
 
     <div id="toast"></div>
+    <div id="vhs" aria-hidden="true"><span id="vhs-play">&#9654; PLAY</span></div>
 
     <section id="title" class="screen">
       <div class="panel">
@@ -71,6 +77,18 @@
         <div class="field">
           <span class="label">Camera</span>
           <div class="choices" data-setting="camera"></div>
+        </div>
+        <div class="field">
+          <span class="label">Steering</span>
+          <div class="choices" data-setting="steering"></div>
+        </div>
+        <div class="field">
+          <span class="label">Shifter</span>
+          <div class="choices" data-setting="shifter"></div>
+        </div>
+        <div class="field">
+          <span class="label">VHS filter</span>
+          <div class="choices" data-setting="vhs"></div>
         </div>
         <div class="field">
           <span class="label">Sound</span>
