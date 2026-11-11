@@ -19,8 +19,8 @@ const SLOTS = {
 };
 const COLS = 2; // highest column index
 const GEAR_POS = { [-1]: [2, 1], 0: [1, 0], 1: [0, -1], 2: [0, 1], 3: [1, -1], 4: [1, 1], 5: [2, -1] };
-const ENGAGE = 0.82; // how far into a slot the knob must go before the gear is selected
-const SNAP = 0.32; // how close to a column the knob must be to enter it
+const ENGAGE = 0.6; // how far into a slot the knob must go before the gear is selected
+const SNAP = 0.5; // how close to a column the knob must be to enter it
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
@@ -201,7 +201,7 @@ export class Shifter {
       // On the neutral rail: slide sideways, or drop into a slot if close to a column.
       const col = Math.round(clamp(tx, 0, COLS));
       const dir = Math.sign(ty);
-      if (Math.abs(ty) > 0.15 && Math.abs(tx - col) < SNAP && SLOTS[`${col},${dir}`] !== undefined) {
+      if (Math.abs(ty) > 0.25 && Math.abs(tx - col) < SNAP && SLOTS[`${col},${dir}`] !== undefined) {
         x = col;
         y = ty;
       } else {
@@ -210,9 +210,14 @@ export class Shifter {
       }
     } else {
       // In a column: only up and down, and straight through neutral to the opposite slot if there is one.
+      // Pulling back near the rail drops the knob onto it, so you can sweep across to another column.
       const up = SLOTS[`${x},-1`] !== undefined ? -1 : 0;
       const down = SLOTS[`${x},1`] !== undefined ? 1 : 0;
       y = clamp(ty, up, down);
+      if (Math.abs(ty) < 0.3 && Math.abs(tx - x) > 0.25) {
+        x = clamp(tx, 0, COLS);
+        y = 0;
+      }
     }
     // A grinding gear pushes the lever back until the finger eases off (or the lever is back on the rail).
     if (Math.abs(y) < 0.1) this.blocked = 0;

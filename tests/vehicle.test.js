@@ -175,3 +175,19 @@ test('a slide recovers when you let go of everything (caster self-steer)', async
   assert.ok(Math.abs(car.slideAngle) < 0.15, `still sliding ${(car.slideAngle * 180) / Math.PI} deg`);
   assert.ok(Math.abs(car.body.angvel().y) < 0.3, 'not spinning');
 });
+
+test('ABS keeps the wheels turning and the car steerable under full braking', async () => {
+  const { car, run } = await makeWorld('autoClutch');
+  car.trans.requestGear(3, 0);
+  run(8, () => ({ throttle: car.forwardSpeed < 22 ? 1 : 0 }));
+  let locked = 0;
+  const yaw0 = car.body.rotation();
+  run(1.5, () => {
+    for (const w of car.wheels.slice(0, 2)) if (car.speed > 5 && Math.abs(w.omega) < 1) locked++;
+    return { brake: 1, steer: -0.6 };
+  });
+  assert.equal(locked, 0, 'front wheels never lock');
+  const q = car.body.rotation();
+  const turned = Math.abs(2 * Math.asin(q.y) - 2 * Math.asin(yaw0.y));
+  assert.ok(turned > 0.15, `car turned ${turned} rad while braking`);
+});

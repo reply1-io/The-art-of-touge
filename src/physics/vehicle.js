@@ -43,7 +43,7 @@ function rotate(q, v) {
 function tyreCurve(s, slide) {
   if (s <= 1) return 1 - (1 - s) * (1 - s);
   const e = s - 1;
-  return slide + (1 - slide) * Math.exp(-e * e * 1.4);
+  return slide + (1 - slide) * Math.exp(-e * e * 0.7);
 }
 
 export class Vehicle {
@@ -115,6 +115,7 @@ export class Vehicle {
     for (const w of this.wheels) {
       w.omega = 0;
       w.compression = w.prevCompression = 0;
+      w.relaxedAngle = 0;
     }
     this.steer = 0;
     this.throttlePedal = this.brakePedal = 0;
@@ -176,14 +177,17 @@ export class Vehicle {
     // ---- Steering: speed-sensitive lock, rate-limited like a real rack ----
     // Caster: with no hand on the wheel the front wheels swing toward the direction of travel, which
     // is what lets a real car catch a slide (the wheel spins into the countersteer by itself).
-    const lock = s.maxSteer * t.steering * (1 - t.steerSpeedFalloff * clamp(Math.abs(fwdSpeed) / 38, 0, 1));
+    // Less lock at speed, but the full lock comes back while the car is sliding so you can countersteer.
+    const sliding = clamp((Math.abs(this.slideAngle) - 0.08) / 0.25, 0, 1);
+    const falloff = t.steerSpeedFalloff * (1 - sliding) * clamp(Math.abs(fwdSpeed) / 38, 0, 1);
+    const lock = s.maxSteer * t.steering * (1 - falloff);
     const wheelInput = clamp(input.steer, -1, 1);
     let target = -wheelInput * Math.min(lock, s.maxSteer * 1.2);
     if (Math.abs(fwdSpeed) > 3) {
       const yawRate = dot(angvel, axisY);
       const frontLateral = dot(linvel, axisX) + yawRate * s.frontAxleZ;
       const travel = clamp(Math.atan2(frontLateral, Math.abs(fwdSpeed)), -s.maxSteer, s.maxSteer);
-      target += (1 - Math.abs(wheelInput)) * travel * 0.85;
+      target += (1 - Math.abs(wheelInput)) * travel * 0.55;
     }
     const rate = 5 * dt;
     this.steer += clamp(target - this.steer, -rate, rate);
@@ -290,7 +294,12 @@ export class Vehicle {
         }
         const ground = Math.max(Math.abs(w.vx), 3);
         const slipRatio = (w.omega * r - w.vx) / ground;
-        const slipAngle = Math.atan2(w.vy, Math.max(Math.abs(w.vx), 3));
+        // Tyre relaxation: the carcass takes about half a metre of rolling to build up a new slip
+        // angle, so grip arrives progressively instead of snapping on and off.
+        const targetAngle = Math.atan2(w.vy, Math.max(Math.abs(w.vx), 3));
+        const relax = clamp(((Math.abs(w.vx) + 2) * h) / 0.45, 0, 1);
+        w.relaxedAngle = (w.relaxedAngle ?? 0) + (targetAngle - (w.relaxedAngle ?? 0)) * relax;
+        const slipAngle = w.relaxedAngle;
         const sx = slipRatio / 0.14;
         const sy = Math.tan(slipAngle) / Math.tan(0.14);
         const sMag = Math.hypot(sx, sy);
@@ -298,7 +307,7 @@ export class Vehicle {
         let fx = 0;
         let fy = 0;
         if (sMag > 1e-6) {
-          const f = w.mu * loadSens * w.load * tyreCurve(sMag, 0.9);
+          const f = w.mu * loadSens * w.load * tyreCurve(sMag, 0.84);
           fx = (f * sx) / sMag;
           fy = (-f * sy) / sMag;
         }
@@ -345,6 +354,11 @@ export class Vehicle {
       // Brakes and handbrake: friction torque that cannot reverse the wheel.
       for (const w of this.wheels) {
         let tb = brake * (w.front ? s.brakeTorqueFront : s.brakeTorqueRear);
+        // ABS: release the foot brake on a wheel the moment it starts to lock (not the handbrake).
+        if (tb > 0 && w.grounded && Math.abs(w.vx) > 2) {
+          const slip = (w.omega * r - w.vx) / Math.abs(w.vx);
+          if (slip * Math.sign(w.vx) < -0.14) tb *= 0.15;
+        }
         if (!w.front) tb += hand * s.handbrakeTorque;
         if (tb <= 0) continue;
         const d = (tb / Iw) * h;
