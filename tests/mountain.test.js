@@ -12,8 +12,10 @@ const terrain = new Terrain(road);
 
 test('the pass is about 5 km and drops a few hundred metres from summit to town', () => {
   assert.ok(road.length > 4500 && road.length < 5500, `length ${road.length}`);
-  assert.ok(road.top > 200 && road.top < 400, `drop ${road.top}`);
-  for (const g of road.grade) assert.ok(g < 0.12, `grade ${g}`);
+  assert.ok(road.top > 300 && road.top < 600, `drop ${road.top}`);
+  for (const g of road.grade) assert.ok(g < 0.14, `grade ${g}`);
+  assert.ok(Math.min(...road.grade) < 0, 'has some uphill');
+  assert.ok(Math.max(...road.bank.map(Math.abs)) > 0.17, 'corners are steeply banked');
 });
 
 test('the road never crosses itself and corners stay drivable', () => {
@@ -105,9 +107,10 @@ test('a careful driver can take the E30 from the summit to the town', async () =
     while (err > Math.PI) err -= 2 * Math.PI;
     while (err < -Math.PI) err += 2 * Math.PI;
     let k = 0;
-    for (let j = q.index; j < Math.min(road.count, q.index + 40); j++) k = Math.max(k, Math.abs(road.kappa[j]));
-    const target = Math.min(28, Math.sqrt((0.5 * 9.81) / Math.max(k, 1e-4)));
-    car.step(1 / 60, { throttle: car.speed < target ? 1 : 0, brake: car.speed > target + 1.5 ? 1 : 0, handbrake: 0, clutch: false, steer: Math.max(-1, Math.min(1, -err * 2.2)) });
+    // Look far enough ahead to brake on the steep downhill sections.
+    for (let j = q.index; j < Math.min(road.count, q.index + 60); j++) k = Math.max(k, Math.abs(road.kappa[j]));
+    const target = Math.min(26, Math.sqrt((0.42 * 9.81) / Math.max(k, 1e-4)));
+    car.step(1 / 60, { throttle: car.speed < target ? 1 : 0, brake: car.speed > target + 1.5 ? 1 : 0, handbrake: 0, clutch: false, steer: Math.max(-1, Math.min(1, -err * 2.2 + (q.lateral + 1.7) * 0.15)) });
     world.step();
   }
   assert.ok(q.index >= road.finishIndex, `stopped at s=${q.s}`);

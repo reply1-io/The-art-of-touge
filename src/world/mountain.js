@@ -90,6 +90,7 @@ export class Mountain {
     this.#buildRails();
     this.#buildStreetlights();
     this.#buildTrees();
+    this.#buildRoadside();
     this.#buildLake();
     this.#buildTown();
     this.#buildLines();
@@ -323,39 +324,227 @@ export class Mountain {
     }
   }
 
-  // Cedar forest: instanced trunks and three-tier canopies on the slopes, kept off the road.
+  // Cedar forest and undergrowth, packed in close to the road. Instanced per road chunk so the
+  // distance culling hides whole patches of forest at a time.
   #buildTrees() {
     const t = this.terrain;
-    const spots = [];
-    for (let z = t.z0 + 10; z < t.z0 + (t.nz - 1) * t.cell - 10; z += 7) {
-      for (let x = t.x0 + 10; x < t.x0 + (t.nx - 1) * t.cell - 10; x += 7) {
-        const jx = x + (noise2(x * 0.7, z * 0.3) - 0.5) * 8;
-        const jz = z + (noise2(x * 0.3, z * 0.7) - 0.5) * 8;
+    const road = this.road;
+    const groups = new Map(); // chunk index -> { trees: [], bushes: [] }
+    const bucket = (i) => {
+      const k = Math.floor(i / ROAD_CHUNK);
+      if (!groups.has(k)) groups.set(k, { trees: [], bushes: [] });
+      return groups.get(k);
+    };
+    const step = 5;
+    for (let z = t.z0 + 10; z < t.z0 + (t.nz - 1) * t.cell - 10; z += step) {
+      for (let x = t.x0 + 10; x < t.x0 + (t.nx - 1) * t.cell - 10; x += step) {
+        const jx = x + (noise2(x * 0.7, z * 0.3) - 0.5) * 6;
+        const jz = z + (noise2(x * 0.3, z * 0.7) - 0.5) * 6;
         const near = t.nearestRoad(jx, jz, 60);
-        if (near.d < 12 || near.d > 58) continue;
-        if (noise2(jx / 25, jz / 25) < 0.32) continue;
+        if (near.d < 9.5 || near.d > 58) continue;
         if (Math.hypot(jx - t.lake.x, jz - t.lake.z) < t.lake.r + 10) continue;
         if (Math.hypot(jx - t.town.x, jz - t.town.z) < t.town.r) continue;
-        spots.push([jx, t.heightAt(jx, jz) - 0.3, jz, 9 + noise2(jx, jz) * 9]);
+        const y = t.heightAt(jx, jz) - 0.3;
+        const dense = noise2(jx / 30, jz / 30);
+        if (dense > 0.22) bucket(near.i).trees.push([jx, y, jz, 10 + noise2(jx, jz) * 10]);
+        else bucket(near.i).bushes.push([jx, y, jz, 1 + noise2(jz, jx) * 1.4]);
+        // Undergrowth between the trees, thicker near the road edge.
+        if (near.d < 22 && noise2(jx * 1.3, jz * 1.3) > 0.45) bucket(near.i).bushes.push([jx + 2.2, t.heightAt(jx + 2.2, jz - 1.5), jz - 1.5, 0.8 + noise2(jx, 3) * 1.2]);
       }
     }
     const trunk = new THREE.CylinderGeometry(0.18, 0.28, 1, 5);
     trunk.translate(0, 0.5, 0);
-    const crown = new THREE.ConeGeometry(1, 1, 7);
+    const crown = new THREE.ConeGeometry(1, 1, 6);
     crown.translate(0, 0.5, 0);
-    const trunks = new THREE.InstancedMesh(trunk, new THREE.MeshLambertMaterial({ color: 0x3b2a1e }), spots.length);
-    const crowns = new THREE.InstancedMesh(crown, new THREE.MeshLambertMaterial({ color: 0x1d3a24, flatShading: true }), spots.length);
+    const bush = new THREE.IcosahedronGeometry(1, 0);
+    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x3b2a1e });
+    const crownMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+    const bushMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const col = new THREE.Color();
-    spots.forEach(([x, y, z, h], k) => {
-      trunks.setMatrixAt(k, m.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(1, h * 0.35, 1)));
-      crowns.setMatrixAt(k, m.compose(new THREE.Vector3(x, y + h * 0.25, z), q, new THREE.Vector3(h * 0.2, h * 0.8, h * 0.2)));
-      const v = 0.8 + noise2(x * 3, z * 3) * 0.4;
-      crowns.setColorAt(k, col.setRGB(0.11 * v, 0.23 * v, 0.14 * v));
-    });
-    this.scene.add(trunks, crowns);
-    this.treeCount = spots.length;
+    const v = new THREE.Vector3();
+    const sc = new THREE.Vector3();
+    let total = 0;
+    for (const [k, g] of groups) {
+      const group = new THREE.Group();
+      if (g.trees.length) {
+        const trunks = new THREE.InstancedMesh(trunk, trunkMat, g.trees.length);
+        const crowns = new THREE.InstancedMesh(crown, crownMat, g.trees.length);
+        g.trees.forEach(([x, y, z, h], n) => {
+          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(1, h * 0.35, 1)));
+          crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.22, z), q, sc.set(h * 0.19, h * 0.82, h * 0.19)));
+          const b = 0.75 + noise2(x * 3, z * 3) * 0.5;
+          crowns.setColorAt(n, col.setRGB(0.1 * b, 0.22 * b, 0.13 * b));
+        });
+        group.add(trunks, crowns);
+      }
+      if (g.bushes.length) {
+        const bushes = new THREE.InstancedMesh(bush, bushMat, g.bushes.length);
+        g.bushes.forEach(([x, y, z, r], n) => {
+          bushes.setMatrixAt(n, m.compose(v.set(x, y + r * 0.4, z), q.setFromAxisAngle(v.set(0, 1, 0).clone(), x), sc.set(r, r * 0.75, r)));
+          const b = 0.7 + noise2(z * 2, x * 2) * 0.6;
+          bushes.setColorAt(n, col.setRGB(0.13 * b, 0.25 * b, 0.11 * b));
+        });
+        q.identity();
+        group.add(bushes);
+      }
+      const mid = Math.min(road.count - 1, k * ROAD_CHUNK + ROAD_CHUNK / 2);
+      this.#addChunk(group, road.x[mid], road.z[mid], ROAD_CHUNK * STEP * 0.6 + 60);
+      total += g.trees.length;
+    }
+    this.treeCount = total;
+  }
+
+  // Roadside furniture: reflector posts, chevron signs on tight corners, utility poles, boulders,
+  // and concrete retaining walls on the uphill cuts.
+  #buildRoadside() {
+    const road = this.road;
+    const t = this.terrain;
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const up = new THREE.Vector3(0, 1, 0);
+    const v = new THREE.Vector3();
+    const sc = new THREE.Vector3(1, 1, 1);
+    const posts = [];
+    const reflectors = [];
+    const chevrons = [];
+    const poles = [];
+    const rocks = [];
+    for (let i = 4; i < road.count - 4; i++) {
+      for (const side of [1, -1]) {
+        // Reflector posts every 20 m where there is no guardrail.
+        if (i % 10 === 0 && !this.layout.rail[side][i]) {
+          const p = road.pointAt(i, side * (RAIL + 0.3));
+          posts.push([p, road.heading[i]]);
+          reflectors.push([[p[0], p[1] + 0.95, p[2]], road.heading[i]]);
+        }
+        // Boulders along the foot of the uphill cuts.
+        if (i % 7 === 0 && t.sideProfile(i, side) > 0 && noise2(i * 0.37, side) > 0.55) {
+          const p = road.pointAt(i, side * 9.4);
+          rocks.push([p[0], t.heightAt(p[0], p[2]), p[2], 0.6 + noise2(i, 2) * 1.2]);
+        }
+      }
+      // Chevrons on the outside of tight corners, every 12 m.
+      const k = road.kappa[i];
+      if (Math.abs(k) > 1 / 40 && i % 6 === 0) {
+        const side = k > 0 ? -1 : 1;
+        const p = road.pointAt(i, side * (RAIL + 0.6));
+        chevrons.push([p, road.heading[i], side]);
+      }
+      // Utility poles down one side.
+      if (i % 25 === 0) {
+        const side = t.sideProfile(i, 1) >= 0 ? 1 : -1;
+        const p = road.pointAt(i, side * 7.5);
+        poles.push([p[0], t.heightAt(p[0], p[2]) - 0.3, p[2]]);
+      }
+    }
+    const inst = (geo, mat, list, place) => {
+      const mesh = new THREE.InstancedMesh(geo, mat, list.length);
+      list.forEach((item, n) => mesh.setMatrixAt(n, place(item)));
+      this.scene.add(mesh);
+      return mesh;
+    };
+    const postGeo = new THREE.BoxGeometry(0.1, 1.1, 0.1);
+    postGeo.translate(0, 0.55, 0);
+    inst(postGeo, new THREE.MeshLambertMaterial({ color: 0xe8e8e8 }), posts, ([p, h]) => m.compose(v.set(...p), q.setFromAxisAngle(up, h), sc.set(1, 1, 1)));
+    const refl = new THREE.BoxGeometry(0.12, 0.12, 0.04);
+    inst(refl, new THREE.MeshBasicMaterial({ color: 0xff8a1c }), reflectors, ([p, h]) => m.compose(v.set(...p), q.setFromAxisAngle(up, h), sc.set(1, 1, 1)));
+    // Chevron sign: yellow board with a black arrow, on a short post, facing oncoming traffic.
+    const c = document.createElement('canvas');
+    c.width = c.height = 32;
+    const g = c.getContext('2d');
+    g.fillStyle = '#f2c21a';
+    g.fillRect(0, 0, 32, 32);
+    g.fillStyle = '#111';
+    g.beginPath();
+    g.moveTo(8, 4);
+    g.lineTo(21, 16);
+    g.lineTo(8, 28);
+    g.lineTo(14, 28);
+    g.lineTo(27, 16);
+    g.lineTo(14, 4);
+    g.closePath();
+    g.fill();
+    const chevTex = new THREE.CanvasTexture(c);
+    chevTex.colorSpace = THREE.SRGBColorSpace;
+    const board = new THREE.PlaneGeometry(0.7, 0.7);
+    board.translate(0, 1.25, 0);
+    const chevMat = new THREE.MeshLambertMaterial({ map: chevTex, emissive: 0x332600, side: THREE.DoubleSide });
+    const forRight = chevrons.filter((x) => x[2] > 0);
+    const forLeft = chevrons.filter((x) => x[2] < 0);
+    // The arrow points toward the turn: mirror the board for one direction.
+    inst(board, chevMat, forRight, ([p, h]) => m.compose(v.set(...p), q.setFromAxisAngle(up, h + Math.PI), sc.set(-1, 1, 1)));
+    inst(board, chevMat, forLeft, ([p, h]) => m.compose(v.set(...p), q.setFromAxisAngle(up, h + Math.PI), sc.set(1, 1, 1)));
+    inst(postGeo, new THREE.MeshLambertMaterial({ color: 0x777777 }), chevrons, ([p, h]) => m.compose(v.set(...p), q.setFromAxisAngle(up, h), sc.set(0.6, 0.85, 0.6)));
+    const poleGeo = new THREE.CylinderGeometry(0.13, 0.16, 10, 6);
+    poleGeo.translate(0, 5, 0);
+    inst(poleGeo, new THREE.MeshLambertMaterial({ color: 0x5c5650 }), poles, (p) => m.compose(v.set(...p), q.identity(), sc.set(1, 1, 1)));
+    const barGeo = new THREE.BoxGeometry(1.6, 0.1, 0.1);
+    barGeo.translate(0, 9.2, 0);
+    inst(barGeo, new THREE.MeshLambertMaterial({ color: 0x5c5650 }), poles, (p) => m.compose(v.set(...p), q.identity(), sc.set(1, 1, 1)));
+    // Sagging wires between the poles.
+    const wire = [];
+    for (let k = 0; k < poles.length - 1; k++) {
+      const [a, b] = [poles[k], poles[k + 1]];
+      if (Math.hypot(a[0] - b[0], a[2] - b[2]) > 70) continue;
+      for (const off of [-0.7, 0.7]) {
+        for (let s = 0; s < 6; s++) {
+          const f0 = s / 6;
+          const f1 = (s + 1) / 6;
+          const at = (f) => [a[0] + (b[0] - a[0]) * f + off, a[1] + 9.2 + (b[1] - a[1]) * f - Math.sin(Math.PI * f) * 1.2, a[2] + (b[2] - a[2]) * f];
+          wire.push(...at(f0), ...at(f1));
+        }
+      }
+    }
+    const wg = new THREE.BufferGeometry();
+    wg.setAttribute('position', new THREE.Float32BufferAttribute(wire, 3));
+    this.scene.add(new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x1a1c22 })));
+    const rockGeo = new THREE.DodecahedronGeometry(1, 0);
+    const rockMesh = inst(rockGeo, new THREE.MeshLambertMaterial({ color: 0x5a5852, flatShading: true }), rocks, ([x, y, z, r]) => m.compose(v.set(x, y + r * 0.3, z), q.setFromAxisAngle(up, x * 3), sc.set(r * 1.3, r, r)));
+    void rockMesh;
+
+    // Concrete retaining walls on the uphill cuts: a raked grid wall from the verge up the slope.
+    const wallTex = (() => {
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = 32;
+      const gg = cv.getContext('2d');
+      gg.fillStyle = '#7d7c76';
+      gg.fillRect(0, 0, 32, 32);
+      gg.fillStyle = '#5d5c57';
+      gg.fillRect(0, 0, 32, 3);
+      gg.fillRect(0, 0, 3, 32);
+      const tx = new THREE.CanvasTexture(cv);
+      tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
+      tx.colorSpace = THREE.SRGBColorSpace;
+      return tx;
+    })();
+    const wallMat = new THREE.MeshLambertMaterial({ map: wallTex, side: THREE.DoubleSide });
+    for (const side of [1, -1]) {
+      for (let i0 = 0; i0 < road.count - 1; i0 += ROAD_CHUNK) {
+        const i1 = Math.min(road.count - 1, i0 + ROAD_CHUNK);
+        const pos = [];
+        const uv = [];
+        for (let i = i0; i < i1; i++) {
+          const on = (j) => t.sideProfile(j, side) > 0 && noise2(j / 40, side * 5) > 0.4 && road.clearance(j, side, 16) >= 16;
+          if (!on(i) || !on(i + 1)) continue;
+          const quad = [road.pointAt(i, side * 8.6, -0.6), road.pointAt(i + 1, side * 8.6, -0.6), road.pointAt(i + 1, side * 11, 4.2), road.pointAt(i, side * 11, 4.2)];
+          const u0 = (i * STEP) / 3;
+          const u1 = ((i + 1) * STEP) / 3;
+          for (const [vv, uu] of [[quad[0], [u0, 0]], [quad[1], [u1, 0]], [quad[2], [u1, 1.7]], [quad[0], [u0, 0]], [quad[2], [u1, 1.7]], [quad[3], [u0, 1.7]]]) {
+            pos.push(...vv);
+            uv.push(...uu);
+          }
+        }
+        if (!pos.length) continue;
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+        geo.computeVertexNormals();
+        const mid = Math.floor((i0 + i1) / 2);
+        this.#addChunk(new THREE.Mesh(geo, wallMat), road.x[mid], road.z[mid], ROAD_CHUNK * STEP * 0.6);
+      }
+    }
   }
 
   #buildLake() {

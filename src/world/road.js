@@ -116,27 +116,29 @@ export class Road {
     }
     this.kappa = smooth(kappaRaw, 3);
 
-    // ---- Elevation: steeper through the twisty sections, flat at the lake and in town ----
+    // ---- Elevation: rolling crests and dips, steep plunges through the twisty parts, the odd short
+    // climb, flat at the lake and in town ----
     const twist = smooth(this.kappa.map(Math.abs), 31);
     const grade = new Float64Array(n);
     for (let i = 0; i < n; i++) {
       const s = i * STEP;
-      let g = 0.052 + 0.018 * Math.sin(s / 410 + 0.5) + 0.01 * Math.sin(s / 127 + 2);
-      g += clamp(twist[i] * 0.9, 0, 0.035);
+      let g = 0.058 + 0.075 * Math.sin(s / 190 + 0.5) + 0.035 * Math.sin(s / 71 + 2) + 0.015 * Math.sin(s / 37 + 1);
+      g += clamp(twist[i] * 1.1, 0, 0.04);
+      g = clamp(g, -0.06, 0.135);
       if (s < 90) g = 0.008;
       if (s > this.length - 140) g = 0.004;
       grade[i] = g;
     }
-    this.grade = smooth(grade, 25, 2);
+    this.grade = smooth(grade, 15, 2);
     this.y = new Float64Array(n);
     for (let i = 1; i < n; i++) this.y[i] = this.y[i - 1] - this.grade[i] * STEP;
     const bottom = this.y[n - 1];
     for (let i = 0; i < n; i++) this.y[i] -= bottom;
     this.top = this.y[0];
 
-    // ---- Camber: corners lean into the turn ----
-    const bankRaw = this.kappa.map((k) => clamp(-k * 2.2, -0.105, 0.105));
-    this.bank = smooth(bankRaw, 15, 2);
+    // ---- Banking: corners lean hard into the turn, hairpins most of all (up to about 12 degrees) ----
+    const bankRaw = this.kappa.map((k) => clamp(-k * 3.4, -0.21, 0.21));
+    this.bank = smooth(bankRaw, 13, 2);
 
     // ---- Drainage gutters on the inside of a few medium corners ----
     this.gutterLeft = new Float64Array(n);
