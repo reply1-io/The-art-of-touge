@@ -1,0 +1,451 @@
+:root {
+  --ink: #eef1f6;
+  --dim: #9aa6bd;
+  --bg: #0b0f1c;
+  --panel: rgba(10, 14, 26, 0.9);
+  --accent: #ffb000;
+  --gas: #3ccf6e;
+  --brake: #ff4d4d;
+  --btn: rgba(12, 16, 30, 0.42);
+  --btn-on: rgba(255, 176, 0, 0.45);
+  --edge: rgba(255, 255, 255, 0.28);
+  --sl: env(safe-area-inset-left, 0px);
+  --sr: env(safe-area-inset-right, 0px);
+  --sb: env(safe-area-inset-bottom, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+#view,
+#hud {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#hud {
+  pointer-events: none;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ---------- Touch controls ---------- */
+#controls {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+#controls > * {
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.btn {
+  font: 700 clamp(11px, 2.6vh, 17px) system-ui, sans-serif;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  background: var(--btn);
+  border: 2px solid var(--edge);
+  border-radius: 14px;
+  padding: 0;
+}
+
+.btn.on {
+  background: var(--btn-on);
+  border-color: #ffd36b;
+}
+
+#steer {
+  position: absolute;
+  left: calc(12px + var(--sl));
+  bottom: calc(12px + var(--sb));
+  width: 38vw;
+  height: 30vh;
+  border-radius: 18px;
+  border: 2px dashed rgba(255, 255, 255, 0.18);
+  background: rgba(12, 16, 30, 0.18);
+}
+
+#steer span {
+  position: absolute;
+  bottom: 6px;
+  width: 100%;
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--dim);
+}
+
+#steer-track {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 50%;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+#steer-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 46px;
+  height: 46px;
+  margin: -23px 0 0 -23px;
+  border-radius: 50%;
+  background: rgba(255, 176, 0, 0.75);
+  border: 2px solid #ffe2a3;
+}
+
+#clutch {
+  position: absolute;
+  left: calc(12px + var(--sl));
+  bottom: calc(30vh + 24px + var(--sb));
+  width: 19vw;
+  height: 17vh;
+}
+
+#shifter {
+  position: absolute;
+  left: calc(50% - 15vh);
+  bottom: calc(12px + var(--sb));
+  width: 30vh;
+  height: 30vh;
+  min-width: 132px;
+  min-height: 132px;
+  border-radius: 16px;
+  background: rgba(12, 16, 30, 0.18);
+  border: 2px solid rgba(255, 255, 255, 0.16);
+}
+
+#shifter-gate {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#shifter-knob {
+  position: absolute;
+  width: 15%;
+  height: 15%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fafafa, #707070 70%);
+  border: 2px solid #222;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+#dr {
+  position: absolute;
+  left: calc(50% - 13vh);
+  bottom: calc(12px + var(--sb));
+  display: flex;
+  gap: 10px;
+}
+
+#dr .btn {
+  width: 12vh;
+  height: 16vh;
+  min-width: 56px;
+  min-height: 70px;
+  font-size: clamp(18px, 5vh, 30px);
+}
+
+#handbrake {
+  position: absolute;
+  right: calc(12px + 22vw + 12px + var(--sr));
+  bottom: calc(12px + 24vh + 12px + var(--sb));
+  width: 15vw;
+  height: 17vh;
+}
+
+#brake {
+  position: absolute;
+  right: calc(12px + 22vw + 12px + var(--sr));
+  bottom: calc(12px + var(--sb));
+  width: 15vw;
+  height: 24vh;
+  border-color: rgba(255, 77, 77, 0.6);
+}
+
+#gas {
+  position: absolute;
+  right: calc(12px + var(--sr));
+  bottom: calc(12px + var(--sb));
+  width: 22vw;
+  height: 42vh;
+  border-color: rgba(60, 207, 110, 0.7);
+}
+
+#start {
+  position: absolute;
+  left: calc(19vw + 24px + var(--sl));
+  bottom: calc(30vh + 24px + var(--sb));
+  width: 15vw;
+  height: 17vh;
+  background: rgba(200, 30, 30, 0.75);
+  border-color: #ffb3b3;
+}
+
+/* ---------- Top bar and toast ---------- */
+#topbar {
+  position: fixed;
+  top: max(8px, env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+}
+
+#topbar button {
+  font: 700 12px system-ui, sans-serif;
+  color: var(--ink);
+  background: rgba(12, 16, 30, 0.55);
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+#toast {
+  position: fixed;
+  top: 34%;
+  left: 50%;
+  transform: translateX(-50%);
+  font: 800 clamp(16px, 4.5vh, 26px) system-ui, sans-serif;
+  color: #ffd36b;
+  text-shadow: 0 2px 6px #000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+  white-space: nowrap;
+}
+
+#toast.show {
+  opacity: 1;
+}
+
+/* ---------- Screens ---------- */
+.screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(5, 8, 16, 0.6);
+}
+
+#title {
+  background: radial-gradient(ellipse at 50% 30%, rgba(30, 40, 80, 0.55), rgba(5, 8, 16, 0.92));
+}
+
+.panel {
+  width: min(560px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: clamp(14px, 4vh, 26px) 22px;
+  text-align: center;
+  touch-action: pan-y;
+}
+
+.kicker {
+  margin: 0;
+  letter-spacing: 0.4em;
+  color: var(--accent);
+  font-size: 13px;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(40px, 13vh, 80px);
+  font-style: italic;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+h2 {
+  margin: 0 0 8px;
+  color: var(--accent);
+  letter-spacing: 0.1em;
+}
+
+.sub {
+  margin: 6px 0 14px;
+  color: var(--dim);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.label {
+  font-size: 12px;
+  letter-spacing: 0.15em;
+  color: var(--dim);
+  text-transform: uppercase;
+}
+
+.choices {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.choices button {
+  font: 600 14px system-ui, sans-serif;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 9px 12px;
+}
+
+.choices button.sel {
+  background: var(--accent);
+  color: #1b1200;
+  border-color: #ffd36b;
+}
+
+.big {
+  font: 800 18px system-ui, sans-serif;
+  letter-spacing: 0.12em;
+  color: #1b1200;
+  background: var(--accent);
+  border: none;
+  border-radius: 10px;
+  padding: 12px 34px;
+  margin-top: 10px;
+}
+
+.big:disabled {
+  opacity: 0.5;
+}
+
+.big.ghost {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ink);
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.hint {
+  color: var(--dim);
+  font-size: 13px;
+  min-height: 1em;
+}
+
+.link {
+  margin-top: 12px;
+  background: none;
+  border: none;
+  color: var(--dim);
+  text-decoration: underline;
+  font-size: 13px;
+}
+
+/* ---------- Tuning panel ---------- */
+#tuning {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  bottom: 8px;
+  width: min(340px, 60vw);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 12px;
+  touch-action: pan-y;
+  z-index: 5;
+}
+
+#tuning h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--accent);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#tuning label {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  margin: 8px 0;
+}
+
+#tuning input[type='range'] {
+  grid-column: 1 / span 2;
+  width: 100%;
+}
+
+#tuning .val {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+#tuning button {
+  font: 600 12px system-ui, sans-serif;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  padding: 5px 9px;
+}
+
+#rotate {
+  display: none;
+  z-index: 10;
+  background: var(--bg);
+}
+
+.rot {
+  font-size: 64px;
+  color: var(--accent);
+}
+
+@media (orientation: portrait) and (pointer: coarse) {
+  #rotate {
+    display: flex;
+  }
+}

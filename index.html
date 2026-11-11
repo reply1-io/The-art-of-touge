@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0f1c" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Art of Touge" />
+    <title>The Art of Touge</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icon.svg" />
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <canvas id="hud"></canvas>
+
+    <div id="controls" class="hidden">
+      <div id="steer" class="zone"><div id="steer-track"></div><div id="steer-knob"></div><span>STEER</span></div>
+      <button type="button" id="clutch" class="btn">CLUTCH</button>
+      <div id="shifter">
+        <canvas id="shifter-gate"></canvas>
+        <div id="shifter-knob"></div>
+      </div>
+      <div id="dr">
+        <button type="button" data-drive="D" class="btn">D</button>
+        <button type="button" data-drive="R" class="btn">R</button>
+      </div>
+      <button type="button" id="handbrake" class="btn">HAND<br />BRAKE</button>
+      <button type="button" id="brake" class="btn">BRAKE</button>
+      <button type="button" id="gas" class="btn">GAS</button>
+      <button type="button" id="start" class="btn hidden">START</button>
+    </div>
+
+    <div id="topbar" class="hidden">
+      <button type="button" id="btn-pause" aria-label="Pause">II</button>
+      <button type="button" id="btn-cam">CAM</button>
+      <button type="button" id="btn-reset">RESET</button>
+    </div>
+
+    <div id="toast"></div>
+
+    <section id="title" class="screen">
+      <div class="panel">
+        <p class="kicker">THE ART OF</p>
+        <h1>TOUGE</h1>
+        <p class="sub">BMW E30 318is &middot; Phase 1 test track</p>
+        <div class="field">
+          <span class="label">Transmission</span>
+          <div class="choices" data-setting="mode"></div>
+        </div>
+        <button type="button" id="btn-drive" class="big">DRIVE</button>
+        <p class="hint" id="loading">Loading physics&hellip;</p>
+      </div>
+    </section>
+
+    <section id="pause" class="screen hidden">
+      <div class="panel">
+        <h2>PAUSED</h2>
+        <div class="field">
+          <span class="label">Transmission</span>
+          <div class="choices" data-setting="mode"></div>
+        </div>
+        <div class="field">
+          <span class="label">Camera</span>
+          <div class="choices" data-setting="camera"></div>
+        </div>
+        <div class="row">
+          <button type="button" id="btn-resume" class="big">RESUME</button>
+          <button type="button" id="btn-restart" class="big ghost">RESET CAR</button>
+        </div>
+        <button type="button" id="btn-tuning" class="link">Tuning panel</button>
+      </div>
+    </section>
+
+    <section id="tuning" class="hidden"></section>
+
+    <section id="rotate" class="screen">
+      <div class="panel"><div class="rot">&#8635;</div><p>Turn your phone sideways</p></div>
+    </section>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
