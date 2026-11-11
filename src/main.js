@@ -1,4 +1,4 @@
-// The Art of Touge - Phase 1: the E30 on a flat test track.
+// The Art of Touge - Phase 2: the E30 on the Akina-inspired pass at night.
 import './styles.css';
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
@@ -8,17 +8,17 @@ import { MODES, MODE_LABELS } from './physics/transmission.js';
 import { CarModel } from './render/carModel.js';
 import { CameraRig } from './render/camera.js';
 import { VhsRenderer } from './render/vhs.js';
-import { TestTrack } from './world/testTrack.js';
+import { Mountain } from './world/mountain.js';
+import { Sky } from './world/sky.js';
 import { Input } from './controls/input.js';
 import { Shifter } from './controls/shifter.js';
-import { Hud } from './ui/hud.js';
+import { Hud, formatTime } from './ui/hud.js';
 import { CarAudio } from './audio/carAudio.js';
 import { TuningPanel } from './ui/tuning.js';
 import { loadSettings, saveSettings, loadTuning, saveTuning } from './settings.js';
 
 const DT = 1 / 60; // fixed physics step
 const MAX_STEPS = 5;
-const SPAWN = { pos: [0, 0.75, 20], yaw: 0 };
 const $ = (id) => document.getElementById(id);
 
 const settings = loadSettings();
@@ -29,13 +29,19 @@ const renderer = new THREE.WebGLRenderer({ canvas: $('view'), antialias: false, 
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 const vhs = new VhsRenderer(renderer, 2);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x9ab8d6);
-scene.fog = new THREE.Fog(0x9ab8d6, 80, 420);
+// Night: dark blue fog, moonlight and a soft sky fill. The headlights are the main light.
+const FOG_FAR = 240;
+scene.background = new THREE.Color(0x0b1430);
+scene.fog = new THREE.Fog(0x0b1430, 25, FOG_FAR);
 const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1500);
-const sun = new THREE.DirectionalLight(0xffffff, 2.2);
-sun.position.set(-40, 80, 30);
-scene.add(sun);
-scene.add(new THREE.AmbientLight(0xb8c6e0, 1.1));
+const moon = new THREE.DirectionalLight(0x9fb4ff, 0.55);
+moon.position.set(-45, 55, -70);
+scene.add(moon);
+scene.add(new THREE.HemisphereLight(0x3a4c80, 0x0c0d10, 0.75));
+// Headlights: one spot light that rides on the car and lights the road ahead.
+const headlight = new THREE.SpotLight(0xfff2d8, 900, 110, 0.5, 0.55, 1.6);
+scene.add(headlight, headlight.target);
+const sky = new Sky(scene);
 
 function blobShadow() {
   const c = document.createElement('canvas');
@@ -60,16 +66,17 @@ rig.mode = settings.camera;
 
 let world;
 let vehicle;
-let track;
 let carModel;
 let shadow;
+let mountain;
+const run = { phase: 'ready', time: 0, best: null, hint: -1 };
+const roadQ = {};
 let shifter;
 let tuning;
 let running = false;
 let paused = false;
 let accumulator = 0;
 let last = performance.now();
-let lapTime = 0;
 let fps = 60;
 const prevPos = new THREE.Vector3();
 const prevQuat = new THREE.Quaternion();
@@ -148,15 +155,31 @@ function applySettings() {
   $('clutch').classList.toggle('hidden', mode !== 'manual');
 }
 
-function resetCar() {
-  vehicle.reset(SPAWN.pos, SPAWN.yaw);
+function placeCar(pose) {
+  vehicle.reset(pose.pos, pose.yaw);
   if (vehicle.mode === 'auto') vehicle.trans.setDrive('D', 0);
   shifter.setGear(vehicle.trans.gear);
-  track.resetCones();
-  lapTime = 0;
+  run.hint = pose.index;
   rig.snap();
   capturePose();
   capturePose();
+}
+
+// Back to the summit start line.
+function resetCar() {
+  placeCar(mountain.spawn);
+  run.phase = 'ready';
+  run.time = 0;
+}
+
+// Back on the road where you are (stuck, rolled or off the road). Cancels a timed run.
+function recoverCar() {
+  placeCar(mountain.recoverAt(run.hint - 5));
+  if (run.phase === 'running') {
+    run.phase = 'ready';
+    run.time = 0;
+    toast('RUN CANCELLED');
+  }
 }
 
 function setPaused(p) {
@@ -192,6 +215,10 @@ $('btn-restart').addEventListener('click', () => {
   resetCar();
   setPaused(false);
 });
+$('btn-recover').addEventListener('click', () => {
+  recoverCar();
+  setPaused(false);
+});
 $('btn-cam').addEventListener('click', () => {
   settings.camera = settings.camera === 'chase' ? 'bumper' : 'chase';
   saveSettings(settings);
@@ -206,6 +233,7 @@ window.addEventListener('keydown', (e) => {
   }
   if (e.code === 'Escape') setPaused(!paused);
   if (e.code === 'Backspace') resetCar();
+  if (e.code === 'KeyT') recoverCar();
   if (e.code === 'KeyC') $('btn-cam').click();
   if (e.code === 'Backquote') tuning.toggle();
 });
@@ -241,6 +269,29 @@ function capturePose() {
   curQuat.set(q.x, q.y, q.z, q.w);
 }
 
+// ---------- Downhill time attack: start line to finish line ----------
+function updateRun(dt) {
+  const p = vehicle.body.translation();
+  mountain.road.query(p.x, p.z, run.hint, roadQ);
+  run.hint = roadQ.index;
+  const r = mountain.road;
+  const start = r.startIndex * 2;
+  const finish = r.finishIndex * 2;
+  if (run.phase === 'ready' && roadQ.s >= start && roadQ.s < start + 20) {
+    run.phase = 'running';
+    run.time = 0;
+    toast('GO!', 1);
+  } else if (run.phase === 'running') {
+    run.time += dt;
+    if (roadQ.s >= finish) {
+      run.phase = 'finished';
+      const best = run.best == null || run.time < run.best;
+      if (best) run.best = run.time;
+      toast(`${best ? 'NEW BEST ' : 'FINISH '}${formatTime(run.time)}`, 4);
+    }
+  }
+}
+
 // ---------- Main loop ----------
 function frame(now) {
   requestAnimationFrame(frame);
@@ -266,7 +317,7 @@ function frame(now) {
       steps++;
     }
     if (steps === MAX_STEPS) accumulator = 0;
-    lapTime += dt;
+    updateRun(dt);
     const tr = vehicle.trans;
     if (tr.messageTimer > 0 && tr.message) {
       toast(tr.message, tr.messageTimer);
@@ -286,12 +337,14 @@ function frame(now) {
   carModel.root.position.lerpVectors(prevPos, curPos, alpha);
   carModel.root.quaternion.slerpQuaternions(prevQuat, curQuat, alpha);
   carModel.syncWheels(vehicle);
-  carModel.setLights(false, controls.brake > 0);
-  shadow.position.set(carModel.root.position.x, track.heightAt() + 0.02, carModel.root.position.z);
-  shadow.rotation.z = new THREE.Euler().setFromQuaternion(carModel.root.quaternion, 'YXZ').y;
-  track.sync();
+  carModel.setLights(true, controls.brake > 0);
+  const nose = new THREE.Vector3(0, -0.05, 2.1).applyQuaternion(carModel.root.quaternion).add(carModel.root.position);
+  headlight.position.copy(nose);
+  headlight.target.position.copy(new THREE.Vector3(0, -1.6, 22).applyQuaternion(carModel.root.quaternion).add(carModel.root.position));
   if (window.__touge?.debugCam) window.__touge.debugCam(camera, carModel.root);
   else rig.update(dt, carModel.root, vehicle.body.linvel());
+  sky.update(camera);
+  mountain.update(camera.position, FOG_FAR + 30);
   vhs.render(scene, camera, now / 1000);
 
   const tr = vehicle.trans;
@@ -305,8 +358,8 @@ function frame(now) {
           showGear: tr.mode === 'auto',
           running: vehicle.engine.running,
           needClutchToStart: tr.mode === 'manual' && tr.gear !== 0,
-          lapTime,
-          bestTime: null,
+          lapTime: run.time,
+          bestTime: run.best,
           fps,
         }
       : null,
@@ -318,26 +371,27 @@ async function boot() {
   await RAPIER.init();
   world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   world.timestep = DT;
-  track = new TestTrack(world, scene);
+  $('loading').textContent = 'Building the mountain…';
+  await new Promise((r) => setTimeout(r, 30));
+  mountain = new Mountain(world, scene);
   vehicle = new Vehicle(world, CAR, tune, settings.mode);
   carModel = new CarModel(CAR);
   scene.add(carModel.root);
+  // Blob shadow rides under the car, at ground level in the car's own frame.
   shadow = blobShadow();
-  scene.add(shadow);
+  shadow.position.y = -0.6;
+  carModel.root.add(shadow);
   shifter = new Shifter($('shifter'), (gear) => vehicle.trans.requestGear(gear, vehicle.forwardSpeed));
   shifter.setMode(settings.shifter);
   tuning = new TuningPanel($('tuning'), tune, () => saveTuning(tune));
   tuning.toggle(false);
-  vehicle.reset(SPAWN.pos, SPAWN.yaw);
-  if (vehicle.mode === 'auto') vehicle.trans.setDrive('D', 0);
-  capturePose();
-  capturePose();
+  resetCar();
   applySettings();
   renderChoices();
   $('loading').textContent = '';
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { vehicle, world, settings, tune, input, shifter, resetCar };
+  window.__touge = { vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;
