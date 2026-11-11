@@ -48,8 +48,8 @@ const fragmentShader = /* glsl */ `
 
     // Red and blue pulled apart, colour smeared to the right like a tape chroma signal.
     vec3 c = sampleSRGB(px);
-    float r = sampleSRGB(px + one * 1.0 * strength).r;
-    float b = sampleSRGB(px - one * 1.0 * strength).b;
+    float r = sampleSRGB(px + one * 1.5 * strength).r;
+    float b = sampleSRGB(px - one * 1.5 * strength).b;
     vec3 shifted = vec3(r, c.g, b);
     vec3 smear = (sampleSRGB(px - one) + sampleSRGB(px - one * 2.0)) * 0.5;
     const vec3 lumaW = vec3(0.299, 0.587, 0.114);
@@ -62,7 +62,7 @@ const fragmentShader = /* glsl */ `
     col = mix(col, graded, strength);
 
     // Grain, band noise and scanlines.
-    col += (rand(vUv * res + fract(time) * 100.0) - 0.5) * 0.07 * strength;
+    col += (rand(vUv * res + fract(time) * 100.0) - 0.5) * 0.05 * strength;
     col += band * 0.18 * rand(vec2(row * 3.1, floor(time * 30.0)));
     col *= 1.0 - 0.1 * strength * step(0.5, fract(uv.y * res.y * 0.5));
 

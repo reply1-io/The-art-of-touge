@@ -11,6 +11,7 @@ const DEFAULTS = {
   steering: 'buttons', // 'buttons' | 'slider'
   shifter: 'drag', // 'drag' | 'tap'
   vhs: true,
+  picture: 'sharp', // 'sharp' | 'retro'
 };
 
 function read(key) {

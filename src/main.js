@@ -27,19 +27,19 @@ const tune = loadTuning();
 // ---------- Rendering ----------
 const renderer = new THREE.WebGLRenderer({ canvas: $('view'), antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-const vhs = new VhsRenderer(renderer, 2);
+const vhs = new VhsRenderer(renderer, 1);
 const scene = new THREE.Scene();
 // Night: dark blue fog, moonlight and a soft sky fill. The headlights are the main light.
-const FOG_FAR = 240;
+const FOG_FAR = 340;
 scene.background = new THREE.Color(0x0b1430);
-scene.fog = new THREE.Fog(0x0b1430, 25, FOG_FAR);
+scene.fog = new THREE.Fog(0x0b1430, 70, FOG_FAR);
 const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1500);
-const moon = new THREE.DirectionalLight(0x9fb4ff, 0.55);
+const moon = new THREE.DirectionalLight(0x9fb4ff, 0.85);
 moon.position.set(-45, 55, -70);
 scene.add(moon);
-scene.add(new THREE.HemisphereLight(0x3a4c80, 0x0c0d10, 0.75));
+scene.add(new THREE.HemisphereLight(0x4a5e96, 0x14161c, 1.15));
 // Headlights: one spot light that rides on the car and lights the road ahead.
-const headlight = new THREE.SpotLight(0xfff2d8, 900, 110, 0.5, 0.55, 1.6);
+const headlight = new THREE.SpotLight(0xfff2d8, 1800, 170, 0.62, 0.5, 1.4);
 scene.add(headlight, headlight.target);
 const sky = new Sky(scene);
 
@@ -112,7 +112,9 @@ function renderChoices() {
     const options =
       key === 'mode'
         ? MODES.map((m) => [m, MODE_LABELS[m]])
-        : key === 'sound' || key === 'vhs'
+        : key === 'picture'
+          ? [['sharp', 'Sharp'], ['retro', 'Retro pixels']]
+          : key === 'sound' || key === 'vhs'
           ? [[true, 'On'], [false, 'Off']]
           : key === 'steering'
             ? [['buttons', 'Buttons'], ['slider', 'Slider']]
@@ -139,7 +141,10 @@ function renderChoices() {
 function applySettings() {
   rig.mode = settings.camera;
   audio.setMuted(!settings.sound);
-  vhs.strength = settings.vhs ? 1 : 0;
+  vhs.strength = settings.vhs ? 0.45 : 0;
+  // Picture: 'sharp' renders at screen resolution, 'retro' at half (chunky pixels).
+  vhs.pixelSize = settings.picture === 'retro' ? 2 : 1;
+  vhs.setSize(window.innerWidth, window.innerHeight);
   $('vhs').classList.toggle('off', !settings.vhs);
   $('controls').dataset.steering = settings.steering;
   shifter?.setMode(settings.shifter);
@@ -391,7 +396,7 @@ async function boot() {
   $('loading').textContent = '';
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { audio, vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;

@@ -49,6 +49,13 @@ export class CarAudio {
 
   // Must be called from a tap (browsers only allow sound after the player interacts).
   start() {
+    // iPhone: without this, Web Audio is silenced whenever the ring/silent switch is on silent.
+    try {
+      if (navigator.audioSession) navigator.audioSession.type = 'playback';
+    } catch {
+      // Older Safari: the silent clip below does the same job.
+    }
+    this.#unlockWithSilentClip();
     if (this.ctx) {
       this.ctx.resume?.();
       return;
@@ -57,6 +64,13 @@ export class CarAudio {
     if (!AC) return;
     const ctx = new AC();
     this.ctx = ctx;
+    ctx.resume?.();
+    // Some browsers start (or re-suspend) the context until a touch: wake it on every touch.
+    const wake = () => {
+      if (ctx.state !== 'running' && !this.paused) ctx.resume?.();
+    };
+    window.addEventListener('pointerdown', wake, { passive: true });
+    window.addEventListener('touchend', wake, { passive: true });
     this.noise = makeNoise(ctx);
 
     const comp = ctx.createDynamicsCompressor();
@@ -159,16 +173,53 @@ export class CarAudio {
     grindMod.start();
   }
 
+  // Playing a short silent media clip inside the tap moves iOS Safari onto the media audio channel,
+  // which keeps playing when the phone is switched to silent.
+  #unlockWithSilentClip() {
+    if (this.unlocked) return;
+    this.unlocked = true;
+    try {
+      const rate = 8000;
+      const samples = 800;
+      const buf = new ArrayBuffer(44 + samples * 2);
+      const v = new DataView(buf);
+      const str = (o, t) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+      str(0, 'RIFF');
+      v.setUint32(4, 36 + samples * 2, true);
+      str(8, 'WAVEfmt ');
+      v.setUint32(16, 16, true);
+      v.setUint16(20, 1, true);
+      v.setUint16(22, 1, true);
+      v.setUint32(24, rate, true);
+      v.setUint32(28, rate * 2, true);
+      v.setUint16(32, 2, true);
+      v.setUint16(34, 16, true);
+      str(36, 'data');
+      v.setUint32(40, samples * 2, true);
+      const url = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+      const el = new Audio(url);
+      el.setAttribute('playsinline', '');
+      el.loop = true;
+      el.volume = 0.01;
+      el.play().catch(() => {});
+      this.silentClip = el;
+    } catch {
+      // Not critical: Web Audio still plays when the phone is not on silent.
+    }
+  }
+
   setMuted(m) {
     this.muted = m;
     if (this.master) this.master.gain.value = m ? 0 : 0.8;
   }
 
   suspend() {
+    this.paused = true;
     this.ctx?.suspend?.();
   }
 
   resume() {
+    this.paused = false;
     this.ctx?.resume?.();
   }
 

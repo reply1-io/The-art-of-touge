@@ -41,8 +41,8 @@ export class CameraRig {
     const speed = v.length();
     const dir = fwd.clone();
     if (speed > 3 && v.dot(fwd) > 0) dir.lerp(v.normalize(), 0.35).normalize();
-    const target = carObject.position.clone().addScaledVector(dir, -5.6).add(new THREE.Vector3(0, 1.9, 0));
-    const look = carObject.position.clone().addScaledVector(fwd, 2.2).add(new THREE.Vector3(0, 0.7, 0));
+    const target = carObject.position.clone().addScaledVector(dir, -5.8).add(new THREE.Vector3(0, 2.3, 0));
+    const look = carObject.position.clone().addScaledVector(fwd, 9).add(new THREE.Vector3(0, 0.6, 0));
     if (!this.ready) {
       this.pos.copy(target);
       this.look.copy(look);
