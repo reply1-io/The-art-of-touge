@@ -64,7 +64,7 @@ export class Shifter {
     const g = c.getContext('2d');
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, c.width, c.height);
-    g.lineCap = 'round';
+    g.lineCap = 'square';
     const lw = Math.max(5, this.root.clientWidth * 0.045);
     const line = (a, b) => {
       const [x0, y0] = this.#toPx(a);
@@ -97,19 +97,17 @@ export class Shifter {
       const label = gear === -1 ? 'R' : String(gear);
       const on = gear === this.gear;
       const color = on ? '#39ff7a' : gear === -1 ? '#ff6b6b' : '#ffffff';
-      g.shadowColor = color;
-      g.shadowBlur = on ? 14 : 8;
       if (this.mode === 'tap') {
-        // Each gear is a glowing round button.
-        g.lineWidth = 2.5;
+        // Each gear is a square pixel button.
+        g.fillStyle = on ? color : 'rgba(0,0,0,0.45)';
+        g.fillRect(Math.round(px - rad), Math.round(py - rad), Math.round(rad * 2), Math.round(rad * 2));
+        g.lineWidth = 3;
         g.strokeStyle = color;
-        g.fillStyle = on ? 'rgba(57,255,122,0.25)' : 'rgba(0,0,0,0.25)';
-        g.beginPath();
-        g.arc(px, py, rad, 0, Math.PI * 2);
-        g.fill();
-        g.stroke();
+        g.strokeRect(Math.round(px - rad), Math.round(py - rad), Math.round(rad * 2), Math.round(rad * 2));
       }
-      g.fillStyle = on ? '#eafff0' : color;
+      g.fillStyle = '#000';
+      g.fillText(label, px + 2, py + 3);
+      g.fillStyle = on && this.mode === 'tap' ? '#000' : color;
       g.fillText(label, px, py + 1);
     }
     g.shadowBlur = 0;

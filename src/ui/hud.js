@@ -33,7 +33,9 @@ export class Hud {
     if (!state) return;
     const u = Math.min(h / 100, w / 170); // layout unit
 
-    // ---- Half-moon tachometer, bottom centre (1-7 x1000 rpm, red past the redline) ----
+    // ---- Half-moon tachometer, bottom centre: a 90s backlit dial ----
+    // Black face; numbers, ticks, needle and the speed readout glow orange like an instrument
+    // cluster lit from behind. Past the redline the markings glow red.
     const R = 17 * u;
     const cx = w / 2;
     const cy = h - 7 * u;
@@ -41,61 +43,79 @@ export class Hud {
     const a0 = Math.PI * 1.02;
     const a1 = Math.PI * 1.98;
     const ang = (rpm) => a0 + (a1 - a0) * Math.min(1, Math.max(0, rpm) / maxRpm);
+    const ORANGE = '#ff8c1a';
+    const GLOW = 'rgba(255,140,26,0.95)';
+    const RED = '#ff3a24';
+    const glow = (color, blur) => {
+      g.shadowColor = color;
+      g.shadowBlur = blur * u;
+    };
+    // Dial face.
+    g.shadowBlur = 0;
+    g.fillStyle = 'rgba(6,6,8,0.82)';
+    g.beginPath();
+    g.arc(cx, cy, R + 3.2 * u, Math.PI, 2 * Math.PI);
+    g.lineTo(cx + R + 3.2 * u, cy + 3.5 * u);
+    g.lineTo(cx - R - 3.2 * u, cy + 3.5 * u);
+    g.closePath();
+    g.fill();
+    g.strokeStyle = '#2a2a2e';
+    g.lineWidth = 0.6 * u;
+    g.stroke();
+    // Tick marks every 500 rpm, long ones on the thousands.
     g.lineCap = 'butt';
-    // Shadowed arc.
-    g.lineWidth = 2.2 * u;
-    g.strokeStyle = 'rgba(0,0,0,0.45)';
-    g.beginPath();
-    g.arc(cx, cy, R, a0, a1);
-    g.stroke();
+    for (let k = 0; k <= 15; k++) {
+      const rpm = k * 500;
+      const a = ang(rpm);
+      const long = k % 2 === 0;
+      const red = rpm >= state.redline;
+      glow(red ? RED : GLOW, 1.6);
+      g.strokeStyle = red ? RED : ORANGE;
+      g.lineWidth = (long ? 0.7 : 0.4) * u;
+      g.beginPath();
+      g.moveTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R);
+      g.lineTo(cx + Math.cos(a) * (R - (long ? 2.4 : 1.4) * u), cy + Math.sin(a) * (R - (long ? 2.4 : 1.4) * u));
+      g.stroke();
+    }
+    // Redline band.
+    glow(RED, 2);
+    g.strokeStyle = RED;
     g.lineWidth = 1.2 * u;
-    g.strokeStyle = '#ff8a1c';
     g.beginPath();
-    g.arc(cx, cy, R, a0, ang(state.redline));
-    g.stroke();
-    g.lineWidth = 2.2 * u;
-    g.strokeStyle = '#e0251b';
-    g.beginPath();
-    g.arc(cx, cy, R, ang(state.redline), a1);
+    g.arc(cx, cy, R + 0.8 * u, ang(state.redline), a1);
     g.stroke();
     // Numbers.
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.font = `800 ${7 * u}px 'VT323', ui-monospace, monospace`;
-    g.lineWidth = 0.5 * u;
+    g.font = `800 ${6 * u}px 'VT323', ui-monospace, monospace`;
     for (let k = 1; k <= 7; k++) {
       const a = ang(k * 1000);
-      const x = cx + Math.cos(a) * (R - 3.6 * u);
-      const y = cy + Math.sin(a) * (R - 3.6 * u);
-      g.strokeStyle = 'rgba(0,0,0,0.7)';
-      g.strokeText(String(k), x, y);
-      g.fillStyle = k * 1000 >= state.redline ? '#ff4d3d' : '#ff8a1c';
-      g.fillText(String(k), x, y);
+      const red = k * 1000 >= state.redline;
+      glow(red ? RED : GLOW, 1.8);
+      g.fillStyle = red ? RED : ORANGE;
+      g.fillText(String(k), cx + Math.cos(a) * (R - 5 * u), cy + Math.sin(a) * (R - 5 * u));
     }
-    // Needle.
+    // Needle: glowing orange-red, with a dark hub.
     const na = ang(state.rpm);
+    glow('rgba(255,90,20,0.95)', 2.2);
     g.lineCap = 'round';
-    g.lineWidth = 1.1 * u;
-    g.strokeStyle = 'rgba(0,0,0,0.6)';
+    g.strokeStyle = '#ff5a14';
+    g.lineWidth = 0.9 * u;
     g.beginPath();
-    g.moveTo(cx + Math.cos(na) * R * 0.45, cy + Math.sin(na) * R * 0.45);
-    g.lineTo(cx + Math.cos(na) * (R + 1.2 * u), cy + Math.sin(na) * (R + 1.2 * u));
+    g.moveTo(cx + Math.cos(na) * R * 0.3, cy + Math.sin(na) * R * 0.3);
+    g.lineTo(cx + Math.cos(na) * (R - 0.4 * u), cy + Math.sin(na) * (R - 0.4 * u));
     g.stroke();
-    g.lineWidth = 0.6 * u;
-    g.strokeStyle = state.rpm > state.redline ? '#ffe14a' : '#ffffff';
-    g.stroke();
-    // Speed.
-    g.font = `900 ${13 * u}px 'VT323', ui-monospace, monospace`;
-    g.lineWidth = 0.8 * u;
-    g.strokeStyle = 'rgba(0,0,0,0.75)';
-    const mph = String(Math.round(Math.abs(state.speedMph)));
-    g.strokeText(mph, cx, cy - 4.5 * u);
-    g.fillStyle = '#ff8a1c';
-    g.fillText(mph, cx, cy - 4.5 * u);
-    g.font = `800 ${4.2 * u}px 'VT323', ui-monospace, monospace`;
-    g.strokeText('MPH', cx, cy + 2.2 * u);
-    g.fillStyle = '#ffffff';
+    // Speed readout, glowing like a 90s digital display.
+    glow(GLOW, 3);
+    g.font = `900 ${12 * u}px 'VT323', ui-monospace, monospace`;
+    g.fillStyle = ORANGE;
+    g.fillText(String(Math.round(Math.abs(state.speedMph))), cx, cy - 3.5 * u);
+    glow(GLOW, 1.4);
+    g.font = `800 ${3.6 * u}px 'VT323', ui-monospace, monospace`;
     g.fillText('MPH', cx, cy + 2.2 * u);
+    g.shadowBlur = 0;
+    g.lineWidth = 0.5 * u;
+    g.strokeStyle = 'rgba(0,0,0,0.7)';
 
     // ---- Timer, top right ----
     g.textAlign = 'right';
