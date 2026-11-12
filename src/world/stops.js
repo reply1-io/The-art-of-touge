@@ -118,14 +118,20 @@ export function zonePoint(road, zone, f, l) {
 // Gas station: a canopy over two islands of two pumps, and the kiosk at the back of the lot.
 export function stationLayout(road, zone) {
   const L0 = zone.inner;
+  const canopy = zonePoint(road, zone, 0.5, L0 + 11);
+  // Pillars and pumps are laid out square under the canopy (in its own frame: x across the road,
+  // z along it), so they always line up with the roof, even where the road curves.
+  const c = Math.cos(canopy.yaw);
+  const sn = Math.sin(canopy.yaw);
+  const under = (x, z) => ({ x: canopy.x + x * c + z * sn, y: canopy.y, z: canopy.z - x * sn + z * c, yaw: canopy.yaw });
   const pumps = [];
-  for (const l of [L0 + 9, L0 + 13]) for (const f of [0.38, 0.62]) pumps.push(zonePoint(road, zone, f, l));
+  for (const x of [-2, 2]) for (const z of [-3.6, 3.6]) pumps.push(under(x, z));
   const pillars = [];
-  for (const l of [L0 + 7, L0 + 15]) for (const f of [0.25, 0.75]) pillars.push(zonePoint(road, zone, f, l));
+  for (const x of [-4.6, 4.6]) for (const z of [-6.6, 6.6]) pillars.push(under(x, z));
   return {
     pumps,
     pillars,
-    canopy: zonePoint(road, zone, 0.5, L0 + 11),
+    canopy,
     kiosk: zonePoint(road, zone, 0.5, L0 + 20.5),
     truck: zonePoint(road, zone, 0.86, L0 + 18.5), // box truck parked out of the way
     pylon: zonePoint(road, zone, 0.16, L0 + 2.2), // tall price sign by the road
