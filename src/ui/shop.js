@@ -4,13 +4,13 @@
 import * as THREE from 'three';
 import {
   CAR, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup,
-  PLATES, cleanPlate, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, HEADLIGHTS, TAILLIGHTS,
+  RIM_WIDTH_IN, PLATES, cleanPlate, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, HEADLIGHTS, TAILLIGHTS,
 } from '../config.js';
 import { dynoRun } from '../physics/dyno.js';
 import { loadBuilds, saveBuilds } from '../settings.js';
 import { CarModel } from '../render/carModel.js';
 
-const SHOP_KEYS = ['plateStyle', 'plateText', 'stretch', 'intake', 'turbo', 'clutch', 'gearbox', 'finalDrive', 'coilovers', 'bump', 'rebound', 'brakes', 'handbrake', 'angleKit', 'weight', 'paint', 'headlights', 'taillights', 'numbers', 'number', 'numberW', 'numberH', 'exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
+const SHOP_KEYS = ['offsetFront', 'offsetRear', 'plateStyle', 'plateText', 'stretch', 'intake', 'turbo', 'clutch', 'gearbox', 'finalDrive', 'coilovers', 'bump', 'rebound', 'brakes', 'handbrake', 'angleKit', 'weight', 'paint', 'headlights', 'taillights', 'numbers', 'number', 'numberW', 'numberH', 'exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
 
 const TABS = [
   ['body', 'Body'],
@@ -25,6 +25,9 @@ function stiffness(v) {
   const word = v < 26000 ? 'Soft' : v < 38000 ? 'Stock' : v < 52000 ? 'Firm' : 'Race';
   return `${word} · ${Math.round(v / 1000)} N/mm`;
 }
+
+// Wheel offset as the ET number (stock ET35) and how far the wheel sits out.
+const offset = (v) => `ET${35 - v} · ${v === 0 ? 'Stock' : v > 0 ? `${v} mm out` : `${-v} mm in`}${v >= 40 ? ' · poke' : ''}`;
 
 const deg = (v) => (v === 0 ? '0°' : `-${v.toFixed(1)}°`);
 
@@ -238,6 +241,8 @@ export class Shop {
     this.fake.mountY = mountY;
     const g = (CAR.mass * 9.81) / 4;
     for (const w of this.fake.wheels) {
+      w.baseX ??= w.x;
+      w.x = w.baseX + Math.sign(w.baseX) * (w.front ? ws.pokeFront : ws.pokeRear);
       w.compression = Math.min(CAR.suspensionRest, (g * (w.front ? 1.04 : 0.96)) / (w.front ? t.springFront : t.springRear));
     }
     const yF = mountY - CAR.suspensionRest + this.fake.wheels[0].compression;
@@ -332,7 +337,7 @@ export class Shop {
     const style = WHEELS[t.wheel] || WHEELS.bbs;
     this.readoutEl.innerHTML = '';
     for (const line of [
-      `${style.name} ${ws.rim}x${{ 14: 6.5, 15: 7, 16: 7.5, 17: 8 }[ws.rim]}`,
+      `${style.name} ${ws.rim}x${RIM_WIDTH_IN[ws.rim]} ET${35 - (t.offsetFront ?? 0)}`,
       `${ws.width}/${ws.profile}R${ws.rim} ${TIRES[t.tire]?.name || ''}${ws.stretched ? ' stretched' : ''}`,
       `Camber ${deg(t.camberFront)} F  ${deg(t.camberRear)} R`,
     ]) {
@@ -377,6 +382,8 @@ export class Shop {
             ? [this.#chips('Tyre fit', 'stretch', [[false, 'Normal'], [true, 'Stretched']])]
             : [this.#hint('Stretched tyres are not made in semi-slick.')]),
           this.#slider('profile', 'Tyre sidewall', 30, 75, 5, (v) => `${v}% · ${v <= 40 ? 'Stretched thin' : v <= 50 ? 'Low profile' : v <= 60 ? 'Sporty' : 'Tall & soft'}`),
+          this.#slider('offsetFront', 'Front offset', -20, 60, 5, offset),
+          this.#slider('offsetRear', 'Rear offset', -20, 60, 5, offset),
           this.#slider('camberFront', 'Front camber', 0, 6, 0.5, (v) => `${deg(v)}${v > 3.5 ? ' · too much' : v >= 2 ? ' · grippy' : ''}`),
           this.#slider('camberRear', 'Rear camber', 0, 6, 0.5, (v) => `${deg(v)}${v > 3.5 ? ' · too much' : v >= 2 ? ' · grippy' : ''}`),
           this.#hint('Low sidewalls turn in sharper but break away sooner. A few degrees of camber adds cornering grip; past about -3.5° the tyre rides on its edge and grip drops.'),

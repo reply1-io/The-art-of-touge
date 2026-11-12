@@ -153,3 +153,15 @@ test('stretched tyres: narrower, a little less grip, and never on semi-slicks', 
   assert.ok(stretched.width < stretched.rimWidth && stretched.gripScale < normal.gripScale);
   assert.equal(semi.stretched, false);
 });
+
+test('offset widens the track, and 20-inch rims fit', async () => {
+  const { car, run } = await makeWorld('autoClutch');
+  Object.assign(car.tune, { offsetFront: 50, offsetRear: 50, rim: 20, profile: 35 });
+  run(2);
+  assert.ok(Math.abs(car.wheels[0].x - car.wheels[1].x - (1.407 + 0.1)) < 0.001, `front track ${car.wheels[0].x - car.wheels[1].x}`);
+  car.trans.requestGear(3, 0);
+  run(8, () => ({ throttle: car.forwardSpeed < 17 ? 1 : 0 }));
+  run(3, () => ({ throttle: car.forwardSpeed < 17 ? 1 : 0, steer: -0.5 }));
+  const q = car.body.rotation();
+  assert.ok(1 - 2 * (q.x * q.x + q.z * q.z) > 0.97 && car.speed > 12);
+});

@@ -233,6 +233,11 @@ export class Vehicle {
     // Ride height moves the suspension mounts relative to the body: raise it and the body sits higher.
     const ws = wheelSetup(t);
     this.wheelSetup = ws;
+    // Wheel offset moves each wheel in or out, changing the track width.
+    for (const w of this.wheels) {
+      w.baseX ??= w.x;
+      w.x = w.baseX + Math.sign(w.baseX) * (w.front ? ws.pokeFront : ws.pokeRear);
+    }
     const rh = clamp((t.rideHeight || 0) / 1000, -0.2, 0.05);
     this.mountY = s.wheelMountY - rh;
     // Lowering eats bump travel, down to a short minimum on a slammed car.

@@ -127,6 +127,8 @@ export const TUNABLE_DEFAULTS = {
   strutRear: false,
   exhaust: 'stock',
   stretch: false,
+  offsetFront: 0, // mm the wheel sits out from stock (+ pokes out, - tucks in)
+  offsetRear: 0,
   plateStyle: 'white', // 'white' | 'yellow' | 'red'
   plateText: 'AE 318',
   intake: 'stock',
@@ -258,8 +260,9 @@ export const WHEELS = {
 };
 
 // Wheel and tyre sizes: tyre width grows with the rim, as you would fit on the real car.
-export const RIM_SIZES = [14, 15, 16, 17];
-const TYRE_WIDTH = { 14: 195, 15: 205, 16: 215, 17: 225 };
+export const RIM_SIZES = [14, 15, 16, 17, 18, 19, 20];
+const TYRE_WIDTH = { 14: 195, 15: 205, 16: 215, 17: 225, 18: 235, 19: 245, 20: 255 };
+export const RIM_WIDTH_IN = { 14: 6.5, 15: 7, 16: 7.5, 17: 8, 18: 8.5, 19: 9, 20: 9.5 };
 
 // Anti-roll (sway) bar options, as front / rear bar rates in N/m.
 export const SWAY_FRONT = { soft: 7000, stock: 14000, sport: 22000, race: 32000 };
@@ -306,6 +309,9 @@ export function wheelSetup(t) {
     latRear: (camberLateral(cr) / camberLateral(0.5)) * (1 + 0.02 * brace(t.strutRear)),
     lonFront: 1 - 0.035 * Math.max(0, cf - 1),
     lonRear: 1 - 0.035 * Math.max(0, cr - 1),
+    // Offset: how far each wheel sits out from stock, widening (or narrowing) the track.
+    pokeFront: clamp(t.offsetFront ?? 0, -20, 60) / 1000,
+    pokeRear: clamp(t.offsetRear ?? 0, -20, 60) / 1000,
     relaxFront: t.strutFront ? 0.85 : 1,
     relaxRear: t.strutRear ? 0.85 : 1,
   };
