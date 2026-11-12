@@ -2,7 +2,7 @@
 // Body space matches the physics body: +x left, +y up, +z forward; the origin is the physics body
 // origin, which rides about 0.62 m above the ground.
 import * as THREE from 'three';
-import { WHEELS, wheelSetup, TUNABLE_DEFAULTS } from '../config.js';
+import { WHEELS, EXHAUSTS, wheelSetup, TUNABLE_DEFAULTS } from '../config.js';
 
 const GROUND = -0.62; // ground level in body space at static ride height
 
@@ -476,11 +476,68 @@ export class CarModel {
       this.root.add(steer);
       this.wheels.push({ steer, camber, spin: null, side: i % 2 === 0 ? 1 : -1, front: i < 2 });
     }
+    // Exhaust tailpipe under the right of the rear bumper, and the flame that can shoot from it.
+    this.pipeMat = new THREE.MeshLambertMaterial({ color: 0x9a9da3 });
+    this.pipe = new THREE.Group();
+    this.pipe.position.set(-0.52, 0.27, TAIL + 0.1); // body group coordinates: height above the ground
+    body.add(this.pipe);
+    this.flameGroup = new THREE.Group();
+    const outer = new THREE.ConeGeometry(1, 1, 10, 1, true);
+    outer.rotateX(-Math.PI / 2);
+    outer.translate(0, 0, -0.5);
+    this.flameOuter = new THREE.Mesh(outer, new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    this.flameInner = new THREE.Mesh(outer, new THREE.MeshBasicMaterial({ color: 0x7ab8ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    this.flameGroup.add(this.flameOuter, this.flameInner);
+    this.flameGroup.visible = false;
+    body.add(this.flameGroup);
+    this.flameLife = 0;
+    this.flameMax = 0;
     this.applySetup(TUNABLE_DEFAULTS);
+  }
+
+  // A short burst of flame from the tailpipe (race exhaust).
+  flame(strength = 1) {
+    this.flameLife = Math.max(this.flameLife, 0.09 + 0.08 * strength);
+    this.flameMax = Math.max(this.flameMax * (this.flameLife > 0 ? 1 : 0), strength);
+  }
+
+  // Animate the flame: flickers, then shrinks away.
+  updateFx(dt) {
+    if (this.flameLife <= 0) {
+      this.flameGroup.visible = false;
+      this.flameMax = 0;
+      return;
+    }
+    this.flameLife -= dt;
+    const k = Math.max(0, Math.min(1, this.flameLife / 0.12)) * this.flameMax;
+    const r = this.tipRadius * (1.1 + Math.random() * 0.5);
+    const len = (0.18 + Math.random() * 0.22) * (0.5 + k);
+    this.flameGroup.visible = k > 0.02;
+    this.flameOuter.scale.set(r * 1.5, r * 1.5, len);
+    this.flameInner.scale.set(r * 0.8, r * 0.8, len * 0.45);
+    this.flameOuter.material.opacity = 0.5 + 0.4 * k;
+  }
+
+  #buildPipe(type) {
+    const ex = EXHAUSTS[type] || EXHAUSTS.stock;
+    this.tipRadius = ex.tip;
+    this.pipe.clear();
+    const len = type === 'stock' ? 0.16 : 0.22;
+    const tube = new THREE.CylinderGeometry(ex.tip, ex.tip, len, 12, 1, true);
+    tube.rotateX(Math.PI / 2);
+    const m = new THREE.Mesh(tube, new THREE.MeshLambertMaterial({ color: type === 'race' ? 0x8a6a4a : 0x9a9da3, side: THREE.DoubleSide }));
+    m.position.z = -len / 2 + 0.06;
+    const inside = new THREE.Mesh(new THREE.CircleGeometry(ex.tip * 0.92, 12), new THREE.MeshBasicMaterial({ color: 0x0a0a0a }));
+    inside.rotation.y = Math.PI;
+    inside.position.z = -len + 0.07;
+    this.pipe.add(m, inside);
+    this.flameGroup.position.set(this.pipe.position.x, this.pipe.position.y, this.pipe.position.z - len + 0.06);
+    this.exhaustType = type;
   }
 
   // Rebuild the wheels for a tuning setup: rim style and size, tyre sidewall and camber.
   applySetup(tune) {
+    if (this.exhaustType !== (tune.exhaust || 'stock')) this.#buildPipe(tune.exhaust || 'stock');
     const ws = wheelSetup(tune);
     const key = `${tune.wheel}|${ws.rim}|${ws.profile}`;
     for (const w of this.wheels) {

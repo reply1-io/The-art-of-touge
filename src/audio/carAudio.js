@@ -95,8 +95,13 @@ export class CarAudio {
     this.resonance.type = 'peaking';
     this.resonance.Q.value = 3;
     this.resonance.gain.value = 6;
+    // Bass from a free-flowing exhaust (street and race): a low shelf after the resonance.
+    this.bass = ctx.createBiquadFilter();
+    this.bass.type = 'lowshelf';
+    this.bass.frequency.value = 150;
+    this.bass.gain.value = 0;
     this.engineFilter.disconnect();
-    this.engineFilter.connect(this.resonance).connect(this.engineGain);
+    this.engineFilter.connect(this.resonance).connect(this.bass).connect(this.engineGain);
 
     const wave = exhaustWave(ctx);
     this.fire = ctx.createOscillator();
@@ -116,7 +121,14 @@ export class CarAudio {
     this.fire2Gain = ctx.createGain();
     this.fire2Gain.gain.value = 0.15;
     this.fire2.connect(this.fire2Gain).connect(this.drive);
-    for (const o of [this.fire, this.lump, this.fire2]) o.start();
+    // Sub-octave rumble for the bigger exhausts.
+    this.sub = ctx.createOscillator();
+    this.sub.type = 'triangle';
+    this.subGain = ctx.createGain();
+    this.subGain.gain.value = 0;
+    this.sub.connect(this.subGain).connect(this.drive);
+    for (const o of [this.fire, this.lump, this.fire2, this.sub]) o.start();
+    this.setExhaust(this.exhaust || 'stock');
 
     // Intake / induction roar: noise band-passed around the upper harmonics.
     const intake = ctx.createBufferSource();
@@ -209,6 +221,17 @@ export class CarAudio {
     }
   }
 
+  // 'stock' | 'street' | 'race'
+  setExhaust(type) {
+    if (this.exhaust === type && this.exhaustApplied === !!this.ctx) return;
+    this.exhaust = type;
+    this.exhaustApplied = !!this.ctx;
+    if (!this.ctx) return;
+    const loud = type !== 'stock';
+    this.bass.gain.value = loud ? 8 : 0;
+    this.subGain.gain.value = loud ? 0.32 : 0;
+  }
+
   setMuted(m) {
     this.muted = m;
     if (this.master) this.master.gain.value = m ? 0 : 0.8;
@@ -231,7 +254,7 @@ export class CarAudio {
     src.buffer = this.noise;
     const f = ctx.createBiquadFilter();
     f.type = 'bandpass';
-    f.frequency.value = 180 + Math.random() * 380;
+    f.frequency.value = this.exhaust && this.exhaust !== 'stock' ? 110 + Math.random() * 260 : 180 + Math.random() * 380;
     f.Q.value = 1.2;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0, when);
@@ -284,8 +307,8 @@ export class CarAudio {
     lfo.stop(t + 0.65);
   }
 
-  // vehicle: the simulation; called once per rendered frame.
-  update(vehicle, dt) {
+  // vehicle: the simulation; ev: exhaust events (see exhaust.js); called once per rendered frame.
+  update(vehicle, dt, ev = null) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     const e = vehicle.engine;
@@ -299,12 +322,15 @@ export class CarAudio {
     this.fire.frequency.setTargetAtTime(f, t, 0.012);
     this.fire2.frequency.setTargetAtTime(f * 1.006, t, 0.012);
     this.lump.frequency.setTargetAtTime(f / 2, t, 0.012);
+    this.sub.frequency.setTargetAtTime(f / 2, t, 0.012);
     this.resonance.frequency.setTargetAtTime(clamp(f * 0.9, 60, 500), t, 0.03);
-    this.engineFilter.frequency.setTargetAtTime(220 + load * 900 + rpm * 0.1, t, 0.03);
+    const loud = this.exhaust && this.exhaust !== 'stock';
+    this.engineFilter.frequency.setTargetAtTime((220 + load * 900 + rpm * 0.1) * (loud ? 0.82 : 1), t, 0.03);
     // The half-order rumble carries the low end, strongest at low revs.
     this.lumpGain.gain.setTargetAtTime(0.6 - clamp(rpm / 7000, 0, 1) * 0.25, t, 0.05);
     const turning = clamp(rpm / 500, 0, 1);
     let level = running ? 0.16 + load * 0.3 + (rpm / 7000) * 0.14 : 0.25 * turning * clamp(rpm / 1500, 0, 1);
+    if (loud) level *= this.exhaust === 'race' ? 1.28 : 1.16;
     // Rev limiter: the fuel cut chops the note.
     if (e.limiterCut) level *= 0.35;
     this.engineGain.gain.setTargetAtTime(level, t, e.limiterCut !== this.limiterWas ? 0.004 : 0.02);
@@ -316,6 +342,16 @@ export class CarAudio {
     if (this.prevRunning && !running) this.#sputter();
     if (!this.prevRunning && running) this.#starter();
     this.popTimer -= dt;
+    if (loud && ev) {
+      // Street and race: crackles and pops on every lift-off and gear change, bangs off the limiter.
+      if (ev.lift) this.#crackle(6 + Math.floor(Math.random() * 5), 0.9);
+      if (ev.shift) this.#crackle(3 + Math.floor(Math.random() * 3), 0.3);
+      if (ev.limiter) this.#pop(t, 0.9);
+      this.prevRunning = running;
+      this.prevThrottle = vehicle.throttlePedal;
+      this.prevGear = tr.gear;
+      this.prevRpm = rpm;
+    }
     const lifted = this.prevThrottle > 0.6 && vehicle.throttlePedal < 0.2;
     if (running && lifted && rpm > 3800 && this.popTimer <= 0) {
       this.#crackle(3 + Math.floor(Math.random() * 4), 0.5);

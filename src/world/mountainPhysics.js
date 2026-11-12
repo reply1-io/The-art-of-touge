@@ -1,7 +1,7 @@
 // Physics colliders for the mountain: the road surface (with gutters), the terrain, guardrails and
 // the invisible walls. Rapier only, so it can be tested in Node.
 import RAPIER from '@dimforge/rapier3d-compat';
-import { crossSection, barrierLayout, RAIL } from './road.js';
+import { crossSection, barrierLayout, RAIL, GUTTER_OUT, SHOULDER } from './road.js';
 
 function yawQuat(yaw) {
   return { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) };
@@ -42,7 +42,7 @@ export function buildMountainPhysics(world, road, terrain) {
     const b = kinds[c + 1];
     if (a === 'asphalt' && b === 'asphalt') return 'asphalt';
     const off = Math.abs(crossSection(road, 0)[c][0]) + Math.abs(crossSection(road, 0)[c + 1][0]);
-    return off / 2 < 4.05 ? 'asphalt' : off / 2 < 4.7 ? 'gravel' : 'grass';
+    return off / 2 < GUTTER_OUT + 0.03 ? 'asphalt' : off / 2 < SHOULDER + 0.1 ? 'gravel' : 'grass';
   };
   const byHandle = new Map();
   for (const surface of ['asphalt', 'gravel', 'grass']) {
@@ -79,7 +79,7 @@ export function buildMountainPhysics(world, road, terrain) {
   for (const side of [1, -1]) {
     let run = [];
     const flush = () => {
-      if (run.length > 1) boxRun(world, run, 0.08, 0.85, 0, 0.3);
+      if (run.length > 1) boxRun(world, run, 0.08, 0.85, 0, 0.15);
       run = [];
     };
     for (let i = 0; i < road.count; i++) {

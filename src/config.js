@@ -86,7 +86,7 @@ export const TIRES = {
   street: {
     name: 'Street',
     blurb: 'Sticky performance road tyre. Ideal for touge: grippy, but you can still build slip angle.',
-    mu: 1.05, peakAngle: 0.14, peakSlip: 0.14, slide: 0.84, falloff: 0.7, gravel: 0.72, grass: 0.55, grassNoise: 0.1,
+    mu: 1.13, peakAngle: 0.14, peakSlip: 0.14, slide: 0.84, falloff: 0.7, gravel: 0.72, grass: 0.55, grassNoise: 0.1,
   },
   semi: {
     name: 'Semi-slick',
@@ -125,6 +125,14 @@ export const TUNABLE_DEFAULTS = {
   camberRear: 0.5,
   strutFront: false, // strut tower braces
   strutRear: false,
+  exhaust: 'stock',
+};
+
+// Exhausts (tuning shop). Sound and looks only.
+export const EXHAUSTS = {
+  stock: { name: 'Stock', blurb: 'Factory silencer. Smooth, quiet, the odd pop when you lift off.', tip: 0.034 },
+  street: { name: 'Street', blurb: 'Free-flowing back box. Deeper tone, crackles and pops on shifts and lift-off.', tip: 0.046 },
+  race: { name: 'Race', blurb: 'Straight-through race pipe. Same deep bark, plus little flames off the limiter, on shifts and lift-off.', tip: 0.054 },
 };
 
 // Wheels (tuning shop). Looks only: size, sidewall and camber are separate settings.

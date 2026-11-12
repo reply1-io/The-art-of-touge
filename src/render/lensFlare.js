@@ -49,7 +49,7 @@ export class LensFlare {
     // Glow around the sun.
     const R = h * 0.42;
     let grad = g.createRadialGradient(sx, sy, 0, sx, sy, R);
-    grad.addColorStop(0, rgba([r, gg, b], 0.5 * L));
+    grad.addColorStop(0, rgba([r, gg, b], 0.75 * L));
     grad.addColorStop(0.25, rgba([r, gg, b], 0.16 * L));
     grad.addColorStop(1, rgba([r, gg, b], 0));
     g.fillStyle = grad;

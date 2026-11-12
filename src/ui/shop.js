@@ -2,16 +2,18 @@
 // drivetrain. Every change shows on the car straight away (wheels, sidewalls, camber and ride
 // height are all visible), applies to the physics, and is saved on the device.
 import * as THREE from 'three';
-import { CAR, TIRES, DIFFS, WHEELS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup } from '../config.js';
+import { CAR, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup } from '../config.js';
+import { loadBuilds, saveBuilds } from '../settings.js';
 import { CarModel } from '../render/carModel.js';
 
-const SHOP_KEYS = ['tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
+const SHOP_KEYS = ['exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
 
 const TABS = [
   ['wheels', 'Wheels'],
   ['tyres', 'Tyres'],
   ['chassis', 'Chassis'],
-  ['drive', 'Drivetrain'],
+  ['drive', 'Engine'],
+  ['builds', 'Builds'],
 ];
 
 function stiffness(v) {
@@ -215,6 +217,7 @@ export class Shop {
   // Turn the table, settle the car on its springs, and aim the camera.
   update(dt) {
     if (!this.dragging) this.yaw += this.spin * dt;
+    this.car.updateFx(dt);
     this.table.rotation.y = this.yaw;
     this.camera.position.set(0, 2.2, 10.5);
     this.camera.lookAt(0, 0.45, 0);
@@ -350,8 +353,10 @@ export class Shop {
       ];
     }
     if (this.tab === 'tyres') return [this.#section('Compound', this.#cards(TIRES, 'tire'))];
+    if (this.tab === 'builds') return [this.#builds()];
     if (this.tab === 'drive') {
       return [
+        this.#section('Exhaust', this.#cards(EXHAUSTS, 'exhaust')),
         this.#section('Differential', this.#cards(DIFFS, 'diff')),
         this.#section('Brakes', this.#slider('brakeBias', 'Brake bias', 0.5, 0.8, 0.01, (v) => `${Math.round(v * 100)}% front`)),
       ];
@@ -377,6 +382,72 @@ export class Shop {
         this.#hint('Braces tie the strut towers together so the body flexes less: a little more grip and sharper turn-in on that end of the car.'),
       ),
     ];
+  }
+
+  // Three named build slots: save the current setup into one, or load one back.
+  #builds() {
+    const slots = loadBuilds();
+    const box = this.#section('Saved builds');
+    box.append(this.#hint('Save up to three setups with your own names, and swap between them any time.'));
+    slots.forEach((slot, i) => {
+      const row = document.createElement('div');
+      row.className = 'build-slot' + (slot ? '' : ' empty');
+      const name = document.createElement('input');
+      name.type = 'text';
+      name.maxLength = 20;
+      name.placeholder = `Build ${i + 1}`;
+      name.value = slot?.name ?? '';
+      name.setAttribute('aria-label', `Name for build ${i + 1}`);
+      name.addEventListener('change', () => {
+        const all = loadBuilds();
+        if (all[i]) {
+          all[i].name = name.value.trim() || `Build ${i + 1}`;
+          saveBuilds(all);
+        }
+      });
+      const info = document.createElement('span');
+      info.className = 'build-info';
+      if (slot) {
+        const t = slot.tune || {};
+        const ws = wheelSetup({ ...TUNABLE_DEFAULTS, ...t });
+        info.textContent = `${(WHEELS[t.wheel] || WHEELS.bbs).name} ${ws.rim}" · ${(TIRES[t.tire] || TIRES.street).name} · ${(DIFFS[t.diff] || DIFFS.lsd).name} · ${(EXHAUSTS[t.exhaust] || EXHAUSTS.stock).name} exhaust`;
+      } else info.textContent = 'Empty slot';
+      const save = document.createElement('button');
+      save.type = 'button';
+      save.textContent = slot ? 'SAVE OVER' : 'SAVE';
+      save.addEventListener('click', () => {
+        const all = loadBuilds();
+        const tune = {};
+        for (const k of SHOP_KEYS) tune[k] = this.tune[k];
+        all[i] = { name: name.value.trim() || `Build ${i + 1}`, tune };
+        saveBuilds(all);
+        this.flash = `Saved "${all[i].name}"`;
+        this.render();
+      });
+      const load = document.createElement('button');
+      load.type = 'button';
+      load.textContent = 'LOAD';
+      load.disabled = !slot;
+      load.addEventListener('click', () => {
+        const b = loadBuilds()[i];
+        if (!b) return;
+        for (const k of SHOP_KEYS) this.tune[k] = b.tune?.[k] ?? TUNABLE_DEFAULTS[k];
+        this.#applyCar();
+        this.onChange();
+        this.flash = `Loaded "${b.name}"`;
+        this.render();
+      });
+      const btns = document.createElement('div');
+      btns.className = 'build-btns';
+      btns.append(save, load);
+      row.append(name, info, btns);
+      box.append(row);
+    });
+    if (this.flash) {
+      box.append(this.#hint(this.flash));
+      this.flash = '';
+    }
+    return box;
   }
 
   #hint(text) {

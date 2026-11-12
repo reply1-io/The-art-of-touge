@@ -47,3 +47,16 @@ export function loadTuning() {
 export function saveTuning(t) {
   write(TUNE_KEY, t);
 }
+
+// Saved builds: three named slots, each a copy of the tuning-shop setup.
+const BUILDS_KEY = 'touge.builds.v1';
+
+export function loadBuilds() {
+  const b = read(BUILDS_KEY);
+  const slots = Array.isArray(b.slots) ? b.slots : [];
+  return [0, 1, 2].map((i) => (slots[i] && typeof slots[i] === 'object' ? slots[i] : null));
+}
+
+export function saveBuilds(slots) {
+  write(BUILDS_KEY, { slots });
+}

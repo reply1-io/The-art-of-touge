@@ -69,34 +69,31 @@ body {
   touch-action: none;
 }
 
-/* Pixel buttons: flat, hard-edged, with stepped (notched) corners like an 8-bit UI. Each button
-   keeps its own colour; pressing it fills it solid. */
+/* Driving buttons: one family, lit like the tachometer. A soft orange backlight glows through
+   a dark face; pressing a button brightens it as if its lamp came on. */
 .btn {
-  --glow: #ffffff;
-  --px: 4px;
+  --amber: #ff8c1a;
   font: 400 clamp(18px, 5vh, 30px) 'VT323', ui-monospace, monospace;
-  letter-spacing: 0.08em;
-  color: var(--glow);
-  text-shadow: 2px 2px 0 #000;
-  background: rgba(0, 0, 0, 0.45);
-  border: none;
-  border-radius: 0;
+  letter-spacing: 0.1em;
+  color: #ffb066;
+  text-shadow: 0 0 6px rgba(255, 140, 26, 0.95), 0 0 14px rgba(255, 110, 10, 0.55);
+  background: radial-gradient(ellipse at 50% 50%, rgba(40, 20, 6, 0.55), rgba(6, 6, 8, 0.62));
+  border: 2px solid rgba(255, 150, 50, 0.85);
+  border-radius: 12px;
   padding: 0;
-  /* Classic pixel border: an outline on each side but not the corners, which leaves the corners
-     stepped, like a sprite. */
   box-shadow:
-    0 calc(var(--px) * -1) 0 0 var(--glow),
-    0 var(--px) 0 0 var(--glow),
-    calc(var(--px) * -1) 0 0 0 var(--glow),
-    var(--px) 0 0 0 var(--glow),
-    inset 0 0 0 var(--px) rgba(0, 0, 0, 0.35);
-  image-rendering: pixelated;
+    0 0 10px rgba(255, 140, 26, 0.45),
+    inset 0 0 14px rgba(255, 140, 26, 0.22);
+  transition: background 0.08s, box-shadow 0.08s, color 0.08s;
 }
 
 .btn.on {
-  background: var(--glow);
-  color: #000;
-  text-shadow: none;
+  color: #fff4e2;
+  background: radial-gradient(ellipse at 50% 50%, rgba(255, 150, 50, 0.6), rgba(255, 110, 10, 0.28));
+  box-shadow:
+    0 0 20px rgba(255, 140, 26, 0.85),
+    inset 0 0 22px rgba(255, 170, 80, 0.6);
+  text-shadow: 0 0 8px #ffd2a0, 0 0 18px rgba(255, 140, 26, 0.9);
 }
 
 /* Steering: a plain slider bar with a knob, inside a larger invisible touch area. */
@@ -116,9 +113,9 @@ body {
   height: 12px;
   margin-top: -6px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 0 0 3px #000;
-  border-radius: 0;
+  background: rgba(255, 150, 50, 0.85);
+  box-shadow: 0 0 10px rgba(255, 140, 26, 0.6);
+  border-radius: 6px;
 }
 
 #steer-knob {
@@ -129,9 +126,10 @@ body {
   height: 48px;
   margin: -24px 0 0 -24px;
   border-radius: 0;
-  background: #111;
-  border: 4px solid #4fd8ff;
-  border-radius: 0;
+  background: rgba(10, 8, 6, 0.85);
+  border: 2px solid #ffa04a;
+  border-radius: 12px;
+  box-shadow: 0 0 12px rgba(255, 140, 26, 0.7), inset 0 0 10px rgba(255, 140, 26, 0.35);
 }
 
 #left,
@@ -141,7 +139,6 @@ body {
   width: 15vw;
   height: 26vh;
   font-size: clamp(24px, 8vh, 48px);
-  --glow: #4fd8ff;
 }
 
 #left {
@@ -164,9 +161,8 @@ body {
   bottom: calc(32vh + var(--sb));
   width: 20vw;
   height: 14vh;
-  --glow: #ff8a1c;
   /* The fill shows how far the clutch is engaged. */
-  background: linear-gradient(to right, rgba(255, 138, 28, 0.35) var(--engaged, 100%), rgba(0, 0, 0, 0.16) var(--engaged, 100%));
+  background: linear-gradient(to right, rgba(255, 140, 26, 0.32) var(--engaged, 100%), rgba(6, 6, 8, 0.55) var(--engaged, 100%));
 }
 
 #shifter {
@@ -190,10 +186,10 @@ body {
   position: absolute;
   width: 18%;
   height: 16%;
-  border-radius: 0;
-  background: #1a1a1a;
-  border: 4px solid #ffffff;
-  box-shadow: 3px 3px 0 #000;
+  border-radius: 10px;
+  background: rgba(10, 8, 6, 0.85);
+  border: 2px solid #ffa04a;
+  box-shadow: 0 0 12px rgba(255, 140, 26, 0.75), inset 0 0 10px rgba(255, 140, 26, 0.4);
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
@@ -207,7 +203,6 @@ body {
 }
 
 #dr .btn {
-  --glow: #39ff7a;
   width: 12vh;
   height: 16vh;
   min-width: 56px;
@@ -229,7 +224,6 @@ body {
   bottom: calc(3vh + var(--sb));
   width: 11vw;
   height: 40vh;
-  --glow: #39ff7a;
 }
 
 #brake {
@@ -238,7 +232,6 @@ body {
   bottom: calc(3vh + var(--sb));
   width: 11vw;
   height: 40vh;
-  --glow: #ff3b3b;
 }
 
 #handbrake {
@@ -249,7 +242,6 @@ body {
   height: 20vh;
   font-size: clamp(14px, 3.6vh, 20px);
   line-height: 1;
-  --glow: #ffd23f;
 }
 
 #start {
@@ -259,8 +251,6 @@ body {
   transform: translate(-50%, -50%);
   width: 20vw;
   height: 16vh;
-  background: rgba(120, 10, 10, 0.6);
-  --glow: #ff4d4d;
 }
 
 /* ---------- Top bar (menu and camera icons) and toast ---------- */
@@ -280,22 +270,21 @@ body {
   background: none;
   border: none;
   padding: 2px;
-  color: #fff;
+  color: #ffb066;
   font: 400 15px 'VT323', ui-monospace, monospace;
   letter-spacing: 0.12em;
-  text-shadow: 2px 2px 0 #000;
+  text-shadow: 0 0 6px rgba(255, 140, 26, 0.9);
 }
 
 #topbar svg {
   width: 38px;
   height: 38px;
-  fill: rgba(0, 0, 0, 0.25);
-  stroke: #fff;
-  stroke-width: 2.4;
+  fill: rgba(6, 6, 8, 0.45);
+  stroke: #ffa04a;
+  stroke-width: 2.2;
   stroke-linecap: round;
   stroke-linejoin: round;
-  filter: drop-shadow(2px 2px 0 #000);
-  shape-rendering: crispEdges;
+  filter: drop-shadow(0 0 4px rgba(255, 140, 26, 0.9));
 }
 
 #toast {
@@ -339,9 +328,9 @@ body {
   transform: translateX(-50%);
   font: 400 clamp(18px, 5vh, 28px) 'VT323', ui-monospace, monospace;
   letter-spacing: 0.15em;
-  color: #fff;
-  text-shadow: 0 0 6px #fff, 2px 0 0 rgba(255, 0, 80, 0.7), -2px 0 0 rgba(0, 200, 255, 0.7);
-  opacity: 0.85;
+  color: #ffb066;
+  text-shadow: 0 0 6px rgba(255, 140, 26, 0.95), 0 0 16px rgba(255, 110, 10, 0.6), 1px 0 0 rgba(255, 0, 80, 0.45), -1px 0 0 rgba(0, 200, 255, 0.35);
+  opacity: 0.9;
 }
 
 @keyframes vhs-flicker {
@@ -813,6 +802,71 @@ body.paused #vhs-play {
   color: #111;
   background: var(--accent);
   border-color: var(--accent);
+}
+
+.build-slot {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 3px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.build-slot input {
+  grid-column: 1;
+  min-width: 0;
+  font: 400 22px 'VT323', ui-monospace, monospace;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  background: rgba(0, 0, 0, 0.35);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-radius: 0;
+  padding: 2px 8px;
+  user-select: text;
+  -webkit-user-select: text;
+  touch-action: manipulation;
+}
+
+.build-info {
+  grid-column: 1;
+  font: 12px/1.3 system-ui, sans-serif;
+  color: var(--dim);
+}
+
+.build-slot.empty .build-info {
+  font-style: italic;
+}
+
+.build-btns {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+}
+
+.build-btns button {
+  min-width: 92px;
+  padding: 4px 10px;
+  font: 400 19px 'VT323', ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  color: #111;
+  background: var(--accent);
+  border: 0;
+  border-radius: 0;
+}
+
+.build-btns button + button {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.25);
+}
+
+.build-btns button:disabled {
+  opacity: 0.35;
 }
 
 .shop-hint {

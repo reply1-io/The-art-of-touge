@@ -1,7 +1,7 @@
 // The mountain's visuals: road (chunked for culling), terrain tiles, guardrails, streetlights at the
 // hairpins, cedar forest, the summit lake, the town at the bottom, and start / finish lines.
 import * as THREE from 'three';
-import { crossSection, HALF, RAIL, STEP } from './road.js';
+import { crossSection, HALF, PAVED, RAIL, STEP } from './road.js';
 import { TRACKS } from './tracks.js';
 import { Terrain, noise2 } from './terrain.js';
 import { buildMountainPhysics } from './mountainPhysics.js';
@@ -23,13 +23,18 @@ function asphaltTexture() {
     g.fillStyle = `rgb(${v},${v},${v + 3})`;
     g.fillRect(Math.random() * 64, Math.random() * 256, 1, 1);
   }
+  // The paved shoulders outside the white lines: a touch lighter and dustier, never polished.
+  const line = Math.round((64 * (PAVED - HALF)) / (2 * PAVED));
+  g.fillStyle = 'rgba(120,118,112,0.18)';
+  g.fillRect(0, 0, line, 256);
+  g.fillRect(64 - line, 0, line, 256);
   // Tyre-polished lines in each lane.
   g.fillStyle = 'rgba(20,20,22,0.25)';
-  for (const x of [10, 22, 40, 52]) g.fillRect(x - 2, 0, 4, 256);
+  for (const l of [2.55, 0.85, -0.85, -2.55]) g.fillRect((64 * (PAVED - l)) / (2 * PAVED) - 2, 0, 4, 256);
   // White edge lines and the yellow no-overtaking centre line.
   g.fillStyle = '#d9d9d2';
-  g.fillRect(1, 0, 2, 256);
-  g.fillRect(61, 0, 2, 256);
+  g.fillRect(line - 1, 0, 2, 256);
+  g.fillRect(64 - line - 1, 0, 2, 256);
   g.fillStyle = '#e0a51c';
   g.fillRect(30, 0, 1.5, 256);
   g.fillRect(32.5, 0, 1.5, 256);
@@ -180,7 +185,7 @@ export class Mountain {
         for (const k of asphaltCols) {
           const [l, dy] = sec[k];
           aPos.push(...road.pointAt(i, l, dy + 0.005));
-          aUv.push((HALF - l) / (2 * HALF), (i * STEP) / 10);
+          aUv.push((PAVED - l) / (2 * PAVED), (i * STEP) / 10);
         }
         if (i > i0) {
           for (let c = 0; c < sec.length - 1; c++) {
@@ -775,8 +780,8 @@ export class Mountain {
     tex.magFilter = THREE.NearestFilter;
     const mat = new THREE.MeshLambertMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -2 });
     for (const i of [road.startIndex, road.finishIndex]) {
-      const a = road.pointAt(i, HALF, 0.02);
-      const b = road.pointAt(i, -HALF, 0.02);
+      const a = road.pointAt(i, PAVED, 0.02);
+      const b = road.pointAt(i, -PAVED, 0.02);
       const h = road.heading[i];
       const f = [Math.sin(h) * 0.6, 0, Math.cos(h) * 0.6];
       const pos = [a[0] - f[0], a[1], a[2] - f[2], b[0] - f[0], b[1], b[2] - f[2], b[0] + f[0], b[1], b[2] + f[2], a[0] + f[0], a[1], a[2] + f[2]];

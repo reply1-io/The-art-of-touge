@@ -7,14 +7,15 @@
 import { AKINA_POINTS } from './akinaMap.js';
 
 export const STEP = 2; // metres between centreline samples
-export const HALF = 3.4; // half the asphalt width (two narrow lanes)
-export const SHOULDER = 4.6; // end of the gravel shoulder
+export const HALF = 3.4; // half the lane width, out to the white edge lines (two narrow lanes)
+export const PAVED = 4.2; // edge of the asphalt: a paved shoulder about half a car wide past the line
+export const SHOULDER = 5.4; // end of the gravel shoulder
 export const VERGE = 8.4; // end of the verge strip that blends into the terrain
-export const RAIL = 4.15; // guardrail line
+export const RAIL = 4.95; // guardrail line
 export const WALL = 9.6; // invisible wall line
 // Drainage gutter: a shallow concrete dish with sloped sides, so a tyre rolls in and out of it.
-export const GUTTER_IN = 3.62;
-export const GUTTER_OUT = 4.02;
+export const GUTTER_IN = 4.42;
+export const GUTTER_OUT = 4.82;
 export const GUTTER_DEPTH = 0.1;
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -320,11 +321,13 @@ export function crossSection(road, i) {
     [GUTTER_OUT, 0, gl > 0 ? 'gutter' : 'shoulder'],
     [GUTTER_OUT - 0.14, -gl, gl > 0 ? 'gutter' : 'shoulder'],
     [GUTTER_IN, -gl, gl > 0 ? 'gutter' : 'shoulder'],
+    [PAVED, 0, 'asphalt'],
     [HALF, 0, 'asphalt'],
     [HALF / 2, 0, 'asphalt'],
     [0, 0, 'asphalt'],
     [-HALF / 2, 0, 'asphalt'],
     [-HALF, 0, 'asphalt'],
+    [-PAVED, 0, 'asphalt'],
     [-GUTTER_IN, -gr, gr > 0 ? 'gutter' : 'shoulder'],
     [-(GUTTER_OUT - 0.14), -gr, gr > 0 ? 'gutter' : 'shoulder'],
     [-GUTTER_OUT, 0, gr > 0 ? 'gutter' : 'shoulder'],

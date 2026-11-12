@@ -49,10 +49,28 @@ export class Sky {
     pts.renderOrder = -9;
     this.group.add(pts);
 
-    this.discMat = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false, depthWrite: false });
+    // Transparent so it draws in the same pass as the clouds, after them: the sun shines in front.
+    this.discMat = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false, depthWrite: false, transparent: true });
     this.disc = new THREE.Mesh(new THREE.CircleGeometry(1, 24), this.discMat);
     this.disc.renderOrder = -8;
     this.group.add(this.disc);
+    // A soft halo of light around the sun (or moon). Drawn before the land, so peaks still hide it.
+    const gc = document.createElement('canvas');
+    gc.width = gc.height = 128;
+    const gg = gc.getContext('2d');
+    const grad = gg.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.12, 'rgba(255,255,255,0.75)');
+    grad.addColorStop(0.35, 'rgba(255,255,255,0.22)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    gg.fillStyle = grad;
+    gg.fillRect(0, 0, 128, 128);
+    const glowTex = new THREE.CanvasTexture(gc);
+    glowTex.colorSpace = THREE.SRGBColorSpace;
+    this.glowMat = new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, transparent: true });
+    this.glow = new THREE.Sprite(this.glowMat);
+    this.glow.renderOrder = -7.9;
+    this.group.add(this.glow);
 
     // A ring of clouds low in the sky.
     this.cloudMat = new THREE.MeshBasicMaterial({ map: cloudTexture(), transparent: true, depthWrite: false, fog: false });
@@ -64,7 +82,7 @@ export class Sky {
       const m = new THREE.Mesh(new THREE.PlaneGeometry(260 + (i % 4) * 90, 90 + (i % 3) * 30), this.cloudMat);
       m.position.set(Math.cos(a) * Math.cos(el) * d, Math.sin(el) * d, Math.sin(a) * Math.cos(el) * d);
       m.lookAt(0, m.position.y * 0.3, 0);
-      m.renderOrder = -7;
+      m.renderOrder = -8.5; // behind the sun, so it always shines through
       this.clouds.add(m);
     }
     this.group.add(this.clouds);
@@ -96,6 +114,10 @@ export class Sky {
     this.disc.scale.setScalar(preset.discSize);
     this.disc.position.copy(sunDir).multiplyScalar(1250);
     this.disc.lookAt(0, 0, 0);
+    this.glowMat.color.setHex(preset.glowColor ?? preset.disc);
+    this.glowMat.opacity = preset.glow ?? 0.5;
+    this.glow.scale.setScalar(preset.discSize * (preset.glowSize ?? 7));
+    this.glow.position.copy(sunDir).multiplyScalar(1240);
     this.cloudMat.color.setHex(preset.clouds);
     this.cloudMat.opacity = preset.cloudOpacity;
     this.clouds.visible = preset.cloudOpacity > 0.01;

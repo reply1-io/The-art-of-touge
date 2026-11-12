@@ -58,7 +58,7 @@ export class Input {
     }
 
     window.addEventListener('keydown', (e) => {
-      if (e.repeat) return;
+      if (e.repeat || e.target instanceof HTMLInputElement) return;
       this.keys.add(e.code);
       const gearKeys = { Digit1: 1, Digit2: 2, Digit3: 3, Digit4: 4, Digit5: 5, KeyR: -1, KeyN: 0, Digit0: 0 };
       if (e.code in gearKeys) this.events.push({ type: 'gear', gear: gearKeys[e.code] });

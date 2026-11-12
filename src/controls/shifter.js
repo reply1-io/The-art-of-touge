@@ -74,13 +74,16 @@ export class Shifter {
       g.lineTo(x1, y1);
       g.stroke();
     };
-    // Dark outline first, then the white gate, so it reads on any background.
-    for (const [style, width] of [
-      ['rgba(0,0,0,0.6)', lw + 4],
-      ['rgba(255,255,255,0.9)', lw],
+    // A dark channel with a soft amber line glowing in it, like the tachometer markings.
+    g.lineCap = 'round';
+    for (const [style, width, blur] of [
+      ['rgba(6,6,8,0.55)', lw + 6, 0],
+      ['rgba(255,150,50,0.9)', lw * 0.55, 10],
     ]) {
       g.strokeStyle = style;
       g.lineWidth = width;
+      g.shadowColor = 'rgba(255,140,26,0.9)';
+      g.shadowBlur = blur;
       line([0, 0], [COLS, 0]);
       for (const key of Object.keys(SLOTS)) {
         const [x, y] = key.split(',').map(Number);
@@ -96,18 +99,21 @@ export class Shifter {
       const [px, py] = this.#toPx([x, y * 1.62]);
       const label = gear === -1 ? 'R' : String(gear);
       const on = gear === this.gear;
-      const color = on ? '#39ff7a' : gear === -1 ? '#ff6b6b' : '#ffffff';
+      const color = on ? '#fff4e2' : gear === -1 ? '#ff6a3a' : '#ffb066';
+      g.shadowColor = 'rgba(255,140,26,0.95)';
+      g.shadowBlur = on ? 14 : 8;
       if (this.mode === 'tap') {
         // Each gear is a square pixel button.
-        g.fillStyle = on ? color : 'rgba(0,0,0,0.45)';
-        g.fillRect(Math.round(px - rad), Math.round(py - rad), Math.round(rad * 2), Math.round(rad * 2));
-        g.lineWidth = 3;
-        g.strokeStyle = color;
-        g.strokeRect(Math.round(px - rad), Math.round(py - rad), Math.round(rad * 2), Math.round(rad * 2));
+        g.fillStyle = on ? 'rgba(255,150,50,0.55)' : 'rgba(6,6,8,0.55)';
+        g.beginPath();
+        if (g.roundRect) g.roundRect(px - rad, py - rad, rad * 2, rad * 2, rad * 0.35);
+        else g.rect(px - rad, py - rad, rad * 2, rad * 2);
+        g.fill();
+        g.lineWidth = 2;
+        g.strokeStyle = 'rgba(255,150,50,0.9)';
+        g.stroke();
       }
-      g.fillStyle = '#000';
-      g.fillText(label, px + 2, py + 3);
-      g.fillStyle = on && this.mode === 'tap' ? '#000' : color;
+      g.fillStyle = color;
       g.fillText(label, px, py + 1);
     }
     g.shadowBlur = 0;

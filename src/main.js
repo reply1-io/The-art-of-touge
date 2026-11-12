@@ -4,6 +4,8 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { CAR } from './config.js';
 import { Vehicle } from './physics/vehicle.js';
+import { SoftBarrier } from './physics/barrier.js';
+import { RAIL } from './world/road.js';
 import { MODES, MODE_LABELS } from './physics/transmission.js';
 import { CarModel } from './render/carModel.js';
 import { CameraRig } from './render/camera.js';
@@ -17,6 +19,7 @@ import { Input } from './controls/input.js';
 import { Shifter } from './controls/shifter.js';
 import { Hud, formatTime } from './ui/hud.js';
 import { CarAudio } from './audio/carAudio.js';
+import { ExhaustEvents } from './audio/exhaust.js';
 import { TuningPanel } from './ui/tuning.js';
 import { Shop } from './ui/shop.js';
 import { loadSettings, saveSettings, loadTuning, saveTuning } from './settings.js';
@@ -110,6 +113,7 @@ const hud = new Hud($('hud'));
 const input = new Input($('controls'));
 const rig = new CameraRig(camera);
 const audio = new CarAudio();
+const exhaustEvents = new ExhaustEvents();
 rig.mode = settings.camera;
 
 let world;
@@ -117,6 +121,7 @@ let vehicle;
 let carModel;
 let shadow;
 let mountain;
+let barrier;
 const run = { phase: 'ready', time: 0, best: null, hint: -1 };
 const roadQ = {};
 let shifter;
@@ -305,6 +310,7 @@ shop.resize(window.innerWidth, window.innerHeight);
 $('btn-shop').addEventListener('click', () => shop.open());
 $('btn-shop2').addEventListener('click', () => shop.open());
 window.addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLInputElement) return; // typing a build name
   if (!running) {
     if (e.code === 'Enter') $('btn-drive').click();
     return;
@@ -424,6 +430,7 @@ function frame(now) {
     let steps = 0;
     while (accumulator >= DT && steps < MAX_STEPS) {
       vehicle.step(DT, controls);
+      barrier.apply(vehicle.body);
       world.step();
       capturePose();
       accumulator -= DT;
@@ -441,7 +448,18 @@ function frame(now) {
     toastTimer -= dt;
     if (toastTimer <= 0) $('toast').classList.remove('show');
   }
-  if (active) audio.update(vehicle, dt);
+  if (active) {
+    const ev = exhaustEvents.update(vehicle, dt, tune.exhaust);
+    audio.setExhaust(tune.exhaust || 'stock');
+    audio.update(vehicle, dt, ev);
+    // Race exhaust: little flames off the limiter, on shifts and on lift-off.
+    if (tune.exhaust === 'race') {
+      if (ev.lift) carModel.flame(1);
+      if (ev.shift) carModel.flame(0.8);
+      if (ev.limiter) carModel.flame(0.6);
+    }
+  }
+  carModel.updateFx(dt);
   $('start').classList.toggle('hidden', vehicle.engine.running);
   $('clutch').style.setProperty('--engaged', `${Math.round((1 - vehicle.trans.coupling) * 100)}%`);
 
@@ -506,6 +524,20 @@ async function boot() {
   mountain = new Mountain(world, scene, settings.map);
   vehicle = new Vehicle(world, CAR, tune, settings.mode);
   vehicle.surfaceOf = mountain.layout.surfaceOf;
+  // Guardrails are a cushion, not a wall: see physics/barrier.js.
+  const railQ = {};
+  barrier = new SoftBarrier((x, z, out) => {
+    const r = mountain.road;
+    r.query(x, z, run.hint, railQ);
+    const side = railQ.lateral > 0 ? 1 : -1;
+    if (!mountain.layout.rail[side][railQ.index]) return false;
+    const pen = Math.abs(railQ.lateral) - (RAIL - 0.45);
+    if (pen <= 0 || pen > 1.5) return false;
+    out.pen = pen;
+    out.nx = -side * Math.cos(railQ.heading);
+    out.nz = side * Math.sin(railQ.heading);
+    return true;
+  });
   carModel = new CarModel(CAR);
   carModel.applySetup(tune);
   scene.add(carModel.root);
