@@ -20,6 +20,7 @@ import { Hud, formatTime } from './ui/hud.js';
 import { CarAudio } from './audio/carAudio.js';
 import { ExhaustEvents } from './audio/exhaust.js';
 import { DriftScore } from './game/drift.js';
+import { Wallet, money } from './game/wallet.js';
 import { Sparks } from './render/sparks.js';
 import { Deer } from './world/deer.js';
 import { Online } from './net/online.js';
@@ -321,12 +322,17 @@ $('btn-cam').addEventListener('click', () => {
   renderChoices();
 });
 $('btn-tuning').addEventListener('click', () => tuning.toggle());
+const wallet = new Wallet(tune);
 const shop = new Shop($('shop'), tune, () => {
   saveTuning(tune);
   carModel?.applySetup(tune);
   online?.sendLook(tune);
   headlight.color.setHex((HEADLIGHTS[tune.headlights] || HEADLIGHTS.white)[1]);
-});
+}, wallet);
+wallet.onChange = () => {
+  for (const el of document.querySelectorAll('.title-money')) el.textContent = money(wallet.money);
+};
+wallet.onChange();
 shopRef = shop;
 shop.resize(window.innerWidth, window.innerHeight);
 $('btn-shop').addEventListener('click', () => shop.open());
