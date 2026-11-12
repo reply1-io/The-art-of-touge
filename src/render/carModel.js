@@ -277,16 +277,20 @@ function detailPolys() {
     for (const sgn of [1, -1]) chrome.push({ pts: [[x + sgn * 0.07, 0.572, zn], [x + sgn * 0.07, 0.572, z], [x + sgn * 0.066, 0.738, z], [x + sgn * 0.066, 0.738, zn]], color: CHROME, out: [sgn, 0, 0] });
   }
   // Chrome-style bumpers with a black rubber strip, standing proud of the body.
+  // Bumpers are body colour (painted with the car), with a black rubber strip along the face.
+  const dam = [];
   const bumper = (z0, z1, y0, y1, hw) => {
     const b = [];
     const d = Math.sign(z1);
-    const face = (pts, out) => b.push({ pts, color: CHROME, out });
+    const face = (pts, out) => dam.push({ pts, out });
     face([[hw, y0, z1], [hw, y1, z1], [-hw, y1, z1], [-hw, y0, z1]], [0, 0, d]);
     face([[hw, y1, z0], [hw, y1, z1], [-hw, y1, z1], [-hw, y1, z0]], [0, 1, 0]);
     face([[hw, y0, z0], [hw, y0, z1], [-hw, y0, z1], [-hw, y0, z0]], [0, -1, 0]);
     face([[hw, y0, z0], [hw, y1, z0], [hw, y1, z1], [hw, y0, z1]], [1, 0, 0]);
     face([[-hw, y0, z0], [-hw, y1, z0], [-hw, y1, z1], [-hw, y0, z1]], [-1, 0, 0]);
-    b.push({ pts: [[hw, y0 + 0.045, z1 + d * 0.004], [hw, y1 - 0.05, z1 + d * 0.004], [-hw, y1 - 0.05, z1 + d * 0.004], [-hw, y0 + 0.045, z1 + d * 0.004]], color: TRIM, out: [0, 0, d] });
+    const m = (y0 + y1) / 2;
+    const half = Math.min(0.03, (y1 - y0) * 0.22);
+    b.push({ pts: [[hw, m - half, z1 + d * 0.004], [hw, m + half, z1 + d * 0.004], [-hw, m + half, z1 + d * 0.004], [-hw, m - half, z1 + d * 0.004]], color: TRIM, out: [0, 0, d] });
     return b;
   };
   chrome.push(...bumper(NOSE - 0.04, NOSE + 0.08, 0.445, 0.525, 0.835));
@@ -296,7 +300,6 @@ function detailPolys() {
     trim.push({ pts: [[side * 0.6, 0.462, NOSE + 0.086], [side * 0.78, 0.462, NOSE + 0.086], [side * 0.78, 0.508, NOSE + 0.086], [side * 0.6, 0.508, NOSE + 0.086]], color: AMBER, out: [0, 0, 1] });
   }
   // Body-coloured air dam under the bumper, with dark vents and a black lip along the bottom.
-  const dam = [];
   const zd = NOSE + 0.05;
   dam.push({ pts: [[0.81, 0.25, zd], [0.81, 0.445, NOSE + 0.03], [-0.81, 0.445, NOSE + 0.03], [-0.81, 0.25, zd]], out: [0, -0.15, 1] });
   for (const side of [1, -1]) dam.push({ pts: [[side * 0.81, 0.25, zd], [side * 0.81, 0.445, NOSE + 0.03], [side * 0.81, 0.445, NOSE - 0.08], [side * 0.81, 0.25, NOSE - 0.08]], out: [side, 0, 0] });
