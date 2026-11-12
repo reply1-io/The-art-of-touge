@@ -20,7 +20,8 @@ function exhaustWave(ctx) {
   const n = 24;
   const real = new Float32Array(n);
   const imag = new Float32Array(n);
-  const amps = [0, 1, 0.75, 0.42, 0.5, 0.28, 0.3, 0.16, 0.2, 0.1, 0.12, 0.07, 0.08, 0.05, 0.05, 0.04];
+  // Weighted to the low harmonics for a deep, throaty note.
+  const amps = [0, 1, 0.6, 0.3, 0.22, 0.1, 0.08, 0.04, 0.03, 0.02, 0.015, 0.01];
   for (let i = 1; i < n; i++) imag[i] = (amps[i] ?? 0.03) * (i % 2 ? 1 : -1);
   return ctx.createPeriodicWave(real, imag);
 }
@@ -85,7 +86,7 @@ export class CarAudio {
     this.engineFilter.type = 'lowpass';
     this.engineFilter.Q.value = 1.2;
     this.drive = ctx.createWaveShaper();
-    this.drive.curve = driveCurve(2.2);
+    this.drive.curve = driveCurve(1.6);
     this.engineGain = ctx.createGain();
     this.engineGain.gain.value = 0;
     this.drive.connect(this.engineFilter).connect(this.engineGain).connect(this.master);
@@ -105,15 +106,15 @@ export class CarAudio {
     this.fire.connect(this.fireGain).connect(this.drive);
     // Half-order layer: uneven firing gives a four-pot its throb at idle.
     this.lump = ctx.createOscillator();
-    this.lump.type = 'triangle';
+    this.lump.type = 'sawtooth';
     this.lumpGain = ctx.createGain();
-    this.lumpGain.gain.value = 0.25;
+    this.lumpGain.gain.value = 0.5;
     this.lump.connect(this.lumpGain).connect(this.drive);
     // Slight detuned twin for a fuller note.
     this.fire2 = ctx.createOscillator();
     this.fire2.setPeriodicWave(wave);
     this.fire2Gain = ctx.createGain();
-    this.fire2Gain.gain.value = 0.22;
+    this.fire2Gain.gain.value = 0.15;
     this.fire2.connect(this.fire2Gain).connect(this.drive);
     for (const o of [this.fire, this.lump, this.fire2]) o.start();
 
@@ -298,16 +299,17 @@ export class CarAudio {
     this.fire.frequency.setTargetAtTime(f, t, 0.012);
     this.fire2.frequency.setTargetAtTime(f * 1.006, t, 0.012);
     this.lump.frequency.setTargetAtTime(f / 2, t, 0.012);
-    this.resonance.frequency.setTargetAtTime(clamp(f * 2.2, 120, 1800), t, 0.03);
-    this.engineFilter.frequency.setTargetAtTime(380 + load * 3200 + rpm * 0.35, t, 0.03);
-    this.lumpGain.gain.setTargetAtTime(0.32 - clamp(rpm / 6000, 0, 1) * 0.22, t, 0.05);
+    this.resonance.frequency.setTargetAtTime(clamp(f * 0.9, 60, 500), t, 0.03);
+    this.engineFilter.frequency.setTargetAtTime(220 + load * 900 + rpm * 0.1, t, 0.03);
+    // The half-order rumble carries the low end, strongest at low revs.
+    this.lumpGain.gain.setTargetAtTime(0.6 - clamp(rpm / 7000, 0, 1) * 0.25, t, 0.05);
     const turning = clamp(rpm / 500, 0, 1);
     let level = running ? 0.16 + load * 0.3 + (rpm / 7000) * 0.14 : 0.25 * turning * clamp(rpm / 1500, 0, 1);
     // Rev limiter: the fuel cut chops the note.
     if (e.limiterCut) level *= 0.35;
     this.engineGain.gain.setTargetAtTime(level, t, e.limiterCut !== this.limiterWas ? 0.004 : 0.02);
     this.limiterWas = e.limiterCut;
-    this.intakeFilter.frequency.setTargetAtTime(f * 4, t, 0.03);
+    this.intakeFilter.frequency.setTargetAtTime(f * 1.6, t, 0.03);
     this.intakeGain.gain.setTargetAtTime(running ? load * 0.12 * clamp(rpm / 6000, 0.2, 1) : 0, t, 0.04);
 
     // Events: stall, start, lift-off pops, downshift blips.

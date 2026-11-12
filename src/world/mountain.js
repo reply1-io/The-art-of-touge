@@ -1,7 +1,8 @@
 // The mountain's visuals: road (chunked for culling), terrain tiles, guardrails, streetlights at the
 // hairpins, cedar forest, the summit lake, the town at the bottom, and start / finish lines.
 import * as THREE from 'three';
-import { Road, crossSection, HALF, RAIL, STEP } from './road.js';
+import { crossSection, HALF, RAIL, STEP } from './road.js';
+import { TRACKS } from './tracks.js';
 import { Terrain, noise2 } from './terrain.js';
 import { buildMountainPhysics } from './mountainPhysics.js';
 
@@ -79,10 +80,11 @@ const COLORS = {
 };
 
 export class Mountain {
-  constructor(world, scene) {
+  constructor(world, scene, trackId = 'akina') {
     this.scene = scene;
-    this.road = new Road();
-    this.terrain = new Terrain(this.road);
+    this.track = TRACKS[trackId] || TRACKS.akina;
+    this.road = this.track.road();
+    this.terrain = new Terrain(this.road, { margin: this.road.length > 6000 ? 180 : 260 });
     this.layout = buildMountainPhysics(world, this.road, this.terrain);
     this.chunks = []; // { group, x, z, r }
     this.#buildRoad();
@@ -278,7 +280,7 @@ export class Mountain {
     const road = this.road;
     const spots = [];
     let last = -100;
-    for (let i = 10; i < road.count - 10; i++) {
+    for (let i = 10; i < road.count - 10 && this.track.cornerLights; i++) {
       const k = road.kappa[i];
       if (Math.abs(k) > 1 / 22 && i - last > 25) {
         let best = i;

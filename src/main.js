@@ -10,6 +10,7 @@ import { CameraRig } from './render/camera.js';
 import { VhsRenderer } from './render/vhs.js';
 import { Mountain } from './world/mountain.js';
 import { Sky } from './world/sky.js';
+import { TRACKS } from './world/tracks.js';
 import { Input } from './controls/input.js';
 import { Shifter } from './controls/shifter.js';
 import { Hud, formatTime } from './ui/hud.js';
@@ -112,7 +113,9 @@ function renderChoices() {
     const options =
       key === 'mode'
         ? MODES.map((m) => [m, MODE_LABELS[m]])
-        : key === 'picture'
+        : key === 'map'
+          ? Object.entries(TRACKS).map(([id, t]) => [id, t.name])
+          : key === 'picture'
           ? [['sharp', 'Sharp'], ['retro', 'Retro pixels']]
           : key === 'sound' || key === 'vhs'
           ? [[true, 'On'], [false, 'Off']]
@@ -128,6 +131,13 @@ function renderChoices() {
       b.textContent = label;
       if (settings[key] === value) b.classList.add('sel');
       b.addEventListener('click', () => {
+        // Switching road rebuilds the whole world: save and reload.
+        if (key === 'map' && settings.map !== value) {
+          settings.map = value;
+          saveSettings(settings);
+          location.reload();
+          return;
+        }
         settings[key] = value;
         saveSettings(settings);
         applySettings();
@@ -378,7 +388,7 @@ async function boot() {
   world.timestep = DT;
   $('loading').textContent = 'Building the mountain…';
   await new Promise((r) => setTimeout(r, 30));
-  mountain = new Mountain(world, scene);
+  mountain = new Mountain(world, scene, settings.map);
   vehicle = new Vehicle(world, CAR, tune, settings.mode);
   carModel = new CarModel(CAR);
   scene.add(carModel.root);

@@ -72,12 +72,15 @@ function catmullRom(pts, perSegment = 24) {
 }
 
 export class Road {
-  constructor(points = AKINA_POINTS, targetLength = 5000) {
+  // points: map pixels scaled to targetLength, or (opts.world) world metres used as they are.
+  // opts.gradeBase / opts.twistGain shape the elevation profile.
+  constructor(points = AKINA_POINTS, targetLength = 5000, opts = {}) {
+    const { world: inMetres = false, gradeBase = 0.058, twistGain = 1.1 } = opts;
     // ---- Plan view: spline, scale to length, resample at STEP ----
-    const dense = catmullRom(points);
+    const dense = inMetres ? points : catmullRom(points);
     let pxLength = 0;
     for (let i = 1; i < dense.length; i++) pxLength += Math.hypot(dense[i][0] - dense[i - 1][0], dense[i][1] - dense[i - 1][1]);
-    this.mapScale = targetLength / pxLength;
+    this.mapScale = inMetres ? 1 : targetLength / pxLength;
     const world = dense.map(([px, py]) => [px * this.mapScale, py * this.mapScale]);
     const cum = [0];
     for (let i = 1; i < world.length; i++) cum.push(cum[i - 1] + Math.hypot(world[i][0] - world[i - 1][0], world[i][1] - world[i - 1][1]));
@@ -122,8 +125,8 @@ export class Road {
     const grade = new Float64Array(n);
     for (let i = 0; i < n; i++) {
       const s = i * STEP;
-      let g = 0.058 + 0.075 * Math.sin(s / 190 + 0.5) + 0.035 * Math.sin(s / 71 + 2) + 0.015 * Math.sin(s / 37 + 1);
-      g += clamp(twist[i] * 1.1, 0, 0.04);
+      let g = gradeBase + 0.075 * Math.sin(s / 190 + 0.5) + 0.035 * Math.sin(s / 71 + 2) + 0.015 * Math.sin(s / 37 + 1);
+      g += clamp(twist[i] * twistGain, 0, 0.04);
       g = clamp(g, -0.06, 0.135);
       if (s < 90) g = 0.008;
       if (s > this.length - 140) g = 0.004;

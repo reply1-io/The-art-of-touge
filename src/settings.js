@@ -12,6 +12,7 @@ const DEFAULTS = {
   shifter: 'drag', // 'drag' | 'tap'
   vhs: true,
   picture: 'sharp', // 'sharp' | 'retro'
+  map: 'akina', // 'akina' | 'dragon'
 };
 
 function read(key) {

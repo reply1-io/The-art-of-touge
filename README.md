@@ -32,6 +32,9 @@ JavaScript, no backend. Builds to a static site.
   at the hairpins, cedar forest, lit houses in town.
 - **Timing:** the clock starts at the start line and stops at the finish (best time for this visit).
 
+- **Dragon's Tail:** a second road in the spirit of the Tail of the Dragon (US 129): 8 km, about
+  175 corners, nothing straighter than about 10 m. Pick the road on the title screen or in the menu.
+
 Coming next: Phase 3 (saved best time, ghost replay, instant restart, polish), Phase 4 (deploy steps).
 
 ## Keyboard (desktop testing)
@@ -47,3 +50,12 @@ npm run dev      # local dev server (also reachable from a phone on the same Wi-
 npm test         # headless physics tests
 npm run build    # static site in dist/
 ```
+
+## Play full screen
+
+The game is published to GitHub Pages by `.github/workflows/pages.yml` on every push.
+
+1. One-time setup: repository **Settings → Pages → Source: Deploy from a branch → Branch: `gh-pages`, `/ (root)`** → Save.
+2. Open **https://reply1-io.github.io/The-art-of-touge/** on your phone.
+3. iPhone: Share → **Add to Home Screen**. Android: ⋮ → **Add to Home screen** / **Install app**.
+4. Launch it from the home-screen icon: it opens full screen in landscape with no browser bars.
