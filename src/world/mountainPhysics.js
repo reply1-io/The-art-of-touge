@@ -2,6 +2,7 @@
 // the invisible walls. Rapier only, so it can be tested in Node.
 import RAPIER from '@dimforge/rapier3d-compat';
 import { crossSection, barrierLayout, RAIL, GUTTER_OUT, SHOULDER } from './road.js';
+import { ZONE_INNER, stationLayout, showLayout } from './stops.js';
 
 function yawQuat(yaw) {
   return { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) };
@@ -76,6 +77,52 @@ export function buildMountainPhysics(world, road, terrain) {
 
   // Guardrails and invisible walls.
   const layout = barrierLayout(road, terrain);
+  // Pull-offs and lots: no rail between them and the road, the invisible wall moved out past them,
+  // a drivable asphalt surface, a rail round the outer edge, and solid pumps and buildings.
+  const zones = terrain.zones || [];
+  for (const z of zones) {
+    for (let j = z.i0; j <= z.i1; j++) {
+      layout.rail[z.side][j] = 0;
+      layout.wall[z.side][j] = Math.max(layout.wall[z.side][j], z.outerAt(j) + 1.6);
+    }
+    const cols = 7;
+    const zv = [];
+    const zi = [];
+    for (let j = z.i0; j <= z.i1; j++) {
+      const outer = Math.max(z.outerAt(j), ZONE_INNER + 0.3);
+      for (let c = 0; c < cols; c++) {
+        const l = ZONE_INNER + ((outer - ZONE_INNER) * c) / (cols - 1);
+        const p = road.pointAt(j, z.side * l);
+        zv.push(p[0], z.heightAt(road, j, l), p[2]);
+      }
+    }
+    for (let r = 0; r < z.i1 - z.i0; r++) {
+      for (let c = 0; c < cols - 1; c++) {
+        const a = r * cols + c;
+        zi.push(a, a + cols, a + 1, a + 1, a + cols, a + cols + 1);
+      }
+    }
+    const col = world.createCollider(RAPIER.ColliderDesc.trimesh(new Float32Array(zv), new Uint32Array(zi)).setFriction(1.0));
+    byHandle.set(col.handle, 'asphalt');
+    const edge = [];
+    for (let j = z.i0; j <= z.i1; j += 2) {
+      const l = z.outerAt(j) + 0.3;
+      const p = road.pointAt(j, z.side * l);
+      edge.push([p[0], z.heightAt(road, j, l), p[2]]);
+    }
+    boxRun(world, edge, 0.08, 0.85, 0, 0.15);
+    const solid = (pt, hx, hy, hz) =>
+      world.createCollider(RAPIER.ColliderDesc.cuboid(hx, hy, hz).setTranslation(pt.x, pt.y + hy, pt.z).setRotation(yawQuat(pt.yaw)));
+    if (z.kind === 'station') {
+      const st = stationLayout(road, z);
+      for (const p of st.pumps) solid(p, 0.45, 0.9, 0.35);
+      for (const p of st.pillars) solid(p, 0.2, 2.5, 0.2);
+      solid(st.kiosk, 2.6, 1.6, 4.2);
+    } else if (z.kind === 'show') {
+      solid(showLayout(road, z).cabin, 3.2, 1.8, 2.6);
+    }
+  }
+  layout.zones = zones;
   for (const side of [1, -1]) {
     let run = [];
     const flush = () => {

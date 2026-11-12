@@ -6,6 +6,7 @@
 // natural slope: the uphill side becomes a steep cut (rock), the downhill side a drop.
 
 import { HALF, VERGE, STEP } from './road.js';
+import { stopsFor, ZONE_INNER } from './stops.js';
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const smoothstep = (a, b, x) => {
@@ -116,6 +117,9 @@ export class Terrain {
     // rises into wooded ridges and falls into valleys; near it, nothing changes.
     this.relief = relief;
     this.#buildFarDistance();
+
+    // Pull-offs, the gas station and the car-show lot: the ground is levelled under them.
+    this.zones = stopsFor(road);
 
     this.heights = new Float32Array(this.nx * this.nz);
     this.roadDist = new Float32Array(this.nx * this.nz);
@@ -258,6 +262,27 @@ export class Terrain {
     if (near.d < Infinity) {
       const t = smoothstep(VERGE - 0.5, VERGE + 16, near.d);
       h = near.h - 0.7 + (h - (near.h - 0.7)) * t;
+      h = this.#levelZones(x, z, near.i, h);
+    }
+    return h;
+  }
+
+  // Level the ground just under a zone's surface, blending back to the hillside around it.
+  #levelZones(x, z, i, h) {
+    const road = this.road;
+    const hd = road.heading[i];
+    const lat = (x - road.x[i]) * Math.cos(hd) - (z - road.z[i]) * Math.sin(hd);
+    const side = lat >= 0 ? 1 : -1;
+    const l = Math.abs(lat);
+    if (l < 3) return h;
+    for (const zn of this.zones) {
+      if (zn.side !== side || i < zn.i0 - 8 || i > zn.i1 + 8) continue;
+      const k = clamp(i, zn.i0, zn.i1);
+      const outer = zn.outerAt(k);
+      const target = zn.heightAt(road, k, l) - 0.25;
+      const along = smoothstep(8, 0, i < zn.i0 ? zn.i0 - i : i > zn.i1 ? i - zn.i1 : 0);
+      const t = smoothstep(outer + 9, outer + 1, l) * along;
+      h += (target - h) * t;
     }
     return h;
   }

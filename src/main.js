@@ -22,6 +22,7 @@ import { CarAudio } from './audio/carAudio.js';
 import { ExhaustEvents } from './audio/exhaust.js';
 import { DriftScore } from './game/drift.js';
 import { Sparks } from './render/sparks.js';
+import { Deer } from './world/deer.js';
 import { HEADLIGHTS } from './config.js';
 import { TuningPanel } from './ui/tuning.js';
 import { Shop } from './ui/shop.js';
@@ -122,6 +123,7 @@ const audio = new CarAudio();
 const exhaustEvents = new ExhaustEvents();
 const drift = new DriftScore();
 let sparks;
+let deer;
 const sparkP = new THREE.Vector3();
 const sparkPush = new THREE.Vector3();
 rig.mode = settings.camera;
@@ -245,6 +247,7 @@ function placeCar(pose) {
   if (vehicle.mode === 'auto') vehicle.trans.setDrive('D', 0);
   shifter.setGear(vehicle.trans.gear);
   run.hint = pose.index;
+  deer?.clear();
   rig.snap();
   capturePose();
   capturePose();
@@ -498,6 +501,7 @@ function frame(now) {
     if (steps === MAX_STEPS) accumulator = 0;
     updateRun(dt);
     throwSparks();
+    deer.update(dt, run.hint, Math.max(0, vehicle.forwardSpeed));
     drift.update(dt, vehicle, barrier.touching && barrier.impact > 9000);
     const tr = vehicle.trans;
     if (tr.messageTimer > 0 && tr.message) {
@@ -617,6 +621,7 @@ async function boot() {
   headlight.color.setHex((HEADLIGHTS[tune.headlights] || HEADLIGHTS.white)[1]);
   scene.add(carModel.root);
   sparks = new Sparks(scene);
+  deer = new Deer(scene, mountain.road, mountain.terrain);
   // Blob shadow rides under the car, at ground level in the car's own frame.
   shadow = blobShadow();
   shadow.position.y = -0.6;
@@ -631,7 +636,7 @@ async function boot() {
   $('loading').textContent = '';
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { get sparksDbg() { return sparks; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;
