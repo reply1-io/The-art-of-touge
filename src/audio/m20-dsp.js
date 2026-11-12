@@ -13,7 +13,8 @@
 // Per-cylinder strength differences and cycle-to-cycle jitter put energy at the
 // half orders (cam rate), which is what makes it sound like an engine, not a buzzer.
 // Motronic cuts fuel on overrun, so off-throttle above idle the pulses are just
-// pumped air: weaker and duller, with the odd pop.
+// pumped air: weaker and duller. A proper lift-off from high revs can give a
+// couple of pops (more with the sport exhaust); limiter and shift cuts never do.
 
 export const FIRING = [1, 5, 3, 6, 2, 4];
 export const TAU = Math.PI * 2;
@@ -97,7 +98,11 @@ export class M20Dsp {
     this.starterBp = new Biquad().set('bp', 1100, 0.9, 0, fs);
     this.starterPh = 0;
     this.tickEnv = 0;
-    this.popEnv = 0;
+    this.popEnv = 0;           // pressure kick from an afterfire, goes through the exhaust
+    this.popLp = 0;
+    this.offT = 0;             // seconds since the throttle closed
+    this.popArmed = false;     // was there real load at high rpm before the lift?
+    this.popBudget = 0;        // pops left for this lift-off
     this.coef = 0;
     // scope: one engine cycle of output, posted ~12x/s
     this.cyc = new Float32Array(Math.ceil(fs * 0.4)); this.cycN = 0; this.sincePost = 0;
@@ -116,6 +121,17 @@ export class M20Dsp {
 
   _control(n) {
     const c = this.c, t = this.target, dt = this.clock - this.modeT0;
+    // lift-off tracking for afterfire pops
+    if (c.throttle < 0.06) {
+      if (this.offT === 0 && this.popArmed && this.rpmS > 3500) {
+        this.popBudget = Math.floor(Math.random() * (1.6 + 2.5 * c.exhaust)); // stock 0-1, sport 0-3
+      }
+      this.popArmed = false;
+      this.offT += n / this.fs;
+    } else {
+      this.offT = 0;
+      if (c.throttle > 0.6 && this.rpmS > 3500) this.popArmed = true;
+    }
     c.exhaust += (t.exhaust - c.exhaust) * 0.05;
     if (this.mode === 'crank') {
       c.rpm = crankRpm(dt); c.throttle = 0;
@@ -191,14 +207,19 @@ export class M20Dsp {
           const j = 0.07 + 0.08 * nearIdle + 0.03 * (1 - ign);
           this.jit[k] = Math.max(0.5, 1 + j * randn());
           this.tjit[k] = 3.5 * randn();
-          // overrun pop: unburnt mixture lighting in the hot pipe
-          this.pop[k] = overrun && ign > 0.5 && rpm > 2600 && Math.random() < 0.012 * (rpm / 4000) ? 1 : 0;
-          if (this.pop[k]) this.popEnv = 1;
+          // afterfire: only well into a real lift-off (not limiter or shift cuts), a few at most
+          this.pop[k] = 0;
+          if (this.popBudget > 0 && overrun && ign > 0.5 && rpm > 2400 &&
+              this.offT > 0.35 && this.offT < 1.8 && Math.random() < 0.035) {
+            this.pop[k] = 0.5 + 0.7 * Math.random();
+            this.popEnv = this.pop[k];
+            this.popBudget--;
+          }
           this.tickEnv = 1;
         }
         this.lastX[k] = x;
         const p = this.pulse(x, width);
-        const amp = this.cylGain[k] * this.jit[k] * (load + pump + this.pop[k] * 1.6);
+        const amp = this.cylGain[k] * this.jit[k] * (load + pump + this.pop[k] * 0.9);
         const v = p * amp;
         if (FIRING[k] <= 3) a += v; else b += v;
         env += v;
@@ -212,7 +233,11 @@ export class M20Dsp {
       const hA = this.hdrA.read(dA), hB = this.hdrB.read(dB);
       this.hdrA.write(a - 0.32 * hA);
       this.hdrB.write(b - 0.32 * hB);
-      const coll = hA + hB;
+      // afterfire kick: a short low-passed burst entering the pipe, so the
+      // muffler shapes it into a thud-crack rather than a digital click
+      this.popEnv *= 0.9965;
+      this.popLp += ((this.popEnv > 0.005 ? randn() * this.popEnv : 0) - this.popLp) * 0.25;
+      const coll = hA + hB + this.popLp * 1.4;
 
       // exhaust pipe ~3.1 m: inverted, lossy reflection from the open end
       const dP = fs * (3.1 / 343) * 2;
@@ -229,7 +254,10 @@ export class M20Dsp {
 
       // rasp: turbulence that rides on each pulse, grows with rpm and load
       const raspAmt = (0.05 + 0.22 * thr) * Math.min(1.3, rpm / 4500) * (0.7 + exh * 0.8);
-      y += this.raspHp.run(this.raspBp.run(randn() * env)) * raspAmt;
+      // the crack on top of an afterfire: short (popEnv^3 decays fast), band-limited by the
+      // rasp filter, and quieter through the stock muffler
+      const crack = this.popEnv > 0.02 ? randn() * this.popEnv ** 3 * (0.35 + 0.65 * exh) : 0;
+      y += this.raspHp.run(this.raspBp.run(randn() * env * raspAmt + crack * 0.9));
 
       // intake roar (heard more than you'd think with the throttle open)
       y += this.intakeBp.run(randn() * inEnv) * 0.10 * thr * (0.3 + rpm / 6500);
@@ -238,9 +266,6 @@ export class M20Dsp {
       this.tickEnv *= 0.9;
       y += this.tickHp.run(randn() * this.tickEnv) * 0.012 * Math.min(1, rpm / 3000);
 
-      // overrun pop crack
-      this.popEnv *= 0.993;
-      y += this.popEnv > 0.01 ? randn() * this.popEnv * 0.5 : 0;
 
       // starter motor whine (pinion ~ 11x crank speed) with gear grind
       if (st > 0.001) {

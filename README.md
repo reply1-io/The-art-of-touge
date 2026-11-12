@@ -6,7 +6,7 @@ The engine sound is fully procedural: no recordings, synthesized live in the bro
 
 | Path | What it is |
 | --- | --- |
-| `src/audio/m20-dsp.js` | The synth itself: six exhaust pulses per cycle in firing order 1-5-3-6-2-4, two 3-into-1 manifolds, the exhaust pipe, the muffler, rasp, intake, overrun fuel cut and pops, plus the starter motor. |
+| `src/audio/m20-dsp.js` | The synth itself: six exhaust pulses per cycle in firing order 1-5-3-6-2-4, two 3-into-1 manifolds, the exhaust pipe, the muffler, rasp, intake, overrun fuel cut and pops, plus the starter motor. Afterfire pops only on a real lift-off from above 3,500 rpm (stock about 1 in 2 lifts, sport 1-3), never on limiter or shift cuts. |
 | `src/audio/M20EngineSound.js` | What the game calls: `setRpm`, `setThrottle`, `setExhaust`, `startWithCrank`, `stop`. Runs the synth in an AudioWorklet, or on the main thread if the browser blocks that. Create and resume the `AudioContext` inside the tap/click handler, before any `await`, or phones stay silent. |
 | `engine-sound-demo.html` | Tach, gas/brake pedals, free rev / drive / manual modes, stock/sport exhaust, live scope of one engine cycle. |
 
