@@ -34,17 +34,32 @@ export function buildMountainPhysics(world, road, terrain) {
       verts.set(p, (i * cols + c) * 3);
     });
   }
-  const idx = [];
-  for (let i = 0; i < road.count - 1; i++) {
-    for (let c = 0; c < cols - 1; c++) {
-      const a = i * cols + c;
-      const b = a + 1;
-      const d = a + cols;
-      const e = d + 1;
-      idx.push(a, d, b, b, d, e);
+  // One triangle mesh per surface, so the tyres can tell asphalt from gravel and grass.
+  const kinds = crossSection(road, 0).map(([, , kind]) => (kind === 'asphalt' || kind === 'gutter' ? 'asphalt' : kind === 'shoulder' ? 'gravel' : 'grass'));
+  // Columns between the gutter lips count as asphalt (the gutter is concrete).
+  const surfaceOfColumn = (c) => {
+    const a = kinds[c];
+    const b = kinds[c + 1];
+    if (a === 'asphalt' && b === 'asphalt') return 'asphalt';
+    const off = Math.abs(crossSection(road, 0)[c][0]) + Math.abs(crossSection(road, 0)[c + 1][0]);
+    return off / 2 < 3.9 ? 'asphalt' : off / 2 < 4.7 ? 'gravel' : 'grass';
+  };
+  const byHandle = new Map();
+  for (const surface of ['asphalt', 'gravel', 'grass']) {
+    const idx = [];
+    for (let i = 0; i < road.count - 1; i++) {
+      for (let c = 0; c < cols - 1; c++) {
+        if (surfaceOfColumn(c) !== surface) continue;
+        const a = i * cols + c;
+        const b = a + 1;
+        const d = a + cols;
+        const e = d + 1;
+        idx.push(a, d, b, b, d, e);
+      }
     }
+    const col = world.createCollider(RAPIER.ColliderDesc.trimesh(verts, new Uint32Array(idx)).setFriction(1.0));
+    byHandle.set(col.handle, surface);
   }
-  world.createCollider(RAPIER.ColliderDesc.trimesh(verts, new Uint32Array(idx)).setFriction(1.0));
 
   // Terrain heightfield (Rapier: rows along z, columns along x, column-major).
   const { nx, nz, cell, heights } = terrain;
@@ -52,11 +67,12 @@ export function buildMountainPhysics(world, road, terrain) {
   for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < nx; ix++) hf[iz + ix * nz] = heights[iz * nx + ix];
   const sx = (nx - 1) * cell;
   const sz = (nz - 1) * cell;
-  world.createCollider(
+  const ground = world.createCollider(
     RAPIER.ColliderDesc.heightfield(nz - 1, nx - 1, hf, { x: sx, y: 1, z: sz })
       .setTranslation(terrain.x0 + sx / 2, 0, terrain.z0 + sz / 2)
       .setFriction(0.8),
   );
+  byHandle.set(ground.handle, 'grass');
 
   // Guardrails and invisible walls.
   const layout = barrierLayout(road, terrain);
@@ -90,5 +106,6 @@ export function buildMountainPhysics(world, road, terrain) {
         .setRotation(yawQuat(h)),
     );
   }
+  layout.surfaceOf = (handle) => byHandle.get(handle) || 'asphalt';
   return layout;
 }

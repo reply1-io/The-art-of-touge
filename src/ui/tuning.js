@@ -3,7 +3,7 @@
 import { TUNABLE_DEFAULTS, TUNABLE_RANGES } from '../config.js';
 
 const LABELS = {
-  grip: 'Tyre grip (mu)',
+  grip: 'Grip multiplier',
   springFront: 'Spring front (N/m)',
   springRear: 'Spring rear (N/m)',
   damping: 'Damping ratio',

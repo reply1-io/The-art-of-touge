@@ -2,7 +2,7 @@
 import { TUNABLE_DEFAULTS } from './config.js';
 
 const KEY = 'touge.settings.v4';
-const TUNE_KEY = 'touge.tuning.v2';
+const TUNE_KEY = 'touge.tuning.v3';
 
 const DEFAULTS = {
   mode: 'manual', // 'manual' | 'autoClutch' | 'auto'

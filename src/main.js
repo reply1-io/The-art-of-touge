@@ -16,6 +16,7 @@ import { Shifter } from './controls/shifter.js';
 import { Hud, formatTime } from './ui/hud.js';
 import { CarAudio } from './audio/carAudio.js';
 import { TuningPanel } from './ui/tuning.js';
+import { Shop } from './ui/shop.js';
 import { loadSettings, saveSettings, loadTuning, saveTuning } from './settings.js';
 
 const DT = 1 / 60; // fixed physics step
@@ -241,6 +242,9 @@ $('btn-cam').addEventListener('click', () => {
   renderChoices();
 });
 $('btn-tuning').addEventListener('click', () => tuning.toggle());
+const shop = new Shop($('shop'), tune, () => saveTuning(tune));
+$('btn-shop').addEventListener('click', () => shop.open());
+$('btn-shop2').addEventListener('click', () => shop.open());
 window.addEventListener('keydown', (e) => {
   if (!running) {
     if (e.code === 'Enter') $('btn-drive').click();
@@ -390,6 +394,7 @@ async function boot() {
   await new Promise((r) => setTimeout(r, 30));
   mountain = new Mountain(world, scene, settings.map);
   vehicle = new Vehicle(world, CAR, tune, settings.mode);
+  vehicle.surfaceOf = mountain.layout.surfaceOf;
   carModel = new CarModel(CAR);
   scene.add(carModel.root);
   // Blob shadow rides under the car, at ground level in the car's own frame.

@@ -66,7 +66,10 @@
           <span class="label">Transmission</span>
           <div class="choices" data-setting="mode"></div>
         </div>
-        <button type="button" id="btn-drive" class="big">DRIVE</button>
+        <div class="row">
+          <button type="button" id="btn-drive" class="big">DRIVE</button>
+          <button type="button" id="btn-shop" class="big ghost">TUNING SHOP</button>
+        </div>
         <p class="hint" id="loading">Loading physics&hellip;</p>
       </div>
     </section>
@@ -111,11 +114,13 @@
           <button type="button" id="btn-recover" class="big ghost">BACK ON ROAD</button>
           <button type="button" id="btn-restart" class="big ghost">RESTART AT SUMMIT</button>
         </div>
-        <button type="button" id="btn-tuning" class="link">Tuning panel</button>
+        <button type="button" id="btn-shop2" class="big ghost">TUNING SHOP</button>
+        <button type="button" id="btn-tuning" class="link">Dev tuning panel</button>
       </div>
     </section>
 
     <section id="tuning" class="hidden"></section>
+    <section id="shop" class="screen hidden"></section>
 
     <section id="rotate" class="screen">
       <div class="panel"><div class="rot">&#8635;</div><p>Turn your phone sideways</p></div>

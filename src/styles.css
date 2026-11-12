@@ -553,3 +553,103 @@ h2 {
     display: flex;
   }
 }
+
+/* ---------- Tuning shop ---------- */
+#shop {
+  z-index: 8;
+  background: rgba(5, 8, 16, 0.85);
+  align-items: stretch;
+}
+
+.shop-panel {
+  width: min(900px, 100%);
+  margin: 0 auto;
+  overflow-y: auto;
+  touch-action: pan-y;
+  background: var(--panel);
+  border: 4px solid #ffb000;
+  padding: 12px 16px 20px;
+}
+
+.shop-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.shop-head h2 {
+  margin: 0;
+  font: 400 clamp(26px, 7vh, 40px) 'VT323', ui-monospace, monospace;
+  letter-spacing: 0.12em;
+}
+
+.shop-head .big {
+  margin: 0;
+}
+
+.shop-section {
+  margin-top: 14px;
+}
+
+.shop-section h3 {
+  margin: 0 0 8px;
+  font: 400 22px 'VT323', ui-monospace, monospace;
+  letter-spacing: 0.15em;
+  color: #9aa6bd;
+  text-transform: uppercase;
+}
+
+.shop-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.shop-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.05);
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-radius: 0;
+  font: 13px/1.35 system-ui, sans-serif;
+}
+
+.shop-card strong {
+  font: 400 24px 'VT323', ui-monospace, monospace;
+  letter-spacing: 0.06em;
+  color: #fff;
+}
+
+.shop-card.sel {
+  border-color: #ffb000;
+  background: rgba(255, 176, 0, 0.16);
+}
+
+.shop-card.sel strong {
+  color: #ffb000;
+}
+
+.shop-slider {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  margin: 10px 0;
+  font: 400 20px 'VT323', ui-monospace, monospace;
+  letter-spacing: 0.05em;
+}
+
+.shop-slider .val {
+  color: #ffb000;
+}
+
+.shop-slider input {
+  grid-column: 1 / span 2;
+  width: 100%;
+  accent-color: #ffb000;
+  height: 28px;
+}

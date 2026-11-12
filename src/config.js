@@ -65,9 +65,49 @@ export const CAR = {
   paint: 0xefeee6, // Alpine White
 };
 
-// Live-tunable values (dev panel). Defaults chosen for a planted but slidable street car.
+// Tyre compounds (tuning shop).
+//   mu         peak friction on dry asphalt
+//   peakAngle  slip angle (rad) where grip peaks: wider = more progressive, easier to hold angle
+//   peakSlip   wheelspin / lock-up slip ratio where grip peaks
+//   slide      share of peak grip left once fully sliding
+//   falloff    how quickly grip drops past the peak (higher = more sudden)
+//   gravel / grass  grip multipliers off the asphalt; grassNoise makes grass grip jump around
+export const TIRES = {
+  drift: {
+    name: 'Drift',
+    blurb: 'Hard compound. Breaks loose easily and holds big, steady angles. The most controllable slide.',
+    mu: 0.9, peakAngle: 0.21, peakSlip: 0.17, slide: 0.94, falloff: 0.22, gravel: 0.8, grass: 0.65, grassNoise: 0.05,
+  },
+  stock: {
+    name: 'Stock',
+    blurb: 'Everyday 195/65 tyre. Modest grip that fades like a real road tyre when you push too hard.',
+    mu: 0.82, peakAngle: 0.12, peakSlip: 0.12, slide: 0.7, falloff: 1.0, gravel: 0.75, grass: 0.6, grassNoise: 0.08,
+  },
+  street: {
+    name: 'Street',
+    blurb: 'Sticky performance road tyre. Ideal for touge: grippy, but you can still build slip angle.',
+    mu: 1.05, peakAngle: 0.14, peakSlip: 0.14, slide: 0.84, falloff: 0.7, gravel: 0.72, grass: 0.55, grassNoise: 0.1,
+  },
+  semi: {
+    name: 'Semi-slick',
+    blurb: 'Near-race rubber. Huge grip that almost never lets go on asphalt, but nervous and unpredictable on grass.',
+    mu: 1.42, peakAngle: 0.11, peakSlip: 0.11, slide: 0.8, falloff: 1.4, gravel: 0.58, grass: 0.32, grassNoise: 0.45,
+  },
+};
+
+export const DIFFS = {
+  open: { name: 'Open', blurb: 'Power goes to the wheel with least grip: the inside rear spins up out of tight corners.' },
+  lsd: { name: 'LSD', blurb: 'Clutch-type limited slip (the 318is had one). Keeps both rears driving; predictable slides.' },
+  welded: { name: 'Welded', blurb: 'Both rears locked together. Snaps into slides and holds them; scrubs and hops in tight turns.' },
+};
+
+// Live-tunable values (tuning shop and dev panel). Defaults chosen for a planted but slidable street car.
 export const TUNABLE_DEFAULTS = {
-  grip: 1.05, // tyre friction coefficient (street tyre on dry asphalt)
+  tire: 'street',
+  diff: 'lsd',
+  rideHeight: 0, // mm from stock (negative = lowered)
+  brakeBias: 0.68, // share of braking on the front axle
+  grip: 1.0, // overall grip multiplier (dev panel)
   springFront: 32000, // N/m per wheel
   springRear: 30000,
   damping: 0.32, // damping ratio (0 = bouncy, 1 = critical)

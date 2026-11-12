@@ -448,7 +448,7 @@ export class CarModel {
     for (let i = 0; i < 4; i++) {
       const w = vehicle.wheels[i];
       const m = this.wheels[i];
-      m.steer.position.set(w.x, s.wheelMountY - s.suspensionRest + w.compression, w.z);
+      m.steer.position.set(w.x, (vehicle.mountY ?? s.wheelMountY) - s.suspensionRest + w.compression, w.z);
       m.steer.rotation.set(0, w.steer, 0);
       m.spin.rotation.x = w.angle;
     }

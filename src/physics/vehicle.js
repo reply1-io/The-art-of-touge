@@ -10,6 +10,7 @@
 
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Engine, RAD_TO_RPM } from './engine.js';
+import { TIRES } from '../config.js';
 import { Transmission } from './transmission.js';
 
 const G = 9.81;
@@ -40,10 +41,10 @@ function rotate(q, v) {
 }
 
 // Normalised combined-slip tyre curve: rises to 1 at s = 1, then falls toward `slide`.
-function tyreCurve(s, slide) {
+function tyreCurve(s, slide, falloff) {
   if (s <= 1) return 1 - (1 - s) * (1 - s);
   const e = s - 1;
-  return slide + (1 - slide) * Math.exp(-e * e * 0.7);
+  return slide + (1 - slide) * Math.exp(-e * e * falloff);
 }
 
 export class Vehicle {
@@ -202,10 +203,14 @@ export class Vehicle {
     }
 
     // ---- Suspension raycasts ----
+    // Ride height moves the suspension mounts relative to the body: raise it and the body sits higher.
+    const rh = clamp((t.rideHeight || 0) / 1000, -0.08, 0.05);
+    this.mountY = s.wheelMountY - rh;
+    const travel = Math.max(0.07, s.suspensionTravel + rh);
     const reach = s.suspensionRest + s.wheelRadius;
     const down = scale(axisY, -1);
     for (const w of this.wheels) {
-      const mount = add(pos, rotate(q, [w.x, s.wheelMountY, w.z]));
+      const mount = add(pos, rotate(q, [w.x, this.mountY, w.z]));
       const ray = new RAPIER.Ray({ x: mount[0], y: mount[1], z: mount[2] }, { x: down[0], y: down[1], z: down[2] });
       const hit = this.world.castRayAndGetNormal(ray, reach, true, undefined, undefined, undefined, b);
       w.prevCompression = w.compression;
@@ -215,6 +220,7 @@ export class Vehicle {
         w.compression = clamp(reach - toi, 0, s.suspensionRest);
         w.contact = add(mount, scale(down, toi));
         w.normal = v3(hit.normal);
+        w.surface = this.surfaceOf ? this.surfaceOf(hit.collider.handle) : 'asphalt';
         w.center = add(w.contact, scale(axisY, s.wheelRadius));
       } else {
         w.grounded = false;
@@ -234,7 +240,7 @@ export class Vehicle {
       const c = 2 * t.damping * Math.sqrt(k * cornerMass);
       const vel = (w.compression - w.prevCompression) / dt;
       let f = k * w.compression + c * vel;
-      if (w.compression > s.suspensionTravel) f += 250000 * (w.compression - s.suspensionTravel);
+      if (w.compression > travel) f += 250000 * (w.compression - travel);
       w.load = Math.max(0, f);
     }
     for (const [l, r, kArb] of [
@@ -259,7 +265,16 @@ export class Vehicle {
       const pv = add(linvel, cross(angvel, r));
       w.vx = dot(pv, w.fwd);
       w.vy = dot(pv, w.side);
-      w.mu = t.grip;
+      // Grip from the tyre compound and the surface under it. On grass some tyres get nervous:
+      // their grip wanders from moment to moment.
+      const tyre = TIRES[t.tire] || TIRES.street;
+      let mu = tyre.mu * (t.grip ?? 1);
+      if (w.surface === 'gravel') mu *= tyre.gravel;
+      if (w.surface === 'grass') {
+        w.grassJitter = clamp((w.grassJitter ?? 0) * 0.9 + (Math.random() - 0.5) * 0.5, -1, 1);
+        mu *= tyre.grass * (1 + tyre.grassNoise * w.grassJitter);
+      }
+      w.mu = mu;
     }
 
     // ---- Drivetrain: wheels, engine, clutch, gearbox and LSD, sub-stepped ----
@@ -285,6 +300,8 @@ export class Vehicle {
       w.fySum = 0;
     }
     let clutchTorqueSum = 0;
+    let diffTorque = 0;
+    const tyre = TIRES[t.tire] || TIRES.street;
     for (let k = 0; k < SUBSTEPS; k++) {
       for (const w of this.wheels) {
         if (!w.grounded || w.load <= 0) {
@@ -300,14 +317,14 @@ export class Vehicle {
         const relax = clamp(((Math.abs(w.vx) + 2) * h) / 0.45, 0, 1);
         w.relaxedAngle = (w.relaxedAngle ?? 0) + (targetAngle - (w.relaxedAngle ?? 0)) * relax;
         const slipAngle = w.relaxedAngle;
-        const sx = slipRatio / 0.14;
-        const sy = Math.tan(slipAngle) / Math.tan(0.14);
+        const sx = slipRatio / tyre.peakSlip;
+        const sy = Math.tan(slipAngle) / Math.tan(tyre.peakAngle);
         const sMag = Math.hypot(sx, sy);
         const loadSens = clamp(1 - 0.1 * (w.load / (cornerMass * G) - 1), 0.75, 1.12);
         let fx = 0;
         let fy = 0;
         if (sMag > 1e-6) {
-          const f = w.mu * loadSens * w.load * tyreCurve(sMag, 0.84);
+          const f = w.mu * loadSens * w.load * tyreCurve(sMag, tyre.slide, tyre.falloff);
           fx = (f * sx) / sMag;
           fy = (-f * sy) / sMag;
         }
@@ -339,21 +356,28 @@ export class Vehicle {
         WL.omega += each / Iw;
         WR.omega += each / Iw;
         clutchTorqueSum += j / h;
-        // Limited-slip: resist a speed difference across the axle (preload + share of drive torque).
-        const lockCap = (t.lsdPreload + t.lsdLock * Math.abs((j / h) * ratio)) * h;
-        const jl = clamp(((WL.omega - WR.omega) * Iw) / 2, -lockCap, lockCap);
-        WL.omega -= jl / Iw;
-        WR.omega += jl / Iw;
+        diffTorque = Math.abs((j / h) * ratio);
       } else {
-        // Out of gear the LSD still holds a little preload.
-        const lockCap = t.lsdPreload * h;
+        diffTorque = 0;
+      }
+      // Differential. Open: the rears turn freely against each other. LSD: a speed difference is
+      // resisted by preload plus a share of the drive torque. Welded: the rears are one axle.
+      if (t.diff === 'welded') {
+        const avg = (WL.omega + WR.omega) / 2;
+        WL.omega = avg;
+        WR.omega = avg;
+      } else if (t.diff !== 'open') {
+        const lockCap = (t.lsdPreload + t.lsdLock * diffTorque) * h;
         const jl = clamp(((WL.omega - WR.omega) * Iw) / 2, -lockCap, lockCap);
         WL.omega -= jl / Iw;
         WR.omega += jl / Iw;
       }
       // Brakes and handbrake: friction torque that cannot reverse the wheel.
       for (const w of this.wheels) {
-        let tb = brake * (w.front ? s.brakeTorqueFront : s.brakeTorqueRear);
+        // Brake bias splits the same total braking between the axles.
+        const bias = clamp(t.brakeBias ?? 0.68, 0.4, 0.85);
+        const axleTotal = s.brakeTorqueFront + s.brakeTorqueRear;
+        let tb = brake * axleTotal * (w.front ? bias : 1 - bias);
         // ABS: release the foot brake on a wheel the moment it starts to lock (not the handbrake).
         if (tb > 0 && w.grounded && Math.abs(w.vx) > 2) {
           const slip = (w.omega * r - w.vx) / Math.abs(w.vx);
