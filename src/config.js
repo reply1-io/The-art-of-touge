@@ -25,6 +25,7 @@ export const CAR = {
   suspensionRest: 0.3, // free length of the strut travel used by the raycast
   suspensionTravel: 0.18, // bump travel before the bump stop
   maxSteer: (36 * Math.PI) / 180,
+  frontCamberGrip: 1.04, // extra front cornering grip from negative camber
 
   engine: {
     idleRpm: 850,

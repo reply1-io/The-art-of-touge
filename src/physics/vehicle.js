@@ -181,7 +181,16 @@ export class Vehicle {
     // Less lock at speed, but the full lock comes back while the car is sliding so you can countersteer.
     const sliding = clamp((Math.abs(this.slideAngle) - 0.08) / 0.25, 0, 1);
     const falloff = t.steerSpeedFalloff * (1 - sliding) * clamp(Math.abs(fwdSpeed) / 38, 0, 1);
-    const lock = s.maxSteer * t.steering * (1 - falloff);
+    let lock = s.maxSteer * t.steering * (1 - falloff);
+    // At speed, full steering asks for the angle where the front tyres grip hardest (the corner the
+    // car can actually make, plus the tyre's peak slip angle) instead of scrubbing them sideways.
+    if (!sliding || sliding < 1) {
+      const tyreNow = TIRES[t.tire] || TIRES.street;
+      const v = Math.abs(fwdSpeed);
+      const rMin = (v * v) / (tyreNow.mu * (t.grip ?? 1) * G) + 0.01;
+      const best = Math.atan(s.wheelbase / rMin) + tyreNow.peakAngle * 0.45;
+      lock = Math.min(lock, best + (s.maxSteer - best) * sliding);
+    }
     const wheelInput = clamp(input.steer, -1, 1);
     let target = -wheelInput * Math.min(lock, s.maxSteer * 1.2);
     if (Math.abs(fwdSpeed) > 3) {
@@ -274,7 +283,8 @@ export class Vehicle {
         w.grassJitter = clamp((w.grassJitter ?? 0) * 0.9 + (Math.random() - 0.5) * 0.5, -1, 1);
         mu *= tyre.grass * (1 + tyre.grassNoise * w.grassJitter);
       }
-      w.mu = mu;
+      // Front negative camber gives the fronts a little more cornering grip than the rears.
+      w.mu = w.front ? mu * (s.frontCamberGrip ?? 1) : mu;
     }
 
     // ---- Drivetrain: wheels, engine, clutch, gearbox and LSD, sub-stepped ----
@@ -320,7 +330,7 @@ export class Vehicle {
         const sx = slipRatio / tyre.peakSlip;
         const sy = Math.tan(slipAngle) / Math.tan(tyre.peakAngle);
         const sMag = Math.hypot(sx, sy);
-        const loadSens = clamp(1 - 0.1 * (w.load / (cornerMass * G) - 1), 0.75, 1.12);
+        const loadSens = clamp(1 - 0.06 * (w.load / (cornerMass * G) - 1), 0.8, 1.1);
         let fx = 0;
         let fy = 0;
         if (sMag > 1e-6) {

@@ -191,3 +191,27 @@ test('ABS keeps the wheels turning and the car steerable under full braking', as
   const turned = Math.abs(2 * Math.asin(q.y) - 2 * Math.asin(yaw0.y));
   assert.ok(turned > 0.15, `car turned ${turned} rad while braking`);
 });
+
+test('turns in properly: full lock at speed uses the front tyres instead of ploughing', async () => {
+  const { car, run } = await makeWorld('autoClutch');
+  car.trans.requestGear(3, 0);
+  run(14, () => ({ throttle: car.forwardSpeed < 35 / 2.237 ? 1 : 0 }));
+  let prev = null;
+  let sum = 0;
+  let n = 0;
+  run(2, (t) => {
+    const lv = car.body.linvel();
+    const course = Math.atan2(lv.x, lv.z);
+    if (prev !== null && t > 0.6) {
+      let d = course - prev;
+      while (d > Math.PI) d -= 2 * Math.PI;
+      while (d < -Math.PI) d += 2 * Math.PI;
+      sum += (car.speed * Math.abs(d * 60)) / 9.81;
+      n++;
+    }
+    prev = course;
+    return { steer: -1 };
+  });
+  assert.ok(sum / n > 0.82, `cornering ${sum / n} g`);
+  assert.ok(Math.abs(car.wheels[0].slipAngle) < 0.3, `front slip ${car.wheels[0].slipAngle} rad`);
+});
