@@ -21,6 +21,7 @@ import { Hud, formatTime } from './ui/hud.js';
 import { CarAudio } from './audio/carAudio.js';
 import { ExhaustEvents } from './audio/exhaust.js';
 import { DriftScore } from './game/drift.js';
+import { Sparks } from './render/sparks.js';
 import { HEADLIGHTS } from './config.js';
 import { TuningPanel } from './ui/tuning.js';
 import { Shop } from './ui/shop.js';
@@ -117,6 +118,9 @@ const rig = new CameraRig(camera);
 const audio = new CarAudio();
 const exhaustEvents = new ExhaustEvents();
 const drift = new DriftScore();
+let sparks;
+const sparkP = new THREE.Vector3();
+const sparkPush = new THREE.Vector3();
 rig.mode = settings.camera;
 
 let world;
@@ -281,8 +285,11 @@ $('btn-drive').addEventListener('click', () => {
   running = true;
   audio.start();
   audio.setMuted(!settings.sound);
+  // Launched from the home-screen icon the game is already full screen (the manifest asks for it),
+  // so only ask the browser for full screen when playing in a normal tab.
+  const installed = matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches;
   const el = document.documentElement;
-  if (el.requestFullscreen && !document.fullscreenElement) {
+  if (!installed && el.requestFullscreen && !document.fullscreenElement) {
     el.requestFullscreen({ navigationUI: 'hide' })
       .then(() => screen.orientation?.lock?.('landscape').catch(() => {}))
       .catch(() => {});
@@ -382,6 +389,49 @@ function updateRun(dt) {
   }
 }
 
+// ---------- Sparks: rails, walls and bottoming out ----------
+function throwSparks() {
+  const v = vehicle.body.linvel();
+  const speed = Math.hypot(v.x, v.z);
+  let scrape = 0;
+  if (speed < 2.5) {
+    audio.setScrape(0);
+    return;
+  }
+  const n = Math.min(6, 1 + Math.floor(speed / 6));
+  // Against a guardrail: sparks spray back along the rail from each contact.
+  for (const c of barrier.contacts) {
+    sparkP.set(c.x, c.y - 0.15, c.z);
+    sparkPush.set(c.nx, 0, c.nz);
+    sparks.emit(sparkP, v, sparkPush, n);
+    scrape = Math.max(scrape, 0.5 + c.f / 30000);
+  }
+  // Body against a wall, a rock face or the ground (Rapier contacts).
+  for (const col of [vehicle.collider, vehicle.cabinCollider]) {
+    world.contactPairsWith(col, (other) => {
+      world.contactPair(col, other, (m) => {
+        for (let i = 0; i < m.numSolverContacts(); i++) {
+          const p = m.solverContactPoint(i);
+          sparkP.set(p.x, p.y, p.z);
+          sparkPush.set(0, 0, 0);
+          sparks.emit(sparkP, v, sparkPush, n);
+          scrape = Math.max(scrape, 0.8);
+        }
+      });
+    });
+  }
+  // Bottoming out: sparks from under the sills.
+  for (const w of vehicle.wheels) {
+    if (!(w.scrape > 0)) continue;
+    sparkP.set(w.x * 0.85, -0.6, w.z * 0.75);
+    carModel.root.localToWorld(sparkP);
+    sparkPush.set(0, 0, 0);
+    sparks.emit(sparkP, v, sparkPush, Math.max(1, Math.round(n * Math.min(1, w.scrape * 30))));
+    scrape = Math.max(scrape, 0.3 + w.scrape * 15);
+  }
+  audio.setScrape(scrape);
+}
+
 // ---------- Title screen: a slow flight along the pass ----------
 let titleS = 0;
 const titleLook = new THREE.Vector3();
@@ -444,6 +494,7 @@ function frame(now) {
     }
     if (steps === MAX_STEPS) accumulator = 0;
     updateRun(dt);
+    throwSparks();
     drift.update(dt, vehicle, barrier.touching && barrier.impact > 9000);
     const tr = vehicle.trans;
     if (tr.messageTimer > 0 && tr.message) {
@@ -468,6 +519,7 @@ function frame(now) {
     }
   }
   carModel.updateFx(dt);
+  sparks.update(dt);
   // In-car view: cockpit on, arms follow the wheel, the shifter and the handbrake.
   carModel.setInterior(running && rig.mode === 'cockpit' && !window.__touge?.debugCam);
   if (vehicle.trans.gear !== lastGear) {
@@ -475,6 +527,7 @@ function frame(now) {
     lastGear = vehicle.trans.gear;
   }
   carModel.cockpit.update(dt, vehicle, controls.handbrake);
+  rig.headSway = tune.seats === 'bucket' ? 0.1 : 1;
   audio.setInterior?.(running && rig.mode === 'cockpit');
   $('start').classList.toggle('hidden', vehicle.engine.running);
   $('clutch').style.setProperty('--engaged', `${Math.round((1 - vehicle.trans.coupling) * 100)}%`);
@@ -560,6 +613,7 @@ async function boot() {
   carModel.applySetup(tune);
   headlight.color.setHex((HEADLIGHTS[tune.headlights] || HEADLIGHTS.white)[1]);
   scene.add(carModel.root);
+  sparks = new Sparks(scene);
   // Blob shadow rides under the car, at ground level in the car's own frame.
   shadow = blobShadow();
   shadow.position.y = -0.6;
@@ -574,7 +628,7 @@ async function boot() {
   $('loading').textContent = '';
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { get sparksDbg() { return sparks; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;

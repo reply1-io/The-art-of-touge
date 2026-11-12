@@ -24,9 +24,32 @@ const GATE = { 1: [0.05, 0.05], 2: [0.05, -0.05], 3: [0, 0.05], 4: [0, -0.05], 5
 const tmp = new THREE.Vector3();
 const up = new THREE.Vector3(0, 1, 0);
 
-// A cylinder stretched between two points.
+// Chunky pixel-art sleeve texture: a few blocky shades of jacket with a dark cuff band at the far
+// end, sampled with hard edges so it reads as pixels.
+function sleeveTexture() {
+  const c = document.createElement('canvas');
+  c.width = 4;
+  c.height = 8;
+  const g = c.getContext('2d');
+  const shades = ['#5d6678', '#6a7486', '#535c6d', '#6a7486'];
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 4; x++) {
+      g.fillStyle = shades[(x + y * 3) % 4];
+      g.fillRect(x, y, 1, 1);
+    }
+  }
+  g.fillStyle = '#2b2f38';
+  g.fillRect(0, 0, 4, 1); // cuff (v = 0 is the far end of the limb after the flip below)
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.NearestFilter;
+  t.minFilter = THREE.NearestFilter;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// A square-section block stretched between two points.
 function limb(radius, mat) {
-  const geo = new THREE.CylinderGeometry(radius, radius * 0.92, 1, 8);
+  const geo = new THREE.BoxGeometry(radius * 2, 1, radius * 2);
   geo.translate(0, 0.5, 0);
   const m = new THREE.Mesh(geo, mat);
   m.place = (a, b) => {
@@ -46,7 +69,7 @@ export class Cockpit {
     const dark = new THREE.MeshLambertMaterial({ color: 0x1b1c20, flatShading: true });
     const panel = new THREE.MeshLambertMaterial({ color: 0x2a2b30, flatShading: true });
     const cloth = new THREE.MeshLambertMaterial({ color: 0x3a3c44, side: THREE.DoubleSide });
-    const sleeve = new THREE.MeshLambertMaterial({ color: 0x6a7486, flatShading: true });
+    const sleeve = new THREE.MeshLambertMaterial({ map: sleeveTexture(), flatShading: true });
     this.sleeve = sleeve;
 
     // Dashboard (with a face down to the floor), floor, and the instrument hood.
@@ -76,6 +99,13 @@ export class Cockpit {
     roof.rotation.x = Math.PI / 2;
     roof.position.set(0, 1.34, -0.45);
     this.root.add(dash, hood, face, consoleBox, roof);
+    // Passenger seat (the one you can see): a cloth road seat, or a bucket with tall side wings.
+    this.seats = { stock: this.#stockSeat(cloth, panel), bucket: this.#bucketSeat() };
+    for (const seat of Object.values(this.seats)) {
+      seat.position.set(-DRIVER_X, 0.32, -0.62);
+      this.root.add(seat);
+    }
+    this.setSeats('stock');
     for (const side of [1, -1]) {
       // Door cards from the floor up to the window line.
       const door = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.55, 1.9), panel);
@@ -122,8 +152,8 @@ export class Cockpit {
 
     // Arms: upper arm and forearm each, in a dark jacket. No hands.
     this.arms = [0, 1].map(() => {
-      const upper = limb(0.04, sleeve);
-      const fore = limb(0.032, sleeve);
+      const upper = limb(0.058, sleeve);
+      const fore = limb(0.05, sleeve);
       this.root.add(upper, fore);
       return { upper, fore, hand: new THREE.Vector3(), elbow: new THREE.Vector3() };
     });
@@ -133,6 +163,57 @@ export class Cockpit {
     this.knobPos = new THREE.Vector3();
     this.gearShown = 0;
     this.leverTilt = new THREE.Vector2();
+  }
+
+  setSeats(type) {
+    for (const [k, seat] of Object.entries(this.seats)) seat.visible = k === type;
+  }
+
+  #stockSeat(cloth, panel) {
+    const g = new THREE.Group();
+    const fabric = new THREE.MeshLambertMaterial({ color: 0x4a4d57, flatShading: true });
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 0.5), fabric);
+    base.position.set(0, 0.07, 0.1);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.58, 0.12), fabric);
+    back.position.set(0, 0.4, -0.14);
+    back.rotation.x = -0.18;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.16, 0.1), fabric);
+    head.position.set(0, 0.78, -0.21);
+    g.add(base, back, head);
+    void cloth;
+    void panel;
+    return g;
+  }
+
+  #bucketSeat() {
+    const g = new THREE.Group();
+    const shell = new THREE.MeshLambertMaterial({ color: 0x18191c, flatShading: true });
+    const pad = new THREE.MeshLambertMaterial({ color: 0x7a1414, flatShading: true });
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.52), shell);
+    base.position.set(0, 0.06, 0.1);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.8, 0.08), shell);
+    back.position.set(0, 0.5, -0.16);
+    back.rotation.x = -0.12;
+    const cushion = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 0.04), pad);
+    cushion.position.set(0, 0.38, -0.1);
+    cushion.rotation.x = -0.12;
+    g.add(base, back, cushion);
+    // Side wings that hold you in, at the hips and the shoulders.
+    for (const side of [1, -1]) {
+      const hip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.26, 0.42), shell);
+      hip.position.set(side * 0.24, 0.2, 0.02);
+      const shoulder = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.4, 0.2), shell);
+      shoulder.position.set(side * 0.22, 0.62, -0.12);
+      shoulder.rotation.y = side * 0.25;
+      g.add(hip, shoulder);
+    }
+    // Harness slots near the top.
+    for (const side of [1, -1]) {
+      const slot = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.09), new THREE.MeshBasicMaterial({ color: 0x050505 }));
+      slot.position.set(side * 0.08, 0.82, -0.2);
+      g.add(slot);
+    }
+    return g;
   }
 
   // Shift the gear: the right hand goes to the lever for a moment.

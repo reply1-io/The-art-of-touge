@@ -95,7 +95,7 @@ export class Vehicle {
     this.collider = this.world.createCollider(main, this.body);
     // Cabin box, so the car does not roll into the ground on its roof edge.
     const cabin = RAPIER.ColliderDesc.cuboid(0.68, 0.22, 0.95).setTranslation(0, 0.62, -0.15).setDensity(0).setFriction(0.35);
-    this.world.createCollider(cabin, this.body);
+    this.cabinCollider = this.world.createCollider(cabin, this.body);
   }
 
   get mode() {
@@ -238,7 +238,8 @@ export class Vehicle {
       w.baseX ??= w.x;
       w.x = w.baseX + Math.sign(w.baseX) * (w.front ? ws.pokeFront : ws.pokeRear);
     }
-    const rh = clamp((t.rideHeight || 0) / 1000, -0.2, 0.05);
+    // Only coilovers can be adjusted; stock suspension always runs the factory height and springs.
+    const rh = t.coilovers ? clamp((t.rideHeight || 0) / 1000, -0.2, 0.05) : 0;
     this.mountY = s.wheelMountY - rh;
     // Lowering eats bump travel, down to a short minimum on a slammed car.
     const travel = Math.max(0.1, s.suspensionTravel + rh);
@@ -273,16 +274,17 @@ export class Vehicle {
       }
     }
     // Spring, damper, bump stop and anti-roll bars.
+    const springOf = (w) => (t.coilovers ? (w.front ? t.springFront : t.springRear) : w.front ? 32000 : 30000);
     const cornerMass = s.mass / 4;
     for (const w of this.wheels) {
       if (!w.grounded) {
         w.load = 0;
         continue;
       }
-      const k = w.front ? t.springFront : t.springRear;
+      const k = springOf(w);
       const vel = (w.compression - w.prevCompression) / dt;
       // Coilovers have separate bump (compressing) and rebound (extending) damping.
-      const ratio = t.coilovers ? (vel > 0 ? t.bump : t.rebound) : t.damping;
+      const ratio = t.damping;
       const c = 2 * ratio * Math.sqrt(k * cornerMass);
       // The damper rate is capped (real dampers blow off on sharp hits) and the bump stop is
       // progressive, so a big kerb or rut cannot fire the car into the air.
@@ -295,6 +297,17 @@ export class Vehicle {
       // more than the car's own weight times four in one corner.
       f = Math.min(f, s.mass * G * 4 * 0.25 * 4);
       w.load = Math.max(0, f);
+    }
+    // Bottoming out: the bump stop is crushed, or (on a lowered car) the sills reach the road.
+    for (const w of this.wheels) {
+      if (!w.grounded) {
+        w.scrape = 0;
+        continue;
+      }
+      const k = springOf(w);
+      const settle = (s.mass * G) / 4 / k;
+      const sill = 0.21 + rh - (w.compression - settle);
+      w.scrape = Math.max(0, w.compression - travel - 0.025, -sill);
     }
     for (const [l, r, kArb] of [
       [this.wheels[0], this.wheels[1], t.antiRollFront],

@@ -127,6 +127,7 @@ export const TUNABLE_DEFAULTS = {
   strutRear: false,
   exhaust: 'stock',
   stretch: false,
+  seats: 'stock',
   offsetFront: 0, // mm the wheel sits out from stock (+ pokes out, - tucks in)
   offsetRear: 0,
   plateStyle: 'white', // 'white' | 'yellow' | 'red'
@@ -160,8 +161,8 @@ export const INTAKES = {
 };
 export const TURBOS = {
   none: { name: 'None', blurb: 'Naturally aspirated M42. Linear and predictable.' },
-  small: { name: 'Small turbo', blurb: 'T25-size. Spools early, about +45% torque, gentle lag. Soft spool whine and flutter on lift-off.' },
-  big: { name: 'Big turbo', blurb: 'T3-size. Nothing below 4,000 rpm, then it doubles the torque. Laggy, savage, loud.' },
+  small: { name: 'Small turbo', blurb: 'T25-size. Spools early, about +45% torque, gentle lag. Breathy diesel-style spool and a little poof when you lift.' },
+  big: { name: 'Big turbo', blurb: 'T3-size. Nothing below 4,000 rpm, then it doubles the torque. Laggy, savage, loud: deep diesel spool and flutter on lift-off.' },
 };
 export const CLUTCHES = {
   stock: { name: 'Stock', blurb: 'Smooth and forgiving. Can slip if you add a lot of power.' },
@@ -213,6 +214,11 @@ export const PLATES = {
 export function cleanPlate(text) {
   return String(text ?? '').toUpperCase().replace(/[^A-Z0-9 \-]/g, '').slice(0, 7);
 }
+
+export const SEATS = {
+  stock: { name: 'Road seats', blurb: 'Comfy cloth seats. Your head moves with every corner and brake.' },
+  bucket: { name: 'Bucket seats', blurb: 'Fixed-back race buckets. They hold you tight, so the in-car view stays locked.' },
+};
 
 export const HEADLIGHTS = { white: ['White', 0xfff2d8], yellow: ['Yellow', 0xffc94a], blue: ['Cool blue', 0xcfe2ff] };
 export const TAILLIGHTS = { red: ['Red', 0xd0141c], smoked: ['Smoked', 0x4a0a10], clear: ['Clear', 0xcfc6c6] };

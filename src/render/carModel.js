@@ -312,7 +312,11 @@ function detailPolys() {
   const zt = TAIL - 0.006;
   const rear = (x0, x1, y0, y1, color, list = trim) => list.push({ pts: [[x0, y0, zt - 0.004], [x1, y0, zt - 0.004], [x1, y1, zt - 0.004], [x0, y1, zt - 0.004]], color, out: [0, 0, -1] });
   // A black surround behind each lamp only; the panel between them is body colour.
-  for (const side of [1, -1]) rear(side * 0.79, side * 0.28, 0.59, 0.81, BLACK);
+  for (const side of [1, -1]) {
+    // Set just behind the lamp lenses so the two never fight over the same depth.
+    const [x0, x1] = [side * 0.79, side * 0.28];
+    trim.push({ pts: [[x0, 0.59, zt - 0.001], [x1, 0.59, zt - 0.001], [x1, 0.81, zt - 0.001], [x0, 0.81, zt - 0.001]], color: BLACK, out: [0, 0, -1] });
+  }
   for (const side of [1, -1]) {
     // Big wraparound-style lamps: an amber block at the outer end, then a red field split by a
     // dark grid of ribs.
@@ -628,6 +632,7 @@ export class CarModel {
 
   // ---------- Looks from the tuning shop: paint, body kit, light colours, number boards ----------
   #applyLooks(t) {
+    this.cockpit.setSeats(t.seats === 'bucket' ? 'bucket' : 'stock');
     this.paintMat.color.set(t.paint || '#efeee6');
     this.headColor = t.headlights || 'white';
     const head = (HEADLIGHTS[this.headColor] || HEADLIGHTS.white)[1];

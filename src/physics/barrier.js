@@ -32,6 +32,7 @@ export class SoftBarrier {
     this.hit = { pen: 0, nx: 0, nz: 0 };
     this.touching = false;
     this.impact = 0; // strongest push this step (N), for sound or shake
+    this.contacts = [];
   }
 
   apply(body) {
@@ -42,6 +43,7 @@ export class SoftBarrier {
     const hit = this.hit;
     this.touching = false;
     this.impact = 0;
+    this.contacts = []; // [{ x, y, z, nx, nz, f }] for sparks
     for (const [bx, bz] of POINTS) {
       const r = rotate(q, [bx, -0.1, bz]);
       const x = p.x + r[0];
@@ -61,6 +63,7 @@ export class SoftBarrier {
       const fz = hit.nz * f - (tz / tl) * f * SCRUB;
       body.addForceAtPoint({ x: fx, y: 0, z: fz }, { x, y: p.y + r[1], z }, true);
       this.touching = true;
+      this.contacts.push({ x, y: p.y + r[1], z, nx: hit.nx, nz: hit.nz, f });
       this.impact = Math.max(this.impact, f);
     }
   }

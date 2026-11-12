@@ -13,6 +13,11 @@ export class CameraRig {
     this.pos = new THREE.Vector3();
     this.look = new THREE.Vector3();
     this.ready = false;
+    // In-car head movement: 1 = road seats (your head is thrown about), small = bucket seats.
+    this.headSway = 1;
+    this.head = new THREE.Vector3(); // smoothed head offset in the car's frame
+    this.prevVel = new THREE.Vector3();
+    this.acc = new THREE.Vector3();
   }
 
   snap() {
@@ -24,11 +29,27 @@ export class CameraRig {
     const cam = this.camera;
     const q = carObject.quaternion;
     const fwd = tmp.set(0, 0, 1).applyQuaternion(q).setY(0).normalize().clone();
+    // Acceleration in the car's frame (x left, z forward), smoothed.
+    const vel = new THREE.Vector3(velocity.x, velocity.y, velocity.z);
+    if (dt > 0) {
+      const a = vel.clone().sub(this.prevVel).divideScalar(dt).applyQuaternion(q.clone().invert());
+      this.acc.lerp(a, 1 - Math.exp(-dt * 6));
+    }
+    this.prevVel.copy(vel);
     if (this.mode === 'cockpit') {
-      // Driver's eyes, looking down the road over the bonnet.
-      const p = new THREE.Vector3(EYE.x, EYE.y + GROUND, EYE.z).applyQuaternion(q).add(carObject.position);
+      // Driver's eyes, looking down the road over the bonnet. In road seats the head leans
+      // against the corners and nods under braking; bucket seats hold it almost still.
+      const k = this.headSway;
+      const target = new THREE.Vector3(
+        Math.max(-0.09, Math.min(0.09, -this.acc.x * 0.009 * k)),
+        Math.max(-0.03, Math.min(0.03, -Math.abs(this.acc.x) * 0.0015 * k)),
+        Math.max(-0.06, Math.min(0.06, -this.acc.z * 0.006 * k)),
+      );
+      this.head.lerp(target, 1 - Math.exp(-dt * 8));
+      const p = new THREE.Vector3(EYE.x + this.head.x, EYE.y + GROUND + this.head.y, EYE.z + this.head.z).applyQuaternion(q).add(carObject.position);
       cam.position.copy(p);
-      cam.up.set(0, 1, 0).applyQuaternion(q);
+      // The head tilts a little with the lean.
+      cam.up.set(this.head.x * 1.5, 1, 0).normalize().applyQuaternion(q);
       cam.lookAt(p.clone().add(new THREE.Vector3(0, -0.9, 10).applyQuaternion(q)));
       if (cam.fov !== 74) {
         cam.fov = 74;

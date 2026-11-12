@@ -67,6 +67,14 @@ body {
 #controls > * {
   pointer-events: auto;
   touch-action: none;
+  /* See-through so the road shows behind the controls; a pressed button lights up fully. */
+  opacity: 0.6;
+  transition: opacity 0.08s;
+}
+
+#controls > .on,
+#controls > #shifter:active {
+  opacity: 0.95;
 }
 
 /* Driving buttons: one family, lit like the tachometer. A soft orange backlight glows through
@@ -165,14 +173,16 @@ body {
   background: linear-gradient(to right, rgba(255, 140, 26, 0.32) var(--engaged, 100%), rgba(6, 6, 8, 0.55) var(--engaged, 100%));
 }
 
+/* Right-hand stack: the shifter sits right above the gas pedal, the handbrake right above the
+   brake. */
 #shifter {
   position: absolute;
-  right: calc(3vw + var(--sr));
-  top: 13vh;
-  width: 34vh;
-  height: 42vh;
-  min-width: 130px;
-  min-height: 150px;
+  right: calc(3vw + var(--sr) - 1vw);
+  bottom: calc(3vh + 35vh + 3vh + var(--sb));
+  width: 13vw;
+  height: 40vh;
+  min-width: 100px;
+  min-height: 130px;
 }
 
 #shifter-gate {
@@ -196,15 +206,16 @@ body {
 
 #dr {
   position: absolute;
-  right: calc(4vw + var(--sr));
-  top: 22vh;
+  right: calc(3vw + var(--sr));
+  bottom: calc(3vh + 35vh + 3vh + var(--sb));
+  flex-direction: column;
   display: flex;
   gap: 10px;
 }
 
 #dr .btn {
-  width: 12vh;
-  height: 16vh;
+  width: 11vw;
+  height: 13vh;
   min-width: 56px;
   min-height: 70px;
   font-size: clamp(18px, 5vh, 30px);
@@ -223,7 +234,7 @@ body {
   right: calc(3vw + var(--sr));
   bottom: calc(3vh + var(--sb));
   width: 11vw;
-  height: 40vh;
+  height: 35vh;
 }
 
 #brake {
@@ -231,15 +242,15 @@ body {
   right: calc(3vw + 11vw + 2.5vw + var(--sr));
   bottom: calc(3vh + var(--sb));
   width: 11vw;
-  height: 40vh;
+  height: 35vh;
 }
 
 #handbrake {
   position: absolute;
-  right: calc(3vw + 22vw + 5vw + var(--sr));
-  bottom: calc(3vh + var(--sb));
-  width: 10vw;
-  height: 20vh;
+  right: calc(3vw + 11vw + 2.5vw + var(--sr));
+  bottom: calc(3vh + 35vh + 3vh + var(--sb));
+  width: 11vw;
+  height: 22vh;
   font-size: clamp(14px, 3.6vh, 20px);
   line-height: 1;
 }

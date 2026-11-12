@@ -56,6 +56,7 @@ test('ride height raises and lowers the car', async () => {
   for (const rh of [-50, 0, 30]) {
     const { car, run } = await makeWorld('manual');
     car.tune.rideHeight = rh;
+    car.tune.coilovers = true;
     run(2);
     heights[rh] = car.body.translation().y;
   }
@@ -133,6 +134,7 @@ test('slammed: -200 mm sits about 20 cm lower and still drives and corners', asy
   for (const rh of [0, -200]) {
     const { car, run } = await makeWorld('autoClutch');
     car.tune.rideHeight = rh;
+    car.tune.coilovers = true;
     run(2);
     y[rh] = car.body.translation().y;
     car.trans.requestGear(3, 0);
@@ -164,4 +166,15 @@ test('offset widens the track, and 20-inch rims fit', async () => {
   run(3, () => ({ throttle: car.forwardSpeed < 17 ? 1 : 0, steer: -0.5 }));
   const q = car.body.rotation();
   assert.ok(1 - 2 * (q.x * q.x + q.z * q.z) > 0.97 && car.speed > 12);
+});
+
+test('stock suspension ignores ride height and spring settings; coilovers apply them', async () => {
+  const y = {};
+  for (const coilovers of [false, true]) {
+    const { car, run } = await makeWorld('manual');
+    Object.assign(car.tune, { coilovers, rideHeight: -100 });
+    run(2);
+    y[coilovers] = car.body.translation().y;
+  }
+  assert.ok(Math.abs(y.false - 0.62) < 0.05 && y.false - y.true > 0.07, JSON.stringify(y));
 });

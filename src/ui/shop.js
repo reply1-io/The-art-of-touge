@@ -4,19 +4,22 @@
 import * as THREE from 'three';
 import {
   CAR, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup,
-  RIM_WIDTH_IN, PLATES, cleanPlate, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, HEADLIGHTS, TAILLIGHTS,
+  SEATS, RIM_WIDTH_IN, PLATES, cleanPlate, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, HEADLIGHTS, TAILLIGHTS,
 } from '../config.js';
 import { dynoRun } from '../physics/dyno.js';
 import { loadBuilds, saveBuilds } from '../settings.js';
 import { CarModel } from '../render/carModel.js';
 
-const SHOP_KEYS = ['offsetFront', 'offsetRear', 'plateStyle', 'plateText', 'stretch', 'intake', 'turbo', 'clutch', 'gearbox', 'finalDrive', 'coilovers', 'bump', 'rebound', 'brakes', 'handbrake', 'angleKit', 'weight', 'paint', 'headlights', 'taillights', 'numbers', 'number', 'numberW', 'numberH', 'exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
+const SHOP_KEYS = ['seats', 'offsetFront', 'offsetRear', 'plateStyle', 'plateText', 'stretch', 'intake', 'turbo', 'clutch', 'gearbox', 'finalDrive', 'coilovers', 'brakes', 'handbrake', 'angleKit', 'weight', 'paint', 'headlights', 'taillights', 'numbers', 'number', 'numberW', 'numberH', 'exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
 
 const TABS = [
-  ['body', 'Body'],
+  ['body', 'Exterior'],
+  ['interior', 'Interior'],
   ['wheels', 'Wheels'],
-  ['chassis', 'Chassis'],
+  ['chassis', 'Suspension'],
+  ['brakes', 'Brakes'],
   ['engine', 'Engine'],
+  ['drive', 'Drivetrain'],
   ['dyno', 'Dyno'],
   ['builds', 'Builds'],
 ];
@@ -236,14 +239,14 @@ export class Shop {
     const ws = wheelSetup(t);
     this.car.applySetup(t);
     // Static ride: each corner sinks by its share of the weight over its spring rate.
-    const rh = Math.max(-0.2, Math.min(0.05, (t.rideHeight || 0) / 1000));
+    const rh = t.coilovers ? Math.max(-0.2, Math.min(0.05, (t.rideHeight || 0) / 1000)) : 0;
     const mountY = CAR.wheelMountY - rh;
     this.fake.mountY = mountY;
     const g = (CAR.mass * 9.81) / 4;
     for (const w of this.fake.wheels) {
       w.baseX ??= w.x;
       w.x = w.baseX + Math.sign(w.baseX) * (w.front ? ws.pokeFront : ws.pokeRear);
-      w.compression = Math.min(CAR.suspensionRest, (g * (w.front ? 1.04 : 0.96)) / (w.front ? t.springFront : t.springRear));
+      w.compression = Math.min(CAR.suspensionRest, (g * (w.front ? 1.04 : 0.96)) / (t.coilovers ? (w.front ? t.springFront : t.springRear) : w.front ? TUNABLE_DEFAULTS.springFront : TUNABLE_DEFAULTS.springRear));
     }
     const yF = mountY - CAR.suspensionRest + this.fake.wheels[0].compression;
     const yR = mountY - CAR.suspensionRest + this.fake.wheels[2].compression;
@@ -372,23 +375,26 @@ export class Shop {
         ),
       ];
     }
+    if (this.tab === 'interior') {
+      return [this.#section('Seats', this.#cards(SEATS, 'seats')), this.#section('Weight reduction', this.#cards(WEIGHTS, 'weight'))];
+    }
     if (this.tab === 'wheels') {
       return [
         this.#section('Rims', this.#cards(WHEELS, 'wheel')),
         this.#section(
-          'Size & alignment',
+          'Size & fitment',
           this.#chips('Rim size', 'rim', RIM_SIZES.map((r) => [r, `${r}"`])),
+          this.#slider('offsetFront', 'Front offset', -20, 60, 5, offset),
+          this.#slider('offsetRear', 'Rear offset', -20, 60, 5, offset),
+        ),
+        this.#section(
+          'Tyres',
+          this.#cards(TIRES, 'tire'),
+          this.#slider('profile', 'Sidewall', 30, 75, 5, (v) => `${v}% · ${v <= 40 ? 'Stretched thin' : v <= 50 ? 'Low profile' : v <= 60 ? 'Sporty' : 'Tall & soft'}`),
           ...(t.tire !== 'semi'
             ? [this.#chips('Tyre fit', 'stretch', [[false, 'Normal'], [true, 'Stretched']])]
             : [this.#hint('Stretched tyres are not made in semi-slick.')]),
-          this.#slider('profile', 'Tyre sidewall', 30, 75, 5, (v) => `${v}% · ${v <= 40 ? 'Stretched thin' : v <= 50 ? 'Low profile' : v <= 60 ? 'Sporty' : 'Tall & soft'}`),
-          this.#slider('offsetFront', 'Front offset', -20, 60, 5, offset),
-          this.#slider('offsetRear', 'Rear offset', -20, 60, 5, offset),
-          this.#slider('camberFront', 'Front camber', 0, 6, 0.5, (v) => `${deg(v)}${v > 3.5 ? ' · too much' : v >= 2 ? ' · grippy' : ''}`),
-          this.#slider('camberRear', 'Rear camber', 0, 6, 0.5, (v) => `${deg(v)}${v > 3.5 ? ' · too much' : v >= 2 ? ' · grippy' : ''}`),
-          this.#hint('Low sidewalls turn in sharper but break away sooner. A few degrees of camber adds cornering grip; past about -3.5° the tyre rides on its edge and grip drops.'),
         ),
-        this.#section('Tyre compound', this.#cards(TIRES, 'tire')),
       ];
     }
     if (this.tab === 'builds') return [this.#builds()];
@@ -398,9 +404,13 @@ export class Shop {
         this.#section('Intake', this.#cards(INTAKES, 'intake')),
         this.#section('Turbo', this.#cards(TURBOS, 'turbo')),
         this.#section('Exhaust', this.#cards(EXHAUSTS, 'exhaust')),
+      ];
+    }
+    if (this.tab === 'drive') {
+      return [
         this.#section('Clutch', this.#cards(CLUTCHES, 'clutch')),
         this.#section(
-          'Gearing',
+          'Gearbox',
           this.#cards(GEARBOXES, 'gearbox'),
           this.#chips('Final drive', 'finalDrive', FINAL_DRIVES.map((f) => [f, f.toFixed(2)])),
           this.#hint('A higher final drive number is shorter: quicker out of corners, lower top speed.'),
@@ -408,37 +418,41 @@ export class Shop {
         this.#section('Differential', this.#cards(DIFFS, 'diff')),
       ];
     }
-    // Chassis
+    if (this.tab === 'brakes') {
+      return [
+        this.#section('Brakes', this.#cards(BRAKES, 'brakes'), this.#slider('brakeBias', 'Brake bias', 0.5, 0.8, 0.01, (v) => `${Math.round(v * 100)}% front`)),
+        this.#section('Handbrake', this.#cards(HANDBRAKES, 'handbrake')),
+        this.#section('Steering angle', this.#cards(ANGLE_KITS, 'angleKit')),
+      ];
+    }
+    // Suspension: only coilovers can be adjusted.
     return [
       this.#section(
-        'Suspension',
-        this.#chips('Dampers', 'coilovers', [[false, 'Stock'], [true, 'Coilovers']]),
-        this.#slider('rideHeight', 'Ride height', -200, 30, 5, (v) => (v === 0 ? 'Stock' : `${v > 0 ? '+' : ''}${v} mm`)),
-        this.#slider('springFront', 'Front springs', 18000, t.coilovers ? 90000 : 70000, 1000, stiffness),
-        this.#slider('springRear', 'Rear springs', 18000, t.coilovers ? 90000 : 70000, 1000, stiffness),
+        'Dampers',
+        this.#chips('Suspension', 'coilovers', [[false, 'Stock'], [true, 'Coilovers']]),
         ...(t.coilovers
           ? [
-              this.#slider('bump', 'Bump damping', 0.12, 0.8, 0.02, (v) => `${Math.round(v * 100)}%`),
-              this.#slider('rebound', 'Rebound damping', 0.12, 0.9, 0.02, (v) => `${Math.round(v * 100)}%`),
-              this.#hint('Coilovers go lower and stiffer, and split the damping: bump controls how the car takes a hit, rebound how fast it settles.'),
+              this.#slider('rideHeight', 'Ride height', -200, 30, 5, (v) => (v === 0 ? 'Stock' : `${v > 0 ? '+' : ''}${v} mm`)),
+              this.#slider('springFront', 'Front stiffness', 18000, 90000, 1000, stiffness),
+              this.#slider('springRear', 'Rear stiffness', 18000, 90000, 1000, stiffness),
             ]
-          : []),
+          : [this.#hint('Stock struts and springs can’t be adjusted. Fit coilovers to set ride height and stiffness.')]),
+      ),
+      this.#section(
+        'Alignment',
+        this.#slider('camberFront', 'Front camber', 0, 6, 0.5, (v) => `${deg(v)}${v > 3.5 ? ' · too much' : v >= 2 ? ' · grippy' : ''}`),
+        this.#slider('camberRear', 'Rear camber', 0, 6, 0.5, (v) => `${deg(v)}${v > 3.5 ? ' · too much' : v >= 2 ? ' · grippy' : ''}`),
       ),
       this.#section(
         'Sway bars',
         this.#chips('Front bar', 'antiRollFront', Object.entries(SWAY_FRONT).map(([k, v]) => [v, label[k]]), SWAY_FRONT[nearestKey(SWAY_FRONT, t.antiRollFront)]),
         this.#chips('Rear bar', 'antiRollRear', Object.entries(SWAY_REAR).map(([k, v]) => [v, label[k]]), SWAY_REAR[nearestKey(SWAY_REAR, t.antiRollRear)]),
-        this.#hint('Stiffer bars cut body roll. A stiffer rear bar makes the tail looser; a stiffer front makes the nose push.'),
       ),
       this.#section(
         'Strut tower braces',
         this.#chips('Front brace', 'strutFront', [[false, 'None'], [true, 'Fitted']]),
         this.#chips('Rear brace', 'strutRear', [[false, 'None'], [true, 'Fitted']]),
       ),
-      this.#section('Brakes', this.#cards(BRAKES, 'brakes'), this.#slider('brakeBias', 'Brake bias', 0.5, 0.8, 0.01, (v) => `${Math.round(v * 100)}% front`)),
-      this.#section('Handbrake', this.#cards(HANDBRAKES, 'handbrake')),
-      this.#section('Steering angle', this.#cards(ANGLE_KITS, 'angleKit')),
-      this.#section('Weight reduction', this.#cards(WEIGHTS, 'weight')),
     ];
   }
 

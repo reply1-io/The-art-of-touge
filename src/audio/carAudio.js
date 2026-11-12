@@ -185,6 +185,38 @@ export class CarAudio {
     this.whistleBand = whistleBand;
     this.whistle.connect(whistleBand).connect(this.whistleGain).connect(this.master);
     this.whistle.start();
+    // Diesel-style spool: most of the sound is air rushing through the compressor, a breathy
+    // whoosh that rises with boost, under a low whine.
+    const rush = ctx.createBufferSource();
+    rush.buffer = this.noise;
+    rush.loop = true;
+    this.rushBand = ctx.createBiquadFilter();
+    this.rushBand.type = 'bandpass';
+    this.rushBand.Q.value = 2.2;
+    this.rushGain = ctx.createGain();
+    this.rushGain.gain.value = 0;
+    rush.connect(this.rushBand).connect(this.rushGain).connect(this.master);
+    rush.start();
+
+    // Metal scraping on a rail or the road: harsh, gritty high noise.
+    const scr = ctx.createBufferSource();
+    scr.buffer = this.noise;
+    scr.loop = true;
+    const scrF = ctx.createBiquadFilter();
+    scrF.type = 'bandpass';
+    scrF.frequency.value = 3200;
+    scrF.Q.value = 0.8;
+    this.scrapeGain = ctx.createGain();
+    this.scrapeGain.gain.value = 0;
+    const scrMod = ctx.createOscillator();
+    scrMod.type = 'square';
+    scrMod.frequency.value = 23;
+    const scrModGain = ctx.createGain();
+    scrModGain.gain.value = 0.3;
+    scrMod.connect(scrModGain).connect(this.scrapeGain.gain);
+    scr.connect(scrF).connect(this.scrapeGain).connect(this.master);
+    scr.start();
+    scrMod.start();
 
     // ---- Tyres, wind, grind ----
     const squeal = ctx.createBufferSource();
@@ -290,23 +322,42 @@ export class CarAudio {
   // Turbo flutter (compressor surge) on lift-off: with nowhere to go, the boosted air pushes
   // back through the turbo in a fast, chattering "stu-tu-tu-tu" that slows and fades as the
   // pressure drops. Each chatter is a short puff of low, breathy noise.
+  // Small turbo on lift-off: one soft "poof", like a sneeze of air.
+  #poof(strength) {
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(1400, t);
+    lp.frequency.exponentialRampToValueAtTime(350, t + 0.25);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.35 * strength, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    src.connect(lp).connect(g).connect(this.master);
+    src.start(t, Math.random());
+    src.stop(t + 0.32);
+  }
+
   #flutter(strength, big) {
     const ctx = this.ctx;
     const t0 = ctx.currentTime;
-    const count = Math.round((big ? 11 : 8) * (0.6 + 0.4 * strength));
+    const count = Math.round((big ? 12 : 8) * (0.6 + 0.4 * strength));
     let at = t0 + 0.02;
-    let gap = big ? 0.045 : 0.038; // seconds between chatters, growing as it winds down
+    let gap = big ? 0.052 : 0.04; // seconds between chatters, growing as it winds down
     for (let k = 0; k < count; k++) {
       const fade = 1 - k / count;
       const src = ctx.createBufferSource();
       src.buffer = this.noise;
       const bp = ctx.createBiquadFilter();
       bp.type = 'bandpass';
-      bp.frequency.value = (big ? 520 : 680) - k * 18 + Math.random() * 60;
+      bp.frequency.value = (big ? 330 : 680) - k * 14 + Math.random() * 50;
       bp.Q.value = 1.6;
       const lp = ctx.createBiquadFilter();
       lp.type = 'lowpass';
-      lp.frequency.value = 1800;
+      lp.frequency.value = big ? 1100 : 1800;
       const g = ctx.createGain();
       const peak = 0.42 * strength * (0.35 + 0.65 * fade);
       g.gain.setValueAtTime(0.0001, at);
@@ -332,6 +383,12 @@ export class CarAudio {
     air.connect(af).connect(ag).connect(this.master);
     air.start(t0, Math.random());
     air.stop(at + 0.05);
+  }
+
+  // 0..1: how hard metal is scraping right now.
+  setScrape(level) {
+    if (!this.ctx) return;
+    this.scrapeGain.gain.setTargetAtTime(Math.min(1, level) * 0.35, this.ctx.currentTime, level > 0 ? 0.01 : 0.06);
   }
 
   setMuted(m) {
@@ -453,12 +510,21 @@ export class CarAudio {
     const big = this.turbo === 'big';
     if (this.turbo && this.turbo !== 'none') {
       // Spool: a lower, softer whine (the big turbo is deeper still) that rises gently with boost.
-      const spool = (big ? 420 : 560) + boost * (big ? 900 : 1100) + rpm * 0.04;
-      this.whistle.frequency.setTargetAtTime(spool, t, 0.06);
-      this.whistleBand.frequency.setTargetAtTime(spool, t, 0.06);
-      this.whistleGain.gain.setTargetAtTime(boost * (big ? 0.13 : 0.09) * (1 + inCar * 0.5), t, 0.06);
-      if (this.prevBoost > 0.3 && vehicle.throttlePedal < 0.2 && this.prevThrottle > 0.5) this.#flutter(Math.min(1, this.prevBoost * 1.2), big);
-    } else this.whistleGain.gain.setTargetAtTime(0, t, 0.05);
+      const spool = (big ? 260 : 360) + boost * (big ? 620 : 760) + rpm * 0.03;
+      this.whistle.frequency.setTargetAtTime(spool, t, 0.08);
+      this.whistleBand.frequency.setTargetAtTime(spool, t, 0.08);
+      this.whistleGain.gain.setTargetAtTime(boost * (big ? 0.07 : 0.05) * (1 + inCar * 0.5), t, 0.08);
+      this.rushBand.frequency.setTargetAtTime(spool * 2.2, t, 0.08);
+      this.rushGain.gain.setTargetAtTime(boost * (big ? 0.2 : 0.13) * (0.4 + 0.6 * vehicle.throttlePedal) * (1 + inCar * 0.5), t, 0.08);
+      // Lift-off: the big turbo flutters; the small one just puffs once.
+      if (this.prevBoost > 0.3 && vehicle.throttlePedal < 0.2 && this.prevThrottle > 0.5) {
+        if (big) this.#flutter(Math.min(1, this.prevBoost * 1.2), true);
+        else this.#poof(Math.min(1, this.prevBoost * 1.3));
+      }
+    } else {
+      this.whistleGain.gain.setTargetAtTime(0, t, 0.05);
+      this.rushGain.gain.setTargetAtTime(0, t, 0.05);
+    }
     this.prevBoost = boost;
 
     // Events: stall, start, lift-off pops, downshift blips.
