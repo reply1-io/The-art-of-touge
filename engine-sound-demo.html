@@ -174,12 +174,26 @@ let ctx, engine, out;
 let state = 'off', mode = 'free', crankT0 = 0, lastCycle = null;
 const sim = { rpm: 0, thr: 0, thrIn: 0, brake: 0, v: 0, gear: 0, cut: 0, shift: 0 };
 
-async function ensureAudio() {
-  if (ctx) return;
-  ctx = new (window.AudioContext || window.webkitAudioContext)();
-  out = ctx.createGain();
-  out.gain.value = $('sVol').value / 100;
-  out.connect(ctx.destination);
+// Phones only allow sound if the AudioContext is created and resumed right inside the tap,
+// before anything is awaited. iPhones also mute web audio on the silent switch unless the
+// page asks for "playback".
+function unlockAudio() {
+  if (!ctx) {
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    out = ctx.createGain();
+    out.gain.value = $('sVol').value / 100;
+    out.connect(ctx.destination);
+  }
+  ctx.resume();
+  const blip = ctx.createBufferSource();
+  blip.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+  blip.connect(ctx.destination);
+  blip.start();
+}
+
+async function ensureEngine() {
+  if (engine) return;
   engine = await M20EngineSound.create(ctx);
   engine.connect(out);
   engine.onCycle = (c) => { lastCycle = c; };
@@ -188,14 +202,26 @@ async function ensureAudio() {
 
 $('btnStart').onclick = async () => {
   $('btnStart').disabled = true;
-  try { await ensureAudio(); } catch (e) { $('status').textContent = 'This browser could not start Web Audio: ' + e.message; $('btnStart').disabled = false; return; }
-  await ctx.resume();
+  try {
+    unlockAudio();
+    await ensureEngine();
+    await ctx.resume();
+  } catch (e) {
+    $('status').textContent = 'Sound could not start: ' + e.message;
+    $('btnStart').disabled = false;
+    return;
+  }
+  if (ctx.state !== 'running') {
+    $('status').textContent = 'The browser is holding the sound back. Tap Start engine again.';
+    $('btnStart').disabled = false;
+    return;
+  }
   state = 'cranking'; crankT0 = performance.now();
   sim.v = 0; sim.gear = mode === 'drive' ? 1 : 0;
   $('status').textContent = 'Cranking…';
   await engine.startWithCrank();
   state = 'running'; sim.rpm = IDLE_RPM;
-  $('status').textContent = 'Running. Hold the gas.';
+  $('status').textContent = `Running. Hold the gas. (audio: ${engine.backend === 'worklet' ? 'AudioWorklet' : 'main thread'}${/iPhone|iPad/.test(navigator.userAgent) ? '; no sound? check the silent switch and volume' : ''})`;
   $('btnStop').disabled = false;
 };
 $('btnStop').onclick = () => {
@@ -300,7 +326,7 @@ function drawTach() {
 drawTach();
 
 // ---------- engine-cycle scope ----------
-const FIRING = [1, 5, 3, 6, 2, 4];
+const SCOPE_ORDER = [1, 5, 3, 6, 2, 4];
 const cv = $('scope'), g2 = cv.getContext('2d');
 function drawScope() {
   const dpr = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
@@ -312,9 +338,9 @@ function drawScope() {
   for (let k = 0; k < 6; k++) {
     const x = k / 6 * w + 1;
     g2.strokeStyle = css('--line'); g2.lineWidth = 1; g2.beginPath(); g2.moveTo(x, top - 4); g2.lineTo(x, h - 16); g2.stroke();
-    g2.fillStyle = FIRING[k] <= 3 ? css('--bank-a') : css('--bank-b');
+    g2.fillStyle = SCOPE_ORDER[k] <= 3 ? css('--bank-a') : css('--bank-b');
     g2.fillRect(x, 4, 22, 14);
-    g2.textAlign = 'center'; g2.fillStyle = '#fff'; g2.fillText(String(FIRING[k]), x + 11, 15);
+    g2.textAlign = 'center'; g2.fillStyle = '#fff'; g2.fillText(String(SCOPE_ORDER[k]), x + 11, 15);
     g2.textAlign = 'left'; g2.fillStyle = css('--muted'); g2.fillText(`${k * 120}°`, x + 3, h - 3);
   }
   g2.strokeStyle = css('--line'); g2.beginPath(); g2.moveTo(0, mid); g2.lineTo(w, mid); g2.stroke();

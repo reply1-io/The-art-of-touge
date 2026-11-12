@@ -1,4 +1,6 @@
-// AudioWorklet that synthesizes a BMW M20 2.5 straight-six (E30 325i) from first principles.
+// DSP core that synthesizes a BMW M20 2.5 straight-six (E30 325i) from first principles.
+// Runs inside an AudioWorklet when the browser allows it, otherwise on the main thread
+// (see M20EngineSound.js). It has no imports so it can be shipped into a worklet as text.
 //
 // Signal path, per sample:
 //   crank angle -> 6 exhaust pressure pulses (firing order 1-5-3-6-2-4, one every 120 deg)
@@ -13,10 +15,20 @@
 // Motronic cuts fuel on overrun, so off-throttle above idle the pulses are just
 // pumped air: weaker and duller, with the odd pop.
 
-const FIRING = [1, 5, 3, 6, 2, 4];
-const TAU = Math.PI * 2;
+export const FIRING = [1, 5, 3, 6, 2, 4];
+export const TAU = Math.PI * 2;
+export const IDLE_RPM = 800;
+export const CRANK_SECONDS = 2.6;
 
-class Biquad {
+/** rpm during the start-up: starter turning it over, catch, flare, settle. t = seconds since key turned. */
+export function crankRpm(t) {
+  if (t < 0.15) return 260 * (t / 0.15);
+  if (t < 1.0) return 250;
+  if (t < 1.25) return 250 + (1450 - 250) * ((t - 1.0) / 0.25);
+  return IDLE_RPM + (1450 - IDLE_RPM) * Math.exp(-(t - 1.25) / 0.45);
+}
+
+export class Biquad {
   constructor() { this.b0 = 1; this.b1 = this.b2 = this.a1 = this.a2 = 0; this.z1 = this.z2 = 0; }
   set(type, f, q, gainDb, fs) {
     f = Math.min(Math.max(f, 10), fs * 0.45);
@@ -40,7 +52,7 @@ class Biquad {
   }
 }
 
-class Delay {
+export class Delay {
   constructor(n) { this.buf = new Float32Array(n); this.i = 0; }
   write(x) { this.buf[this.i] = x; this.i = (this.i + 1) % this.buf.length; }
   read(d) { // d samples ago, fractional
@@ -50,25 +62,17 @@ class Delay {
   }
 }
 
-function randn() { // cheap gaussian-ish
+export function randn() { // cheap gaussian-ish
   return (Math.random() + Math.random() + Math.random() - 1.5) * 1.15;
 }
 
-class M20Processor extends AudioWorkletProcessor {
-  static get parameterDescriptors() {
-    return [
-      { name: 'rpm', defaultValue: 800, minValue: 0, maxValue: 9000 },
-      { name: 'throttle', defaultValue: 0, minValue: 0, maxValue: 1 },
-      { name: 'ignition', defaultValue: 0, minValue: 0, maxValue: 1 },
-      { name: 'starter', defaultValue: 0, minValue: 0, maxValue: 1 },
-      { name: 'exhaust', defaultValue: 0, minValue: 0, maxValue: 1 }, // 0 stock, 1 sport
-      { name: 'idleRpm', defaultValue: 800, minValue: 400, maxValue: 1500 },
-    ];
-  }
-
-  constructor() {
-    super();
-    const fs = sampleRate;
+export class M20Dsp {
+  constructor(fs) {
+    this.mode = 'off';         // off | crank | run | stopping
+    this.clock = 0; this.modeT0 = 0; this.stopFrom = 0;
+    this.target = { rpm: IDLE_RPM, throttle: 0, exhaust: 0 };
+    this.c = { rpm: 0, throttle: 0, ignition: 0, starter: 0, exhaust: 0, idleRpm: IDLE_RPM };
+    this.onCycle = null;
     this.fs = fs;
     this.phase = 0;            // engine cycle, 0..1 = 720 crank degrees
     this.t = 0;
@@ -99,6 +103,35 @@ class M20Processor extends AudioWorkletProcessor {
     this.cyc = new Float32Array(Math.ceil(fs * 0.4)); this.cycN = 0; this.sincePost = 0;
   }
 
+  /** Values from the game: { rpm, throttle (0..1), exhaust (0 stock .. 1 sport) }. */
+  set(v) { Object.assign(this.target, v); }
+
+  /** 'crank' (key start), 'start' (straight to idle), 'stop' (key off). */
+  command(cmd) {
+    this.modeT0 = this.clock;
+    if (cmd === 'crank') { this.mode = 'crank'; this.target.rpm = IDLE_RPM; this.target.throttle = 0; }
+    else if (cmd === 'start') { this.mode = 'run'; this.target.rpm = IDLE_RPM; this.rpmS = IDLE_RPM; }
+    else if (cmd === 'stop') { this.mode = 'stopping'; this.stopFrom = this.rpmS; }
+  }
+
+  _control(n) {
+    const c = this.c, t = this.target, dt = this.clock - this.modeT0;
+    c.exhaust += (t.exhaust - c.exhaust) * 0.05;
+    if (this.mode === 'crank') {
+      c.rpm = crankRpm(dt); c.throttle = 0;
+      c.starter = dt < 1.05 ? 1 : 0; c.ignition = dt >= 0.95 ? 1 : 0;
+      if (dt >= CRANK_SECONDS) { this.mode = 'run'; t.rpm = c.rpm; }
+    } else if (this.mode === 'run') {
+      c.rpm = t.rpm; c.throttle = t.throttle; c.ignition = 1; c.starter = 0;
+    } else if (this.mode === 'stopping') {
+      c.rpm = Math.max(0, this.stopFrom * (1 - dt / 0.9)); c.throttle = 0; c.ignition = 0; c.starter = 0;
+      if (dt > 0.9) this.mode = 'off';
+    } else {
+      c.rpm = 0; c.throttle = 0; c.ignition = 0; c.starter = 0;
+    }
+    this.clock += n / this.fs;
+  }
+
   pulse(xDeg, width) {
     // exhaust blowdown: smooth rise and decay (a sharp edge here = buzz)
     if (xDeg <= 0 || xDeg > width * 7) return 0;
@@ -106,13 +139,14 @@ class M20Processor extends AudioWorkletProcessor {
     return u * u * Math.exp(2 * (1 - u));
   }
 
-  process(_in, outputs, P) {
-    const out = outputs[0][0];
+  /** Fill `out` (Float32Array) with the next block of sound. */
+  process(out) {
     const fs = this.fs, N = out.length;
-    const g = (name, i) => { const a = P[name]; return a.length > 1 ? a[i] : a[0]; };
+    this._control(N);
+    const C = this.c;
 
     // block-rate coefficient updates
-    const thr0 = g('throttle', 0), rpm0 = g('rpm', 0), exh = g('exhaust', 0);
+    const thr0 = C.throttle, rpm0 = C.rpm, exh = C.exhaust;
     if (this.coef++ % 4 === 0) {
       const open = 1 + exh * 0.9;
       this.muffLp.set('lp', (420 + 700 * thr0 + rpm0 * 0.09) * open, 0.6, 0, fs);
@@ -125,8 +159,8 @@ class M20Processor extends AudioWorkletProcessor {
     }
 
     for (let i = 0; i < N; i++) {
-      const rpmIn = g('rpm', i), thrIn = g('throttle', i), ign = g('ignition', i);
-      const st = g('starter', i), idle = g('idleRpm', i);
+      const rpmIn = C.rpm, thrIn = C.throttle, ign = C.ignition;
+      const st = C.starter, idle = C.idleRpm;
       this.thrS += (thrIn - this.thrS) * 0.0015;
       this.rpmS += (rpmIn - this.rpmS) * 0.004;
       const thr = this.thrS;
@@ -227,14 +261,11 @@ class M20Processor extends AudioWorkletProcessor {
         if (this.sincePost > fs / 12 && this.cycN > 16) {
           const pts = 360, s = new Float32Array(pts);
           for (let q = 0; q < pts; q++) s[q] = this.cyc[Math.floor(q / pts * this.cycN)];
-          this.port.postMessage(s, [s.buffer]);
+          if (this.onCycle) this.onCycle(s);
           this.sincePost = 0;
         }
         this.cycN = 0;
       }
     }
-    return true;
   }
 }
-
-registerProcessor('m20-engine', M20Processor);

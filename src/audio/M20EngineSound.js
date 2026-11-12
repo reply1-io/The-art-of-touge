@@ -1,5 +1,5 @@
 // M20EngineSound - procedural E30 325i (BMW M20B25 straight-six) engine audio.
-// No samples: the sound is synthesized in an AudioWorklet (m20-worklet.js).
+// No samples: the sound is synthesized by M20Dsp (m20-dsp.js).
 //
 //   const engine = await M20EngineSound.create(audioCtx);
 //   engine.connect(audioCtx.destination);
@@ -10,96 +10,109 @@
 //   engine.setExhaust(0);              // 0 stock, 1 sport
 //   engine.stop();
 //
-// The rev limiter, gears etc. belong to your car sim: cut the throttle to 0 when
-// it hits the limiter and the engine will sound like it.
+// Where it runs: an AudioWorklet built from the DSP code in memory (no extra file
+// to fetch, so it also works in sandboxed pages), or, if the browser refuses that,
+// a ScriptProcessor on the main thread. `engine.backend` says which.
+//
+// Browser rule: create/resume the AudioContext inside the click/tap handler,
+// before any await, or phones keep it silent.
 
-export const IDLE_RPM = 800;
+import { M20Dsp, Biquad, Delay, randn, crankRpm, CRANK_SECONDS, IDLE_RPM, FIRING, TAU } from './m20-dsp.js';
+export { crankRpm, CRANK_SECONDS, IDLE_RPM };
 
-/** rpm the engine follows during startWithCrank(), t in seconds since the call. */
-export function crankRpm(t) {
-  if (t < 0.15) return 260 * (t / 0.15);
-  if (t < 1.0) return 250;                        // starter turning it over
-  if (t < 1.25) return 250 + (1450 - 250) * ((t - 1.0) / 0.25); // catches, flares
-  return IDLE_RPM + (1450 - IDLE_RPM) * Math.exp(-(t - 1.25) / 0.45);
+function workletSource() {
+  return [
+    `const TAU = ${TAU};`,
+    `const FIRING = ${JSON.stringify(FIRING)};`,
+    `const IDLE_RPM = ${IDLE_RPM};`,
+    `const CRANK_SECONDS = ${CRANK_SECONDS};`,
+    randn, crankRpm, Biquad, Delay, M20Dsp,
+    `class M20Processor extends AudioWorkletProcessor {
+      constructor() {
+        super();
+        this.d = new M20Dsp(sampleRate);
+        this.d.onCycle = (s) => this.port.postMessage({ cycle: s }, [s.buffer]);
+        this.port.onmessage = (e) => {
+          const m = e.data;
+          if (m.set) this.d.set(m.set);
+          if (m.cmd) this.d.command(m.cmd);
+        };
+      }
+      process(_i, outputs) { this.d.process(outputs[0][0]); return true; }
+    }
+    registerProcessor('m20-engine', M20Processor);`,
+  ].map(String).join('\n');
 }
-export const CRANK_SECONDS = 2.6;
+
+const timeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
 
 export class M20EngineSound {
-  static async create(ctx, { workletUrl = new URL('./m20-worklet.js', import.meta.url) } = {}) {
-    await ctx.audioWorklet.addModule(workletUrl);
-    return new M20EngineSound(ctx);
+  static async create(ctx) {
+    const e = new M20EngineSound(ctx);
+    if (ctx.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
+      try {
+        const url = URL.createObjectURL(new Blob([workletSource()], { type: 'text/javascript' }));
+        await timeout(ctx.audioWorklet.addModule(url), 4000);
+        const node = new AudioWorkletNode(ctx, 'm20-engine', {
+          numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
+        });
+        node.port.onmessage = (m) => { if (m.data.cycle) e.onCycle?.(m.data.cycle); };
+        e._send = (m) => node.port.postMessage(m);
+        e.node = node;
+        e.backend = 'worklet';
+      } catch (err) {
+        e.workletError = err;
+      }
+    }
+    if (!e.node) {
+      const dsp = new M20Dsp(ctx.sampleRate);
+      dsp.onCycle = (s) => e.onCycle?.(s);
+      const node = ctx.createScriptProcessor(1024, 1, 1);
+      node.onaudioprocess = (ev) => dsp.process(ev.outputBuffer.getChannelData(0));
+      e._send = (m) => { if (m.set) dsp.set(m.set); if (m.cmd) dsp.command(m.cmd); };
+      e.node = node;
+      e.backend = 'main-thread';
+    }
+    e.node.connect(e.output);
+    return e;
   }
 
   constructor(ctx) {
     this.ctx = ctx;
-    this.node = new AudioWorkletNode(ctx, 'm20-engine', {
-      numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
-    });
-    this.p = (name) => this.node.parameters.get(name);
-    this.p('idleRpm').value = IDLE_RPM;
     this.output = ctx.createGain();
     this.output.gain.value = 0;
-    this.node.connect(this.output);
     this.cranking = false;
     this.running = false;
-    this.onCycle = null; // (Float32Array one engine cycle of output) => void
-    this.node.port.onmessage = (e) => this.onCycle?.(e.data);
+    this.onCycle = null; // (Float32Array: one engine cycle of output) => void
   }
 
   connect(dest) { this.output.connect(dest); return this; }
   disconnect() { this.output.disconnect(); }
 
-  setRpm(rpm) { if (!this.cranking) this._set('rpm', rpm, 0.015); }
-  setThrottle(t) { this._set('throttle', Math.min(1, Math.max(0, t)), 0.01); }
-  setExhaust(x) { this._set('exhaust', x, 0.1); }
+  setRpm(rpm) { if (!this.cranking) this._send({ set: { rpm } }); }
+  setThrottle(t) { this._send({ set: { throttle: Math.min(1, Math.max(0, t)) } }); }
+  setExhaust(x) { this._send({ set: { exhaust: x } }); }
 
   start() {
-    const now = this.ctx.currentTime;
     this.running = true;
-    this.p('ignition').setValueAtTime(1, now);
-    this.p('starter').setValueAtTime(0, now);
-    this.p('rpm').setValueAtTime(IDLE_RPM, now);
+    this._send({ cmd: 'start' });
     this._fade(1, 0.2);
   }
 
   /** Starter motor, catch, flare, settle to idle. Resolves when it is idling. */
   startWithCrank() {
-    const ctx = this.ctx, t0 = ctx.currentTime + 0.02;
     this.cranking = true;
     this.running = true;
-    const n = 256, curve = new Float32Array(n);
-    for (let i = 0; i < n; i++) curve[i] = crankRpm((i / (n - 1)) * CRANK_SECONDS);
-    const rpm = this.p('rpm');
-    rpm.cancelScheduledValues(t0);
-    rpm.setValueCurveAtTime(curve, t0, CRANK_SECONDS);
-    this.p('starter').setValueAtTime(1, t0);
-    this.p('starter').setValueAtTime(0, t0 + 1.05);
-    this.p('ignition').setValueAtTime(0, t0);
-    this.p('ignition').setValueAtTime(1, t0 + 0.95);
-    this.p('throttle').setValueAtTime(0, t0);
+    this._send({ cmd: 'crank' });
     this._fade(1, 0.05);
-    return new Promise((res) => setTimeout(() => {
-      this.cranking = false;
-      res();
-    }, (CRANK_SECONDS + 0.05) * 1000));
+    return new Promise((res) => setTimeout(() => { this.cranking = false; res(); }, (CRANK_SECONDS + 0.05) * 1000));
   }
 
   /** Key off: ignition cut, engine runs down and stops. */
   stop() {
-    const now = this.ctx.currentTime;
     this.running = false;
-    this.p('ignition').setValueAtTime(0, now);
-    this.p('throttle').setValueAtTime(0, now);
-    const rpm = this.p('rpm');
-    rpm.cancelScheduledValues(now);
-    rpm.setValueAtTime(rpm.value, now);
-    rpm.linearRampToValueAtTime(0, now + 0.9);
+    this._send({ cmd: 'stop' });
     this._fade(0, 1.2);
-  }
-
-  _set(name, v, tc) {
-    const now = this.ctx.currentTime;
-    this.p(name).setTargetAtTime(v, now, tc);
   }
 
   _fade(v, s) {
