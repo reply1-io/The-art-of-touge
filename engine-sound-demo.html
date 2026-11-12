@@ -4,7 +4,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
-/* Layout: instrument cluster on the left, pedals + controls on the right; recording strip below. Stacks on phones. */
+/* Layout: instrument cluster on the left, pedals + controls on the right; engine-cycle scope below. Stacks on phones. */
 :root {
   --bg: #eceeef;          /* alpine white, slightly cool */
   --panel: #ffffff;
@@ -12,7 +12,8 @@
   --muted: #5d656d;
   --line: #d3d8dc;
   --needle: #ff5b1f;      /* orange cluster needle */
-  --rec: #2f9e6e;         /* the part we actually recorded */
+  --bank-a: #2f7fd6;      /* cylinders 1-3, front manifold */
+  --bank-b: #c2408f;      /* cylinders 4-6, rear manifold */
   --warn: #d6252b;        /* redline */
   --dial: #0d0f11;        /* the cluster stays black in both themes */
   --dial-fg: #f2f2ee;
@@ -23,10 +24,10 @@
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #121417; --panel: #1b1e22; --fg: #e9ebec; --muted: #9aa2a9; --line: #2c3137;
-  --rec: #45c38c; color-scheme: dark } }
+  --bank-a: #5aa2ef; --bank-b: #e06bb0; color-scheme: dark } }
 :root[data-theme="dark"] {
   --bg: #121417; --panel: #1b1e22; --fg: #e9ebec; --muted: #9aa2a9; --line: #2c3137;
-  --rec: #45c38c; color-scheme: dark }
+  --bank-a: #5aa2ef; --bank-b: #e06bb0; color-scheme: dark }
 
 html, body { background: var(--bg); color: var(--fg); }
 body {
@@ -36,20 +37,14 @@ body {
   padding-block: 20px 40px;
 }
 .wrap { max-width: 1040px; margin: 0 auto; display: grid; gap: 20px; }
-header h1 {
-  font: 700 clamp(30px, 6vw, 46px)/1 var(--font-display);
-  letter-spacing: 0.01em; margin: 0; text-wrap: balance;
-}
+header h1 { font: 700 clamp(30px, 6vw, 46px)/1 var(--font-display); letter-spacing: 0.01em; margin: 0; text-wrap: balance; }
 header p { margin: 6px 0 0; color: var(--muted); max-width: 62ch; }
 .eyebrow { font: 600 12px/1 var(--font-data); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 
 .stage { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 20px; }
 @media (max-width: 760px) { .stage { grid-template-columns: minmax(0, 1fr); } }
 
-.cluster {
-  background: var(--dial); color: var(--dial-fg); border-radius: 18px;
-  padding: 18px; display: grid; gap: 10px;
-}
+.cluster { background: var(--dial); color: var(--dial-fg); border-radius: 18px; padding: 18px; display: grid; gap: 10px; }
 .cluster svg { width: 100%; height: auto; display: block; max-width: 100%; }
 .readouts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .ro { border-top: 1px solid #262a2e; padding-top: 8px; }
@@ -60,10 +55,7 @@ header p { margin: 6px 0 0; color: var(--muted); max-width: 62ch; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 12px; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
-button {
-  font: 600 15px/1 var(--font-body); color: var(--fg); background: var(--bg);
-  border: 1px solid var(--line); border-radius: 10px; padding: 11px 14px; cursor: pointer;
-}
+button { font: 600 15px/1 var(--font-body); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 11px 14px; cursor: pointer; }
 button:hover { border-color: var(--muted); }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--needle); outline-offset: 2px; }
 button.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
@@ -72,13 +64,10 @@ button:disabled { opacity: .45; cursor: default; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .seg button { border: 0; border-radius: 0; background: transparent; padding: 10px 14px; }
 .seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.seglabel { font-size: 14px; color: var(--muted); min-width: 64px; }
 
 .pedals { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; }
-.pedal {
-  height: 120px; border-radius: 12px; font: 700 22px/1 var(--font-display); letter-spacing: .08em;
-  touch-action: none; user-select: none; -webkit-user-select: none;
-  display: grid; place-items: center; background: var(--bg);
-}
+.pedal { height: 120px; border-radius: 12px; font: 700 22px/1 var(--font-display); letter-spacing: .08em; touch-action: none; user-select: none; -webkit-user-select: none; display: grid; place-items: center; background: var(--bg); }
 .pedal.gas.down { background: var(--needle); color: #fff; border-color: var(--needle); }
 .pedal.brake.down { background: var(--fg); color: var(--bg); }
 .hint { font-size: 13px; color: var(--muted); margin: 0; }
@@ -88,25 +77,23 @@ label.sl { display: grid; gap: 4px; font-size: 14px; }
 label.sl span { display: flex; justify-content: space-between; }
 label.sl output { font-family: var(--font-data); font-variant-numeric: tabular-nums; color: var(--muted); }
 input[type=range] { width: 100%; accent-color: var(--needle); }
-.check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
 
-.tape { display: grid; gap: 8px; }
-.tape svg { width: 100%; height: auto; display: block; }
-.tape .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--muted); }
-.sw { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
+.scope { display: grid; gap: 8px; }
+.scope canvas { width: 100%; height: 180px; display: block; }
+.scope .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--muted); }
+.sw { display: inline-block; width: 12px; height: 12px; vertical-align: -1px; margin-right: 6px; border-radius: 3px; }
 
 .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
 .notes h3 { font: 600 20px/1.2 var(--font-display); margin: 0 0 4px; }
 .notes p { margin: 0; color: var(--muted); font-size: 15px; }
 #status { font: 500 13px/1.4 var(--font-data); color: var(--muted); min-height: 1.4em; }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">E30 325i · M20 2.5 straight-six · exhaust mic</div>
+    <div class="eyebrow">E30 325i · M20B25 2.5 straight-six · 168 hp</div>
     <h1>M20 Engine Sound</h1>
-    <p>Every sound you hear comes from short slices of your own idle-and-rev clip. Each slice is picked because the real engine was at the rpm the game is asking for. Press Start, then hold the gas.</p>
+    <p>No recordings are used. The sound is built live from six cylinders firing in the order 1-5-3-6-2-4, two exhaust manifolds, the pipe and the muffler. Press Start, then hold the gas.</p>
   </header>
 
   <section class="stage">
@@ -124,109 +111,98 @@ input[type=range] { width: 100%; accent-color: var(--needle); }
         <div class="row">
           <button class="primary" id="btnStart">Start engine</button>
           <button id="btnStop" disabled>Switch off</button>
-          <button id="btnRaw" disabled>Play original clip</button>
         </div>
-        <div id="status">Loading recording…</div>
+        <div id="status">Engine off. Press Start engine.</div>
       </div>
 
       <div class="card">
-        <div class="row">
+        <div class="row"><span class="seglabel">Mode</span>
           <div class="seg" role="group" aria-label="Mode">
             <button id="mFree" aria-pressed="true">Free rev</button>
             <button id="mDrive" aria-pressed="false">Drive</button>
             <button id="mManual" aria-pressed="false">Manual</button>
           </div>
         </div>
+        <div class="row"><span class="seglabel">Exhaust</span>
+          <div class="seg" role="group" aria-label="Exhaust">
+            <button id="eStock" aria-pressed="true">Stock</button>
+            <button id="eSport" aria-pressed="false">Sport</button>
+          </div>
+        </div>
         <div id="pedalBox" class="pedals">
           <button class="pedal brake" id="pBrake">BRAKE</button>
           <button class="pedal gas" id="pGas">GAS</button>
         </div>
-        <p class="hint" id="pedalHint">Hold <kbd>W</kbd> / <kbd>↑</kbd> / <kbd>Space</kbd> for gas, <kbd>S</kbd> / <kbd>↓</kbd> to brake. Drive mode shifts up at 6,300 rpm.</p>
+        <p class="hint" id="pedalHint">Hold <kbd>W</kbd> / <kbd>↑</kbd> / <kbd>Space</kbd> for gas, <kbd>S</kbd> / <kbd>↓</kbd> to brake. Drive mode shifts up at 6,300 rpm. The limiter cuts fuel at 6,500.</p>
         <div id="manualBox" hidden>
-          <label class="sl" for="sRpm"><span>Rpm <output id="oRpm">950</output></span>
-            <input type="range" id="sRpm" min="700" max="6800" step="10" value="950"></label>
+          <label class="sl" for="sRpm"><span>Rpm <output id="oRpm">800</output></span>
+            <input type="range" id="sRpm" min="600" max="6800" step="10" value="800"></label>
           <label class="sl" for="sThr"><span>Throttle <output id="oThr">0%</output></span>
             <input type="range" id="sThr" min="0" max="100" step="1" value="0"></label>
         </div>
-        <label class="check" for="cSynth"><input type="checkbox" id="cSynth" checked> Fill above 2,200 rpm with a synthesized straight-six layer</label>
         <label class="sl" for="sVol"><span>Volume <output id="oVol">80%</output></span>
           <input type="range" id="sVol" min="0" max="100" value="80"></label>
       </div>
     </div>
   </section>
 
-  <section class="card tape">
-    <div class="eyebrow">Your recording, rpm over time</div>
-    <svg id="tapeSvg" viewBox="0 0 1000 200" preserveAspectRatio="none" role="img" aria-label="Rpm of the source recording over time"></svg>
+  <section class="card scope">
+    <div class="eyebrow">One engine cycle (720° of crank), live output</div>
+    <canvas id="scope" aria-label="Waveform of one engine cycle"></canvas>
     <div class="legend">
-      <span><i class="sw" style="background:var(--rec)"></i>Coasting down (off throttle)</span>
-      <span><i class="sw" style="background:var(--needle)"></i>Revving up (on throttle)</span>
-      <span><i class="sw" style="background:var(--fg)"></i>Where the sound is being read from right now</span>
+      <span><i class="sw" style="background:var(--bank-a)"></i>Cylinders 1-3, front manifold</span>
+      <span><i class="sw" style="background:var(--bank-b)"></i>Cylinders 4-6, rear manifold</span>
+      <span>Markers show when each exhaust valve opens. The pulses arrive a little later, after travelling down the pipe.</span>
     </div>
   </section>
 
   <section class="notes">
-    <div><h3>What's real</h3><p>From 1,000 to 2,200 rpm you hear your car with a pitch correction of a few percent at most. That's the green arc on the tach.</p></div>
-    <div><h3>What's stretched</h3><p>Above 2,200 rpm the closest slices are pitched up and a synthesized layer firing three times per revolution fills in the body. The higher you go, the less it sounds like your car.</p></div>
-    <div><h3>To get the howl</h3><p>Record steady holds at 3,000, 4,000, 5,000 and 6,000 rpm, plus a pull in 2nd gear with a phone taped near the exhaust. Run the same script on the clip and the green arc grows to cover it.</p></div>
+    <div><h3>Why it sounds like a six</h3><p>Each cylinder fires every 120° of crank, so the main pitch is rpm ÷ 20 (40 Hz at idle, 325 Hz at the limiter). Small differences between cylinders add the half-order rumble a perfectly even buzz would lack.</p></div>
+    <div><h3>On and off the gas</h3><p>Under load the pulses hit harder and the rasp opens up. Lift above idle and the fuel is cut, as Motronic does on overrun, so the exhaust goes soft and the odd pop comes through.</p></div>
+    <div><h3>Tuning it</h3><p>Pipe length, manifold runner lengths, muffler cutoff and the cylinder imbalance are all numbers in <code>m20-worklet.js</code>. The Sport setting opens the muffler and adds rasp.</p></div>
   </section>
 </div>
 
 <script type="module">
-import { E30EngineSound } from './src/audio/E30EngineSound.js';
+import { M20EngineSound, crankRpm, IDLE_RPM } from './src/audio/M20EngineSound.js';
 
-const SRC = 'assets/audio/e30/e30_m20_source.wav';
-const MAP = 'assets/audio/e30/e30_m20_map.json';
-const START = 'assets/audio/e30/e30_m20_start.wav';
-
-const IDLE = 950, REDLINE = 6500, MAXDIAL = 7000;
-const GEARS = [3.83, 2.20, 1.40, 1.00, 0.81], FINAL = 3.73, TYRE_R = 0.31, MASS = 1250;
+const REDLINE = 6500, MAXDIAL = 7000;
+const GEARS = [3.83, 2.20, 1.40, 1.00, 0.81], FINAL = 3.73, TYRE_R = 0.31, MASS = 1230; // Getrag 260, 3.73 diff
 const $ = (id) => document.getElementById(id);
 
-let ctx, engine, out, map, raw;
-let running = false, mode = 'free';
+let ctx, engine, out;
+let state = 'off', mode = 'free', crankT0 = 0, lastCycle = null;
 const sim = { rpm: 0, thr: 0, thrIn: 0, brake: 0, v: 0, gear: 0, cut: 0, shift: 0 };
-
 
 async function ensureAudio() {
   if (ctx) return;
   ctx = new (window.AudioContext || window.webkitAudioContext)();
   out = ctx.createGain();
   out.gain.value = $('sVol').value / 100;
-  const comp = ctx.createDynamicsCompressor();
-  comp.threshold.value = -10; comp.ratio.value = 4;
-  out.connect(comp).connect(ctx.destination);
-  $('status').textContent = 'Decoding audio…';
-  engine = await E30EngineSound.load(ctx, { source: SRC, map: MAP, start: START });
+  out.connect(ctx.destination);
+  engine = await M20EngineSound.create(ctx);
   engine.connect(out);
-  engine.setSynthLayer($('cSynth').checked);
-  $('btnRaw').disabled = false;
+  engine.onCycle = (c) => { lastCycle = c; };
+  engine.setExhaust($('eSport').getAttribute('aria-pressed') === 'true' ? 1 : 0);
 }
 
 $('btnStart').onclick = async () => {
-  await ensureAudio();
+  $('btnStart').disabled = true;
+  try { await ensureAudio(); } catch (e) { $('status').textContent = 'This browser could not start Web Audio: ' + e.message; $('btnStart').disabled = false; return; }
   await ctx.resume();
-  if (running) return;
-  running = true;
-  sim.rpm = 180; sim.v = 0; sim.gear = mode === 'drive' ? 1 : 0;
-  const d = engine.startWithCrank();
+  state = 'cranking'; crankT0 = performance.now();
+  sim.v = 0; sim.gear = mode === 'drive' ? 1 : 0;
   $('status').textContent = 'Cranking…';
-  setTimeout(() => { sim.rpm = map.idleRpm; $('status').textContent = 'Running. Hold the gas.'; }, (d - 0.3) * 1000);
-  $('btnStart').disabled = true; $('btnStop').disabled = false;
+  await engine.startWithCrank();
+  state = 'running'; sim.rpm = IDLE_RPM;
+  $('status').textContent = 'Running. Hold the gas.';
+  $('btnStop').disabled = false;
 };
 $('btnStop').onclick = () => {
-  running = false; engine.stop(0.6);
+  state = 'off'; engine.stop();
   $('btnStart').disabled = false; $('btnStop').disabled = true;
   $('status').textContent = 'Switched off.';
 };
-$('btnRaw').onclick = async () => {
-  await ensureAudio(); await ctx.resume();
-  if (raw) { raw.stop(); raw = null; $('btnRaw').textContent = 'Play original clip'; return; }
-  raw = ctx.createBufferSource(); raw.buffer = engine.source; raw.connect(out); raw.start();
-  $('btnRaw').textContent = 'Stop original clip';
-  raw.onended = () => { raw = null; $('btnRaw').textContent = 'Play original clip'; };
-};
-$('cSynth').onchange = (e) => engine?.setSynthLayer(e.target.checked);
 $('sVol').oninput = (e) => { $('oVol').textContent = e.target.value + '%'; if (out) out.gain.value = e.target.value / 100; };
 $('sRpm').oninput = (e) => $('oRpm').textContent = (+e.target.value).toLocaleString();
 $('sThr').oninput = (e) => $('oThr').textContent = e.target.value + '%';
@@ -235,11 +211,17 @@ function setMode(m) {
   mode = m;
   for (const [id, k] of [['mFree', 'free'], ['mDrive', 'drive'], ['mManual', 'manual']]) $(id).setAttribute('aria-pressed', String(k === m));
   $('pedalBox').hidden = m === 'manual'; $('pedalHint').hidden = m === 'manual'; $('manualBox').hidden = m !== 'manual';
-  sim.v = 0; sim.gear = m === 'drive' && running ? 1 : 0;
+  sim.v = 0; sim.gear = m === 'drive' ? 1 : 0;
 }
 $('mFree').onclick = () => setMode('free');
 $('mDrive').onclick = () => setMode('drive');
 $('mManual').onclick = () => setMode('manual');
+function setExhaust(sport) {
+  $('eStock').setAttribute('aria-pressed', String(!sport)); $('eSport').setAttribute('aria-pressed', String(sport));
+  engine?.setExhaust(sport ? 1 : 0);
+}
+$('eStock').onclick = () => setExhaust(false);
+$('eSport').onclick = () => setExhaust(true);
 
 // ---------- pedals: pointer + keyboard ----------
 const held = { gas: new Set(), brake: new Set() };
@@ -256,11 +238,12 @@ addEventListener('keydown', (e) => { const w = keyMap[e.code]; if (!w || e.targe
 addEventListener('keyup', (e) => { const w = keyMap[e.code]; if (!w) return; held[w].delete(e.code); if (!held[w].size) $(w === 'gas' ? 'pGas' : 'pBrake').classList.remove('down'); });
 
 // ---------- tiny car model ----------
-const torque = (rpm) => Math.max(110, 222 * (1 - ((rpm - 4300) / 5200) ** 2)); // M20B25, ~222 Nm peak
+const torque = (rpm) => Math.max(110, 222 * (1 - ((rpm - 4300) / 5200) ** 2)); // M20B25, 222 Nm @ 4,300
 const wheelRpm = (v, g) => v / (2 * Math.PI * TYRE_R) * 60 * GEARS[g - 1] * FINAL;
 
 function step(dt) {
-  if (!running) { sim.rpm = Math.max(0, sim.rpm - 3000 * dt); sim.v *= 0.99; return; }
+  if (state === 'cranking') { sim.rpm = crankRpm((performance.now() - crankT0) / 1000); sim.thr = 0; return; }
+  if (state === 'off') { sim.rpm = Math.max(0, sim.rpm - 1000 * dt); sim.thr = 0; sim.v *= 0.99; return; }
   if (mode === 'manual') {
     sim.rpm += (+$('sRpm').value - sim.rpm) * Math.min(1, dt * 10);
     sim.thr = $('sThr').value / 100; sim.gear = 0; sim.v = 0; return;
@@ -272,24 +255,16 @@ function step(dt) {
   sim.shift = Math.max(0, sim.shift - dt);
   sim.thr = sim.cut > 0 || sim.shift > 0 ? 0 : sim.thrIn;
 
-  const freeRev = () => {
-    let a = sim.thr * (torque(sim.rpm) / 222) * 9500 - (250 + (sim.rpm - IDLE) * 0.75);
-    if (sim.rpm < IDLE) a += (IDLE - sim.rpm) * 6;
+  if (mode === 'free' || sim.gear === 0) {
+    let a = sim.thr * (torque(sim.rpm) / 222) * 8500 - (250 + (sim.rpm - IDLE_RPM) * 0.75);
+    if (sim.rpm < IDLE_RPM) a += (IDLE_RPM - sim.rpm) * 6;
     sim.rpm += a * dt;
-  };
-
-  if (mode === 'free' || sim.gear === 0) { freeRev(); return; }
-
-  // drive
-  const g = sim.gear, wr = wheelRpm(sim.v, g);
-  if (sim.shift > 0) {
-    sim.rpm += (wr - sim.rpm) * Math.min(1, dt * 9);       // clutch in, revs fall to the next gear
-  } else if (g === 1 && wr < 1400) {
-    const slip = IDLE + 450 + sim.thr * 2600;              // slipping the clutch off the line
-    sim.rpm += (Math.max(slip, wr) - sim.rpm) * Math.min(1, dt * 6);
-  } else {
-    sim.rpm += (wr - sim.rpm) * Math.min(1, dt * 20);
+    return;
   }
+  const g = sim.gear, wr = wheelRpm(sim.v, g);
+  if (sim.shift > 0) sim.rpm += (wr - sim.rpm) * Math.min(1, dt * 9);
+  else if (g === 1 && wr < 1400) sim.rpm += (Math.max(IDLE_RPM + 500 + sim.thr * 2600, wr) - sim.rpm) * Math.min(1, dt * 6);
+  else sim.rpm += (wr - sim.rpm) * Math.min(1, dt * 20);
   const drive = sim.thr * torque(sim.rpm) * GEARS[g - 1] * FINAL * 0.9 / TYRE_R;
   const resist = 0.42 * sim.v * sim.v + (sim.v > 0.1 ? 180 : 0) + sim.brake * 9500 + (sim.thr ? 0 : sim.rpm * 0.12);
   sim.v = Math.max(0, sim.v + (drive - resist) / MASS * dt);
@@ -297,82 +272,80 @@ function step(dt) {
   if (sim.shift === 0 && sim.rpm < 2100 && g > 1 && !sim.thr) { sim.gear--; sim.shift = 0.2; }
 }
 
-// ---------- drawing ----------
+// ---------- tach ----------
 const NS = 'http://www.w3.org/2000/svg';
-const A0 = 210, A1 = -30; // degrees, 0 rpm at lower left, 7000 at lower right
+const A0 = 210, A1 = -30;
 const ang = (rpm) => (A0 + (A1 - A0) * rpm / MAXDIAL) * Math.PI / 180;
 const pt = (r, a) => [200 + r * Math.cos(a), 170 - r * Math.sin(a)];
 function el(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent?.appendChild(e); return e; }
-function arc(r, r0, r1) { const [x0, y0] = pt(r, ang(r0)), [x1, y1] = pt(r, ang(r1)); const large = (r1 - r0) / MAXDIAL * 240 > 180 ? 1 : 0; return `M${x0} ${y0} A${r} ${r} 0 ${large} 1 ${x1} ${y1}`; }
+function arc(r, r0, r1) { const [x0, y0] = pt(r, ang(r0)), [x1, y1] = pt(r, ang(r1)); return `M${x0} ${y0} A${r} ${r} 0 0 1 ${x1} ${y1}`; }
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 let needle, loadNeedle;
 function drawTach() {
   const s = $('tach'); s.innerHTML = '';
-  const css = getComputedStyle(document.documentElement);
-  const c = (n) => css.getPropertyValue(n).trim();
-  el('path', { d: arc(150, map.minRpm, map.maxRpm), stroke: c('--rec'), 'stroke-width': 10, fill: 'none' }, s);
-  el('path', { d: arc(150, REDLINE, MAXDIAL), stroke: c('--warn'), 'stroke-width': 10, fill: 'none' }, s);
+  el('path', { d: arc(150, REDLINE, MAXDIAL), stroke: css('--warn'), 'stroke-width': 10, fill: 'none' }, s);
   for (let r = 0; r <= MAXDIAL; r += 250) {
     const major = r % 1000 === 0, half = r % 500 === 0;
     const [x0, y0] = pt(major ? 128 : half ? 136 : 141, ang(r)), [x1, y1] = pt(146, ang(r));
-    el('line', { x1: x0, y1: y0, x2: x1, y2: y1, stroke: r >= REDLINE ? c('--warn') : c('--dial-fg'), 'stroke-width': major ? 3 : half ? 2 : 1 }, s);
-    if (major) { const [tx, ty] = pt(108, ang(r)); const t = el('text', { x: tx, y: ty + 9, 'text-anchor': 'middle', fill: c('--dial-fg'), 'font-family': 'Barlow Condensed, Arial Narrow, sans-serif', 'font-size': 26, 'font-weight': 600 }, s); t.textContent = r / 1000; }
+    el('line', { x1: x0, y1: y0, x2: x1, y2: y1, stroke: r >= REDLINE ? css('--warn') : css('--dial-fg'), 'stroke-width': major ? 3 : half ? 2 : 1 }, s);
+    if (major) { const [tx, ty] = pt(108, ang(r)); el('text', { x: tx, y: ty + 9, 'text-anchor': 'middle', fill: css('--dial-fg'), 'font-family': 'Barlow Condensed, Arial Narrow, sans-serif', 'font-size': 26, 'font-weight': 600 }, s).textContent = r / 1000; }
   }
-  const lab = el('text', { x: 200, y: 112, 'text-anchor': 'middle', fill: c('--dial-dim'), 'font-family': 'JetBrains Mono, monospace', 'font-size': 11, 'letter-spacing': 1.5 }, s); lab.textContent = 'x1000 / min';
-  const rec = el('text', { x: 200, y: 128, 'text-anchor': 'middle', fill: c('--rec'), 'font-family': 'JetBrains Mono, monospace', 'font-size': 10, 'letter-spacing': 1 }, s); rec.textContent = 'GREEN = RECORDED';
-  // load gauge (where the E30 has its economy meter)
-  el('path', { d: 'M150 230 A55 55 0 0 1 250 230', stroke: c('--dial-dim'), 'stroke-width': 2, fill: 'none' }, s);
-  const ll = el('text', { x: 200, y: 262, 'text-anchor': 'middle', fill: c('--dial-dim'), 'font-family': 'JetBrains Mono, monospace', 'font-size': 10, 'letter-spacing': 1.5 }, s); ll.textContent = 'LOAD';
-  loadNeedle = el('line', { x1: 200, y1: 250, x2: 200, y2: 198, stroke: c('--needle'), 'stroke-width': 3, 'stroke-linecap': 'round' }, s);
-  needle = el('line', { x1: 200, y1: 170, x2: 200, y2: 40, stroke: c('--needle'), 'stroke-width': 4, 'stroke-linecap': 'round' }, s);
-  el('circle', { cx: 200, cy: 170, r: 9, fill: '#24282c', stroke: c('--dial-dim') }, s);
+  el('text', { x: 200, y: 118, 'text-anchor': 'middle', fill: css('--dial-dim'), 'font-family': 'JetBrains Mono, monospace', 'font-size': 11, 'letter-spacing': 1.5 }, s).textContent = 'x1000 / min';
+  el('path', { d: 'M150 230 A55 55 0 0 1 250 230', stroke: css('--dial-dim'), 'stroke-width': 2, fill: 'none' }, s);
+  el('text', { x: 200, y: 262, 'text-anchor': 'middle', fill: css('--dial-dim'), 'font-family': 'JetBrains Mono, monospace', 'font-size': 10, 'letter-spacing': 1.5 }, s).textContent = 'LOAD';
+  loadNeedle = el('line', { x1: 200, y1: 250, x2: 150, y2: 250, stroke: css('--needle'), 'stroke-width': 3, 'stroke-linecap': 'round' }, s);
+  needle = el('line', { x1: 200, y1: 170, x2: 200, y2: 40, stroke: css('--needle'), 'stroke-width': 4, 'stroke-linecap': 'round' }, s);
+  el('circle', { cx: 200, cy: 170, r: 9, fill: '#24282c', stroke: css('--dial-dim') }, s);
 }
-let tapeHead;
-function drawTape() {
-  const s = $('tapeSvg'); s.innerHTML = '';
-  const css = getComputedStyle(document.documentElement), c = (n) => css.getPropertyValue(n).trim();
-  const fr = map.frames, T = fr[fr.length - 1][0], R0 = 800, R1 = 2400;
-  const X = (t) => t / T * 1000, Y = (r) => 190 - (r - R0) / (R1 - R0) * 180;
-  for (const r of [1000, 1500, 2000]) {
-    el('line', { x1: 0, x2: 1000, y1: Y(r), y2: Y(r), stroke: c('--line'), 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke' }, s);
-    const t = el('text', { x: 4, y: Y(r) - 4, fill: c('--muted'), 'font-family': 'JetBrains Mono, monospace', 'font-size': 12 }, s); t.textContent = r.toLocaleString();
-  }
-  let seg = [], cur = null;
-  const flush = () => { if (seg.length > 1) el('polyline', { points: seg.join(' '), fill: 'none', stroke: cur ? c('--needle') : c('--rec'), 'stroke-width': 2.5, 'vector-effect': 'non-scaling-stroke', 'stroke-linejoin': 'round' }, s); };
-  for (const [t, rpm, on] of fr) {
-    const p = `${X(t).toFixed(1)},${Y(rpm).toFixed(1)}`;
-    if (on !== cur) { if (seg.length) { seg.push(p); flush(); } seg = [p]; cur = on; } else seg.push(p);
-  }
-  flush();
-  tapeHead = el('line', { x1: 0, x2: 0, y1: 0, y2: 200, stroke: c('--fg'), 'stroke-width': 2, 'vector-effect': 'non-scaling-stroke', opacity: 0 }, s);
-  s.dataset.T = T;
-}
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { drawTach(); drawTape(); });
-new MutationObserver(() => { drawTach(); drawTape(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-
-// ---------- load the rpm map so the tach and tape chart render at rest ----------
-map = await fetch(MAP).then((r) => r.json());
-drawTape();
 drawTach();
-$('status').textContent = `Recorded range ${map.minRpm.toLocaleString()}–${map.maxRpm.toLocaleString()} rpm · ${map.frames.length} slices. Press Start.`;
+
+// ---------- engine-cycle scope ----------
+const FIRING = [1, 5, 3, 6, 2, 4];
+const cv = $('scope'), g2 = cv.getContext('2d');
+function drawScope() {
+  const dpr = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  g2.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g2.clearRect(0, 0, w, h);
+  const top = 22, mid = top + (h - top - 18) / 2, amp = (h - top - 18) / 2;
+  g2.font = '600 12px "JetBrains Mono", monospace';
+  for (let k = 0; k < 6; k++) {
+    const x = k / 6 * w + 1;
+    g2.strokeStyle = css('--line'); g2.lineWidth = 1; g2.beginPath(); g2.moveTo(x, top - 4); g2.lineTo(x, h - 16); g2.stroke();
+    g2.fillStyle = FIRING[k] <= 3 ? css('--bank-a') : css('--bank-b');
+    g2.fillRect(x, 4, 22, 14);
+    g2.textAlign = 'center'; g2.fillStyle = '#fff'; g2.fillText(String(FIRING[k]), x + 11, 15);
+    g2.textAlign = 'left'; g2.fillStyle = css('--muted'); g2.fillText(`${k * 120}°`, x + 3, h - 3);
+  }
+  g2.strokeStyle = css('--line'); g2.beginPath(); g2.moveTo(0, mid); g2.lineTo(w, mid); g2.stroke();
+  if (lastCycle && state !== 'off') {
+    let pk = 0.05; for (const v of lastCycle) pk = Math.max(pk, Math.abs(v));
+    g2.strokeStyle = css('--fg'); g2.lineWidth = 1.6; g2.beginPath();
+    lastCycle.forEach((v, i) => { const x = i / (lastCycle.length - 1) * w, y = mid - v / pk * amp * 0.95; i ? g2.lineTo(x, y) : g2.moveTo(x, y); });
+    g2.stroke();
+  } else {
+    g2.textAlign = 'center'; g2.fillStyle = css('--muted'); g2.fillText('Start the engine to see the exhaust pulses', w / 2, mid - 8);
+  }
+}
+
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawTach);
+new MutationObserver(drawTach).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
 // ---------- main loop ----------
 let last = performance.now(), shown = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   step(dt);
-  if (engine && running) { engine.setRpm(sim.rpm); engine.setThrottle(sim.thr); }
+  if (engine && state === 'running') { engine.setRpm(sim.rpm); engine.setThrottle(sim.thr); }
   shown += (sim.rpm - shown) * Math.min(1, dt * 18);
-  const a = ang(Math.min(MAXDIAL + 150, shown)), [nx, ny] = pt(132, a);
+  const [nx, ny] = pt(132, ang(Math.min(MAXDIAL + 150, shown)));
   needle.setAttribute('x2', nx); needle.setAttribute('y2', ny);
-  const la = Math.PI * (1 - sim.thr * 0.999), lx = 200 + 50 * Math.cos(la), ly = 250 - 50 * Math.sin(la);
-  loadNeedle.setAttribute('x2', lx); loadNeedle.setAttribute('y2', ly);
+  const la = Math.PI * (1 - sim.thr * 0.999);
+  loadNeedle.setAttribute('x2', 200 + 50 * Math.cos(la)); loadNeedle.setAttribute('y2', 250 - 50 * Math.sin(la));
   $('roRpm').textContent = Math.round(sim.rpm / 10) * 10;
-  $('roGear').textContent = mode === 'drive' && running ? (sim.shift > 0 ? '–' : sim.gear) : 'N';
+  $('roGear').textContent = mode === 'drive' && state === 'running' ? (sim.shift > 0 ? '–' : sim.gear) : 'N';
   $('roSpeed').textContent = Math.round(sim.v * 3.6);
-  if (engine && running) {
-    const x = engine.cursor / +$('tapeSvg').dataset.T * 1000;
-    tapeHead.setAttribute('x1', x); tapeHead.setAttribute('x2', x); tapeHead.setAttribute('opacity', 1);
-  } else tapeHead.setAttribute('opacity', 0);
+  drawScope();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
