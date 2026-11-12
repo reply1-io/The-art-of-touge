@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0f1c" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Art of Touge" />
+    <title>The Art of Touge</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&display=swap" />
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <canvas id="flare"></canvas>
+    <canvas id="hud"></canvas>
+
+    <div id="controls" class="hidden">
+      <div id="steer"><div id="steer-track"></div><div id="steer-knob"></div></div>
+      <button type="button" id="left" class="btn">&#9664;</button>
+      <button type="button" id="right" class="btn">&#9654;</button>
+      <button type="button" id="clutch" class="btn">CLUTCH</button>
+      <div id="shifter">
+        <canvas id="shifter-gate"></canvas>
+        <div id="shifter-knob"></div>
+      </div>
+      <div id="dr">
+        <button type="button" data-drive="D" class="btn">D</button>
+        <button type="button" data-drive="R" class="btn">R</button>
+      </div>
+      <button type="button" id="handbrake" class="btn">HAND<br />BRAKE</button>
+      <button type="button" id="brake" class="btn tall"><span>BRAKE</span></button>
+      <button type="button" id="gas" class="btn tall"><span>GAS</span></button>
+      <button type="button" id="start" class="btn hidden">START</button>
+    </div>
+
+    <div id="topbar" class="hidden">
+      <button type="button" id="btn-pause" aria-label="Menu">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="3" width="26" height="26" rx="3" /><path d="M9 11h14M9 16h14M9 21h14" /></svg>
+        <span>MENU</span>
+      </button>
+      <button type="button" id="btn-cam" aria-label="Change camera">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="8" width="26" height="19" rx="3" /><circle cx="16" cy="17.5" r="5.5" /><path d="M21 8V5h5v3" /></svg>
+        <span>CAMERA</span>
+      </button>
+    </div>
+
+    <div id="toast"></div>
+    <div id="chat" class="hidden">
+      <div id="chat-log"></div>
+      <input type="text" id="chat-input" maxlength="80" placeholder="Say something" aria-label="Chat message" />
+    </div>
+    <div id="vhs" aria-hidden="true"><span id="vhs-play">&#9654; PLAY</span></div>
+
+    <section id="title" class="screen side">
+      <div class="brand">
+        <p class="kicker">THE ART OF</p>
+        <h1>TOUGE</h1>
+        <p class="sub" id="title-sub">BMW E30 325i</p>
+      </div>
+      <div class="panel">
+        <div class="field">
+          <span class="label">Road</span>
+          <div class="choices" data-setting="map"></div>
+        </div>
+        <div class="field">
+          <span class="label">Time</span>
+          <div class="choices" data-setting="time"></div>
+        </div>
+        <div class="field">
+          <span class="label">Transmission</span>
+          <div class="choices" data-setting="mode"></div>
+        </div>
+        <div class="field online">
+          <span class="label">Online</span>
+          <div class="online-row">
+            <input type="text" class="net-name" maxlength="16" placeholder="Your name" aria-label="Driver name" />
+            <input type="text" class="net-server" placeholder="Server address" aria-label="Server address" />
+          </div>
+          <div class="online-row">
+            <button type="button" class="net-connect">CONNECT</button>
+            <span class="net-status">Offline</span>
+          </div>
+        </div>
+        <div class="row">
+          <button type="button" id="btn-drive" class="big">DRIVE</button>
+          <button type="button" id="btn-shop" class="big ghost">TUNING SHOP</button>
+        </div>
+        <p class="hint" id="loading">Loading physics&hellip;</p>
+      </div>
+    </section>
+
+    <section id="pause" class="screen side hidden">
+      <div class="panel">
+        <h2>PAUSED</h2>
+        <div class="field">
+          <span class="label">Time</span>
+          <div class="choices" data-setting="time"></div>
+        </div>
+        <div class="field">
+          <span class="label">Road</span>
+          <div class="choices" data-setting="map"></div>
+        </div>
+        <div class="field">
+          <span class="label">Transmission</span>
+          <div class="choices" data-setting="mode"></div>
+        </div>
+        <div class="field online">
+          <span class="label">Online</span>
+          <div class="online-row">
+            <input type="text" class="net-name" maxlength="16" placeholder="Your name" aria-label="Driver name" />
+            <input type="text" class="net-server" placeholder="Server address" aria-label="Server address" />
+          </div>
+          <div class="online-row">
+            <button type="button" class="net-connect">CONNECT</button>
+            <span class="net-status">Offline</span>
+          </div>
+        </div>
+        <div class="field">
+          <span class="label">Steering</span>
+          <div class="choices" data-setting="steering"></div>
+        </div>
+        <div class="field">
+          <span class="label">Shifter</span>
+          <div class="choices" data-setting="shifter"></div>
+        </div>
+        <div class="row">
+          <button type="button" id="btn-resume" class="big">RESUME</button>
+          <button type="button" id="btn-recover" class="big ghost">BACK ON ROAD</button>
+          <button type="button" id="btn-restart" class="big ghost">RESTART AT SUMMIT</button>
+        </div>
+        <button type="button" id="btn-shop2" class="big ghost">TUNING SHOP</button>
+        <button type="button" id="btn-tuning" class="link">Dev tuning panel</button>
+      </div>
+    </section>
+
+    <section id="tuning" class="hidden"></section>
+    <section id="shop" class="screen hidden"></section>
+
+    <section id="rotate" class="screen">
+      <div class="panel"><div class="rot">&#8635;</div><p>Turn your phone sideways</p></div>
+    </section>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
