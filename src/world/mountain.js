@@ -93,6 +93,8 @@ export class Mountain {
     this.#buildStreetlights();
     this.#buildTrees();
     this.#buildRoadside();
+    this.#buildLandmarks();
+    this.#buildRanges();
     this.#buildLake();
     this.#buildTown();
     this.#buildLines();
@@ -277,6 +279,7 @@ export class Mountain {
 
   // A streetlight at every tight corner (on the outside) and along the start and town.
   #buildStreetlights() {
+    this.lampGlows = [];
     const road = this.road;
     const spots = [];
     let last = -100;
@@ -322,6 +325,7 @@ export class Mountain {
       const c = road.pointAt(i, side * 1.5, 0.03);
       p.position.set(c[0] - base[0], c[1] - base[1], c[2] - base[2]);
       g.add(a, hd, s, p);
+      this.lampGlows.push(s, p);
       this.#addChunk(g, base[0], base[2], 20);
     }
   }
@@ -334,7 +338,7 @@ export class Mountain {
     const groups = new Map(); // chunk index -> { trees: [], bushes: [] }
     const bucket = (i) => {
       const k = Math.floor(i / ROAD_CHUNK);
-      if (!groups.has(k)) groups.set(k, { trees: [], bushes: [] });
+      if (!groups.has(k)) groups.set(k, { trees: [], bushes: [], maples: [] });
       return groups.get(k);
     };
     const step = 5;
@@ -348,7 +352,10 @@ export class Mountain {
         if (Math.hypot(jx - t.town.x, jz - t.town.z) < t.town.r) continue;
         const y = t.heightAt(jx, jz) - 0.3;
         const dense = noise2(jx / 30, jz / 30);
-        if (dense > 0.22) bucket(near.i).trees.push([jx, y, jz, 10 + noise2(jx, jz) * 10]);
+        // Patches of autumn maples break up the cedars with red, orange and gold.
+        const maple = noise2(jx / 45 + 9, jz / 45) > 0.62 || (near.d < 20 && noise2(jx * 0.5, jz * 0.5) > 0.82);
+        if (dense > 0.22 && maple) bucket(near.i).maples.push([jx, y, jz, 6 + noise2(jx, jz) * 6]);
+        else if (dense > 0.22) bucket(near.i).trees.push([jx, y, jz, 10 + noise2(jx, jz) * 10]);
         else bucket(near.i).bushes.push([jx, y, jz, 1 + noise2(jz, jx) * 1.4]);
         // Undergrowth between the trees, thicker near the road edge.
         if (near.d < 22 && noise2(jx * 1.3, jz * 1.3) > 0.45) bucket(near.i).bushes.push([jx + 2.2, t.heightAt(jx + 2.2, jz - 1.5), jz - 1.5, 0.8 + noise2(jx, 3) * 1.2]);
@@ -381,6 +388,25 @@ export class Mountain {
         });
         group.add(trunks, crowns);
       }
+      if (g.maples.length) {
+        const trunks = new THREE.InstancedMesh(trunk, trunkMat, g.maples.length);
+        const crowns = new THREE.InstancedMesh(bush, crownMat, g.maples.length);
+        const autumn = [
+          [0.75, 0.16, 0.08],
+          [0.86, 0.36, 0.08],
+          [0.9, 0.6, 0.12],
+          [0.62, 0.12, 0.1],
+        ];
+        g.maples.forEach(([x, y, z, h], n) => {
+          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(0.9, h * 0.45, 0.9)));
+          crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.62, z), q.setFromAxisAngle(v.set(0, 1, 0).clone(), x * 1.7), sc.set(h * 0.42, h * 0.36, h * 0.42)));
+          q.identity();
+          const [r, gg, b] = autumn[Math.floor(noise2(x * 0.9, z * 0.9) * 4) % 4];
+          const k2 = 0.8 + noise2(x * 3, z * 2) * 0.35;
+          crowns.setColorAt(n, col.setRGB(r * k2, gg * k2, b * k2));
+        });
+        group.add(trunks, crowns);
+      }
       if (g.bushes.length) {
         const bushes = new THREE.InstancedMesh(bush, bushMat, g.bushes.length);
         g.bushes.forEach(([x, y, z, r], n) => {
@@ -393,7 +419,7 @@ export class Mountain {
       }
       const mid = Math.min(road.count - 1, k * ROAD_CHUNK + ROAD_CHUNK / 2);
       this.#addChunk(group, road.x[mid], road.z[mid], ROAD_CHUNK * STEP * 0.6 + 60);
-      total += g.trees.length;
+      total += g.trees.length + g.maples.length;
     }
     this.treeCount = total;
   }
@@ -636,6 +662,224 @@ export class Mountain {
       geo.computeVertexNormals();
       this.scene.add(new THREE.Mesh(geo, mat));
     }
+  }
+
+  // Things that make the mountain feel lived-in: curve mirrors at the blind corners, warning and
+  // speed signs, stone lanterns, little roadside shrines and the odd red torii gate.
+  #buildLandmarks() {
+    const road = this.road;
+    const t = this.terrain;
+    const add = (obj, i) => this.#addChunk(obj, road.x[i], road.z[i], 25);
+    const canvasTex = (draw, w = 64, h = 64) => {
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      draw(c.getContext('2d'));
+      const tx = new THREE.CanvasTexture(c);
+      tx.colorSpace = THREE.SRGBColorSpace;
+      return tx;
+    };
+    const lambert = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, ...extra });
+    const orange = lambert(0xe8711c);
+    const grey = lambert(0x8a8a88);
+    const stone = lambert(0x7c7a72, { flatShading: true });
+    const red = lambert(0xc4261d);
+    const black = lambert(0x1b1b1d);
+    const mirrorFace = new THREE.MeshBasicMaterial({ color: 0xb8c8d8 });
+    const warnTex = canvasTex((g) => {
+      g.fillStyle = '#f1c40f';
+      g.beginPath();
+      g.moveTo(32, 2);
+      g.lineTo(62, 32);
+      g.lineTo(32, 62);
+      g.lineTo(2, 32);
+      g.closePath();
+      g.fill();
+      g.strokeStyle = '#111';
+      g.lineWidth = 3;
+      g.stroke();
+      g.lineWidth = 6;
+      g.beginPath();
+      g.moveTo(26, 46);
+      g.lineTo(26, 30);
+      g.quadraticCurveTo(26, 20, 38, 20);
+      g.stroke();
+      g.beginPath();
+      g.moveTo(36, 13);
+      g.lineTo(44, 20);
+      g.lineTo(36, 27);
+      g.fillStyle = '#111';
+      g.fill();
+    });
+    const speedTex = canvasTex((g) => {
+      g.fillStyle = '#fff';
+      g.beginPath();
+      g.arc(32, 32, 30, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = '#d2201a';
+      g.lineWidth = 8;
+      g.beginPath();
+      g.arc(32, 32, 26, 0, Math.PI * 2);
+      g.stroke();
+      g.fillStyle = '#1b3ea8';
+      g.font = 'bold 26px sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText('40', 32, 34);
+    });
+    const signMat = (map) => new THREE.MeshLambertMaterial({ map, side: THREE.DoubleSide, transparent: true, alphaTest: 0.5 });
+    const warnMat = signMat(warnTex);
+    const speedMat = signMat(speedTex);
+    const pole = (h, mat = grey, r = 0.05) => {
+      const geo = new THREE.CylinderGeometry(r, r, h, 6);
+      geo.translate(0, h / 2, 0);
+      return new THREE.Mesh(geo, mat);
+    };
+    // Place an object on the roadside at sample i, `off` metres to the side, facing oncoming cars.
+    const place = (obj, i, side, off) => {
+      const p = road.pointAt(i, side * off);
+      obj.position.set(p[0], Math.max(p[1], t.heightAt(p[0], p[2])) - 0.05, p[2]);
+      obj.rotation.y = road.heading[i] + Math.PI;
+      return obj;
+    };
+
+    let lastMirror = -999;
+    let lastWarn = -999;
+    for (let i = 30; i < road.count - 30; i++) {
+      const k = road.kappa[i];
+      const side = k > 0 ? -1 : 1; // outside of the corner
+      // Curve mirrors on the outside of blind, tight corners.
+      if (Math.abs(k) > 1 / 26 && i - lastMirror > 40) {
+        const g = new THREE.Group();
+        g.add(pole(2.6, orange, 0.06));
+        const rim = new THREE.Mesh(new THREE.CircleGeometry(0.5, 16), orange);
+        rim.position.set(0, 2.9, 0.02);
+        const face = new THREE.Mesh(new THREE.CircleGeometry(0.42, 16), mirrorFace);
+        face.position.set(0, 2.9, 0.04);
+        g.add(rim, face);
+        add(place(g, i, side, 5.2), i);
+        lastMirror = i;
+      }
+      // A curve warning sign before the corner starts.
+      if (Math.abs(road.kappa[Math.min(road.count - 1, i + 30)]) > 1 / 35 && Math.abs(k) < 1 / 80 && i - lastWarn > 100) {
+        const g = new THREE.Group();
+        g.add(pole(2.1));
+        const board = new THREE.Mesh(new THREE.PlaneGeometry(0.75, 0.75), warnMat);
+        board.position.y = 2.2;
+        if (road.kappa[i + 30] < 0) board.scale.x = -1;
+        g.add(board);
+        add(place(g, i, -1, 5), i);
+        lastWarn = i;
+      }
+      // Speed limit signs every 600 m.
+      if (i % 300 === 0) {
+        const g = new THREE.Group();
+        g.add(pole(2.2));
+        const board = new THREE.Mesh(new THREE.CircleGeometry(0.33, 20), speedMat);
+        board.position.y = 2.3;
+        g.add(board);
+        add(place(g, i, -1, 5.4), i);
+      }
+      // Stone lanterns, little shrines and torii gates where there is room beside the road.
+      if (i % 170 === 85) {
+        const side2 = t.sideProfile(i, 1) >= 0 ? 1 : -1;
+        if (road.clearance(i, side2, 20) < 20) continue;
+        const g = new THREE.Group();
+        const kind = Math.floor(noise2(i * 0.13, 4) * 3);
+        if (kind === 0) {
+          // Torii gate.
+          for (const x of [-1.4, 1.4]) {
+            const p = pole(3.4, red, 0.13);
+            p.position.x = x;
+            g.add(p);
+          }
+          const kasagi = new THREE.Mesh(new THREE.BoxGeometry(4, 0.22, 0.32), black);
+          kasagi.position.y = 3.5;
+          const nuki = new THREE.Mesh(new THREE.BoxGeometry(3.3, 0.16, 0.2), red);
+          nuki.position.y = 2.9;
+          g.add(kasagi, nuki);
+        } else if (kind === 1) {
+          // Small shrine: a stone base and a wooden hut with a dark roof, with a red bib on a statue.
+          const base = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.4, 1.2), stone);
+          base.position.y = 0.2;
+          const hut = new THREE.Mesh(new THREE.BoxGeometry(1, 0.9, 0.8), lambert(0x6a4a2e));
+          hut.position.y = 0.85;
+          const roof = new THREE.Mesh(new THREE.ConeGeometry(0.95, 0.5, 4), black);
+          roof.position.y = 1.55;
+          roof.rotation.y = Math.PI / 4;
+          const jizo = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.3, 2, 6), stone);
+          jizo.position.set(0.85, 0.65, 0.3);
+          const bib = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.2, 6), red);
+          bib.position.set(0.85, 0.72, 0.3);
+          g.add(base, hut, roof, jizo, bib);
+        } else {
+          // Pair of stone lanterns.
+          for (const x of [-1.2, 1.2]) {
+            const b = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.28, 0.9, 6), stone);
+            b.position.set(x, 0.45, 0);
+            const box = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.4, 0.45), stone);
+            box.position.set(x, 1.1, 0);
+            const cap = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.3, 4), stone);
+            cap.position.set(x, 1.45, 0);
+            cap.rotation.y = Math.PI / 4;
+            g.add(b, box, cap);
+          }
+        }
+        g.scale.setScalar(1);
+        add(place(g, i, side2, 11), i);
+      }
+    }
+  }
+
+  // Ridges on the horizon, so the mountain sits in a range rather than in the fog.
+  #buildRanges() {
+    const road = this.road;
+    let cx = 0;
+    let cz = 0;
+    for (let i = 0; i < road.count; i += 10) {
+      cx += road.x[i];
+      cz += road.z[i];
+    }
+    const n = Math.ceil(road.count / 10);
+    cx /= n;
+    cz /= n;
+    // Backdrop only: drawn before the sky's sun and moon and writes no depth, so the sun is never
+    // hidden behind a painted ridge (the real mountain still blocks it, and the flare follows that).
+    const backdrop = { fog: false, side: THREE.DoubleSide, depthWrite: false };
+    this.rangeMat = new THREE.MeshBasicMaterial({ color: 0x8aa0b8, ...backdrop });
+    this.rangeMatFar = new THREE.MeshBasicMaterial({ color: 0xa8bad0, ...backdrop });
+    const ring = (radius, height, mat, seed) => {
+      const segs = 90;
+      const pos = [];
+      for (let k = 0; k < segs; k++) {
+        const a0 = (k / segs) * Math.PI * 2;
+        const a1 = ((k + 1) / segs) * Math.PI * 2;
+        const h = (a) => (noise2(a * 3 + seed, seed) * 0.7 + noise2(a * 11, seed * 3) * 0.3) * height;
+        const p = (a, y) => [cx + Math.cos(a) * radius, y, cz + Math.sin(a) * radius];
+        const b0 = p(a0, road.top - 250);
+        const b1 = p(a1, road.top - 250);
+        const t0 = p(a0, road.top + 40 + h(a0));
+        const t1 = p(a1, road.top + 40 + h(a1));
+        pos.push(...b0, ...b1, ...t1, ...b0, ...t1, ...t0);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      const m = new THREE.Mesh(g, mat);
+      m.renderOrder = seed === 2 ? -8.6 : -8.5; // after the dome and stars, before the sun; far ring first
+      this.scene.add(m);
+      return m;
+    };
+    const r = Math.max(1400, road.length * 0.3);
+    this.ranges = [ring(r + 900, 520, this.rangeMatFar, 2), ring(r, 360, this.rangeMat, 1)];
+  }
+
+  // Recolour for the time of day and switch the streetlight glow on after dark.
+  setTime(preset) {
+    const sky = new THREE.Color(preset.skyHorizon);
+    this.rangeMat.color.setHex(preset.ranges);
+    this.rangeMatFar.color.setHex(preset.ranges).lerp(sky, 0.45);
+    for (const m of this.ranges) m.visible = preset.stars < 0.9;
+    for (const o of this.lampGlows) o.visible = preset.lights;
   }
 
   // Show only what is within reach of the fog.

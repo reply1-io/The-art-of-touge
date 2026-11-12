@@ -13,6 +13,7 @@ const DEFAULTS = {
   vhs: true,
   picture: 'sharp', // 'sharp' | 'retro'
   map: 'akina', // 'akina' | 'dragon'
+  time: 'night', // 'day' | 'sunset' | 'night'
 };
 
 function read(key) {

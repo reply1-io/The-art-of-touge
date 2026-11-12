@@ -12,9 +12,10 @@ export const SHOULDER = 4.6; // end of the gravel shoulder
 export const VERGE = 8.4; // end of the verge strip that blends into the terrain
 export const RAIL = 4.15; // guardrail line
 export const WALL = 9.6; // invisible wall line
-export const GUTTER_IN = 3.42;
-export const GUTTER_OUT = 3.85;
-export const GUTTER_DEPTH = 0.2;
+// Drainage gutter: a shallow concrete dish with sloped sides, so a tyre rolls in and out of it.
+export const GUTTER_IN = 3.62;
+export const GUTTER_OUT = 4.02;
+export const GUTTER_DEPTH = 0.1;
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
@@ -314,9 +315,10 @@ export function crossSection(road, i) {
   const gr = road.gutterRight[i];
   return [
     [VERGE, -0.6, 'verge'],
-    [SHOULDER, -0.06, 'shoulder'],
+    // The shoulder carries on the road's banking up to the rail, with no step down.
+    [SHOULDER, 0, 'shoulder'],
     [GUTTER_OUT, 0, gl > 0 ? 'gutter' : 'shoulder'],
-    [GUTTER_OUT - 0.03, -gl, gl > 0 ? 'gutter' : 'shoulder'],
+    [GUTTER_OUT - 0.14, -gl, gl > 0 ? 'gutter' : 'shoulder'],
     [GUTTER_IN, -gl, gl > 0 ? 'gutter' : 'shoulder'],
     [HALF, 0, 'asphalt'],
     [HALF / 2, 0, 'asphalt'],
@@ -324,9 +326,9 @@ export function crossSection(road, i) {
     [-HALF / 2, 0, 'asphalt'],
     [-HALF, 0, 'asphalt'],
     [-GUTTER_IN, -gr, gr > 0 ? 'gutter' : 'shoulder'],
-    [-(GUTTER_OUT - 0.03), -gr, gr > 0 ? 'gutter' : 'shoulder'],
+    [-(GUTTER_OUT - 0.14), -gr, gr > 0 ? 'gutter' : 'shoulder'],
     [-GUTTER_OUT, 0, gr > 0 ? 'gutter' : 'shoulder'],
-    [-SHOULDER, -0.06, 'shoulder'],
+    [-SHOULDER, 0, 'shoulder'],
     [-VERGE, -0.6, 'verge'],
   ];
 }
@@ -339,8 +341,9 @@ export function barrierLayout(road, terrain) {
   const wall = { 1: new Float32Array(n), [-1]: new Float32Array(n) };
   for (const side of [1, -1]) {
     for (let i = 0; i < n; i += 1) {
-      const outside = road.kappa[i] * side < -1 / 45;
-      rail[side][i] = terrain.sideProfile(i, side) < 0 || outside ? 1 : 0;
+      // Rails on both sides of every real corner (inside and out), and wherever the road drops away.
+      const corner = Math.abs(road.kappa[i]) > 1 / 160;
+      rail[side][i] = terrain.sideProfile(i, side) < 0 || corner ? 1 : 0;
     }
     // Fill short gaps and drop short runs so rails come in sensible lengths.
     const r = rail[side];

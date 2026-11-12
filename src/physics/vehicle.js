@@ -220,8 +220,16 @@ export class Vehicle {
     const down = scale(axisY, -1);
     for (const w of this.wheels) {
       const mount = add(pos, rotate(q, [w.x, this.mountY, w.z]));
-      const ray = new RAPIER.Ray({ x: mount[0], y: mount[1], z: mount[2] }, { x: down[0], y: down[1], z: down[2] });
-      const hit = this.world.castRayAndGetNormal(ray, reach, true, undefined, undefined, undefined, b);
+      // The tyre has a footprint: probe just ahead of and behind the axle too and ride on the
+      // highest point, so the wheel rolls over a sharp edge instead of dropping into it.
+      let hit = null;
+      for (const dz of [0, 0.16, -0.16]) {
+        const o = dz === 0 ? mount : add(mount, scale(axisZ, dz));
+        const ray = new RAPIER.Ray({ x: o[0], y: o[1], z: o[2] }, { x: down[0], y: down[1], z: down[2] });
+        const h = this.world.castRayAndGetNormal(ray, reach, true, undefined, undefined, undefined, b);
+        if (h && (!hit || h.timeOfImpact < hit.timeOfImpact - 0.002)) hit = { timeOfImpact: h.timeOfImpact, normal: h.normal, collider: h.collider, centre: dz === 0 };
+        if (h && hit && dz === 0) hit.collider = h.collider;
+      }
       w.prevCompression = w.compression;
       if (hit) {
         const toi = hit.timeOfImpact;
@@ -248,8 +256,16 @@ export class Vehicle {
       const k = w.front ? t.springFront : t.springRear;
       const c = 2 * t.damping * Math.sqrt(k * cornerMass);
       const vel = (w.compression - w.prevCompression) / dt;
-      let f = k * w.compression + c * vel;
-      if (w.compression > travel) f += 250000 * (w.compression - travel);
+      // The damper rate is capped (real dampers blow off on sharp hits) and the bump stop is
+      // progressive, so a big kerb or rut cannot fire the car into the air.
+      let f = k * w.compression + c * clamp(vel, -1.2, 1.2);
+      if (w.compression > travel) {
+        const into = w.compression - travel;
+        f += 60000 * into + 900000 * into * into;
+      }
+      // Never pull the car down harder than the spring could (no sticky suspension), and never push
+      // more than the car's own weight times four in one corner.
+      f = Math.min(f, s.mass * G * 4 * 0.25 * 4);
       w.load = Math.max(0, f);
     }
     for (const [l, r, kArb] of [

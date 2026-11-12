@@ -10,6 +10,8 @@ import { CameraRig } from './render/camera.js';
 import { VhsRenderer } from './render/vhs.js';
 import { Mountain } from './world/mountain.js';
 import { Sky } from './world/sky.js';
+import { TIMES } from './world/timeOfDay.js';
+import { LensFlare } from './render/lensFlare.js';
 import { TRACKS } from './world/tracks.js';
 import { Input } from './controls/input.js';
 import { Shifter } from './controls/shifter.js';
@@ -32,18 +34,60 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 const vhs = new VhsRenderer(renderer, 1);
 const scene = new THREE.Scene();
 // Night: dark blue fog, moonlight and a soft sky fill. The headlights are the main light.
-const FOG_FAR = 340;
+let FOG_FAR = 340;
 scene.background = new THREE.Color(0x0b1430);
 scene.fog = new THREE.Fog(0x0b1430, 70, FOG_FAR);
 const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1500);
 const moon = new THREE.DirectionalLight(0x9fb4ff, 0.85);
 moon.position.set(-45, 55, -70);
 scene.add(moon);
-scene.add(new THREE.HemisphereLight(0x4a5e96, 0x14161c, 1.15));
+const hemi = new THREE.HemisphereLight(0x4a5e96, 0x14161c, 1.15);
+scene.add(hemi);
 // Headlights: one spot light that rides on the car and lights the road ahead.
 const headlight = new THREE.SpotLight(0xfff2d8, 1800, 170, 0.62, 0.5, 1.4);
 scene.add(headlight, headlight.target);
 const sky = new Sky(scene);
+const flare = new LensFlare($('flare'));
+const sunDir = new THREE.Vector3(0, 1, 0);
+let timePreset = TIMES.night;
+
+// Sun (or moon) direction for this road: low over the road's general direction of travel, so you
+// drive toward it a good part of the time.
+function sunDirection(preset) {
+  const r = mountain.road;
+  let dx = 0;
+  let dz = 0;
+  for (let i = 0; i + 50 < r.count; i += 50) {
+    dx += r.x[i + 50] - r.x[i];
+    dz += r.z[i + 50] - r.z[i];
+  }
+  const az = Math.atan2(dx, dz) + 0.35;
+  const el = (preset.sunElevation * Math.PI) / 180;
+  return new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).normalize();
+}
+
+function applyTime() {
+  if (!mountain) return;
+  const p = TIMES[settings.time] || TIMES.night;
+  timePreset = p;
+  scene.background.setHex(p.fog);
+  scene.fog.color.setHex(p.fog);
+  scene.fog.near = p.fogNear;
+  scene.fog.far = p.fogFar;
+  FOG_FAR = p.fogFar;
+  sunDir.copy(sunDirection(p));
+  moon.color.setHex(p.sunColor);
+  moon.intensity = p.sunIntensity;
+  moon.position.copy(sunDir).multiplyScalar(100);
+  hemi.color.setHex(p.hemiSky);
+  hemi.groundColor.setHex(p.hemiGround);
+  hemi.intensity = p.hemiIntensity;
+  headlight.visible = p.lights;
+  sky.setTime(p, sunDir);
+  mountain.setTime(p);
+  camera.far = 3600; // far enough for the distant ranges
+  camera.updateProjectionMatrix();
+}
 
 function blobShadow() {
   const c = document.createElement('canvas');
@@ -95,6 +139,7 @@ function resize() {
   camera.setViewOffset(w, h, 0, h * 0.2, w, h);
   camera.updateProjectionMatrix();
   hud.resize();
+  flare.resize();
 }
 window.addEventListener('resize', resize);
 resize();
@@ -116,6 +161,8 @@ function renderChoices() {
         ? MODES.map((m) => [m, MODE_LABELS[m]])
         : key === 'map'
           ? Object.entries(TRACKS).map(([id, t]) => [id, t.name])
+          : key === 'time'
+          ? Object.entries(TIMES).map(([id, t]) => [id, t.name])
           : key === 'picture'
           ? [['sharp', 'Sharp'], ['retro', 'Retro pixels']]
           : key === 'sound' || key === 'vhs'
@@ -150,6 +197,7 @@ function renderChoices() {
 }
 
 function applySettings() {
+  applyTime();
   rig.mode = settings.camera;
   audio.setMuted(!settings.sound);
   vhs.strength = settings.vhs ? 0.45 : 0;
@@ -356,7 +404,7 @@ function frame(now) {
   carModel.root.position.lerpVectors(prevPos, curPos, alpha);
   carModel.root.quaternion.slerpQuaternions(prevQuat, curQuat, alpha);
   carModel.syncWheels(vehicle);
-  carModel.setLights(true, controls.brake > 0);
+  carModel.setLights(timePreset.lights, controls.brake > 0);
   const nose = new THREE.Vector3(0, -0.05, 2.1).applyQuaternion(carModel.root.quaternion).add(carModel.root.position);
   headlight.position.copy(nose);
   headlight.target.position.copy(new THREE.Vector3(0, -1.6, 22).applyQuaternion(carModel.root.quaternion).add(carModel.root.position));
@@ -365,6 +413,13 @@ function frame(now) {
   sky.update(camera);
   mountain.update(camera.position, FOG_FAR + 30);
   vhs.render(scene, camera, now / 1000);
+  // Lens flare when facing the sun, unless the mountain is in the way.
+  let sunVisible = false;
+  if (timePreset.flare > 0) {
+    const ray = new RAPIER.Ray(camera.position, sunDir);
+    sunVisible = !world.castRay(ray, 900, true, undefined, undefined, undefined, vehicle.body);
+  }
+  flare.draw(dt, camera, sunDir, timePreset.flare, timePreset.flareTint, sunVisible);
 
   const tr = vehicle.trans;
   hud.draw(
@@ -411,7 +466,7 @@ async function boot() {
   $('loading').textContent = '';
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { audio, vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;

@@ -42,7 +42,7 @@ export function buildMountainPhysics(world, road, terrain) {
     const b = kinds[c + 1];
     if (a === 'asphalt' && b === 'asphalt') return 'asphalt';
     const off = Math.abs(crossSection(road, 0)[c][0]) + Math.abs(crossSection(road, 0)[c + 1][0]);
-    return off / 2 < 3.9 ? 'asphalt' : off / 2 < 4.7 ? 'gravel' : 'grass';
+    return off / 2 < 4.05 ? 'asphalt' : off / 2 < 4.7 ? 'gravel' : 'grass';
   };
   const byHandle = new Map();
   for (const surface of ['asphalt', 'gravel', 'grass']) {
