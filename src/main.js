@@ -23,6 +23,7 @@ import { ExhaustEvents } from './audio/exhaust.js';
 import { DriftScore } from './game/drift.js';
 import { Sparks } from './render/sparks.js';
 import { Deer } from './world/deer.js';
+import { Online } from './net/online.js';
 import { HEADLIGHTS } from './config.js';
 import { TuningPanel } from './ui/tuning.js';
 import { Shop } from './ui/shop.js';
@@ -124,6 +125,7 @@ const exhaustEvents = new ExhaustEvents();
 const drift = new DriftScore();
 let sparks;
 let deer;
+let online;
 const sparkP = new THREE.Vector3();
 const sparkPush = new THREE.Vector3();
 rig.mode = settings.camera;
@@ -301,6 +303,7 @@ $('btn-drive').addEventListener('click', () => {
       .catch(() => {});
   }
   resetCar();
+  online?.onChange();
 });
 $('btn-pause').addEventListener('click', () => setPaused(true));
 $('btn-resume').addEventListener('click', () => setPaused(false));
@@ -322,6 +325,7 @@ $('btn-tuning').addEventListener('click', () => tuning.toggle());
 const shop = new Shop($('shop'), tune, () => {
   saveTuning(tune);
   carModel?.applySetup(tune);
+  online?.sendLook(tune);
   headlight.color.setHex((HEADLIGHTS[tune.headlights] || HEADLIGHTS.white)[1]);
 });
 shopRef = shop;
@@ -438,6 +442,67 @@ function throwSparks() {
   audio.setScrape(scrape);
 }
 
+// ---------- Online play ----------
+const STATUS_TEXT = { offline: 'Offline', connecting: 'Connecting\u2026', error: 'Could not connect', full: 'Server is full' };
+function setupOnline() {
+  const names = document.querySelectorAll('.net-name');
+  const servers = document.querySelectorAll('.net-server');
+  for (const el of names) {
+    el.value = settings.netName;
+    el.addEventListener('change', () => {
+      settings.netName = el.value.trim().slice(0, 16);
+      for (const o of names) o.value = settings.netName;
+      saveSettings(settings);
+    });
+  }
+  for (const el of servers) {
+    el.value = settings.netServer;
+    el.addEventListener('change', () => {
+      settings.netServer = el.value.trim();
+      for (const o of servers) o.value = settings.netServer;
+      saveSettings(settings);
+    });
+  }
+  for (const b of document.querySelectorAll('.net-connect')) {
+    b.addEventListener('click', () => {
+      if (online.status === 'online' || online.status === 'connecting') {
+        online.disconnect();
+        return;
+      }
+      if (!settings.netServer) {
+        toast('ENTER A SERVER ADDRESS');
+        return;
+      }
+      online.connect(settings.netServer, settings.netName || 'Driver', settings.map, tune);
+    });
+  }
+  online.onChange = () => {
+    const on = online.status === 'online';
+    for (const el of document.querySelectorAll('.net-status')) {
+      el.textContent = on ? `${online.serverName} \u00b7 ${online.count + 1} on ${TRACKS[settings.map]?.name || ''}` : STATUS_TEXT[online.status] || '';
+      el.classList.toggle('on', on);
+    }
+    for (const b of document.querySelectorAll('.net-connect')) b.textContent = on || online.status === 'connecting' ? 'DISCONNECT' : 'CONNECT';
+    $('chat').classList.toggle('hidden', !on || !running);
+  };
+  const log = $('chat-log');
+  online.onChat = (name, text) => {
+    const line = document.createElement('div');
+    const who = document.createElement('b');
+    who.textContent = `${name}: `;
+    line.append(who, text);
+    log.append(line);
+    while (log.children.length > 5) log.firstChild.remove();
+    setTimeout(() => line.remove(), 12000);
+  };
+  $('chat-input').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    online.chat(e.target.value);
+    e.target.value = '';
+    e.target.blur();
+  });
+}
+
 // ---------- Title screen: a slow flight along the pass ----------
 let titleS = 0;
 const titleLook = new THREE.Vector3();
@@ -526,6 +591,7 @@ function frame(now) {
     }
   }
   carModel.updateFx(dt);
+  online.update(dt, vehicle, controls, timePreset.lights);
   sparks.update(dt);
   // In-car view: cockpit on, arms follow the wheel, the shifter and the handbrake.
   carModel.setInterior(running && rig.mode === 'cockpit' && !window.__touge?.debugCam);
@@ -622,6 +688,8 @@ async function boot() {
   scene.add(carModel.root);
   sparks = new Sparks(scene);
   deer = new Deer(scene, mountain.road, mountain.terrain);
+  online = new Online(scene, world, RAPIER);
+  setupOnline();
   // Blob shadow rides under the car, at ground level in the car's own frame.
   shadow = blobShadow();
   shadow.position.y = -0.6;
@@ -636,7 +704,7 @@ async function boot() {
   $('loading').textContent = '';
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;

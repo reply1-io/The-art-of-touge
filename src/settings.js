@@ -14,6 +14,8 @@ const DEFAULTS = {
   picture: 'sharp', // 'sharp' | 'retro'
   map: 'akina', // 'akina' | 'dragon'
   time: 'night', // 'day' | 'sunset' | 'night'
+  netName: '',
+  netServer: '',
 };
 
 function read(key) {

@@ -1014,3 +1014,79 @@ body.paused #vhs-play {
   accent-color: #ffb000;
   height: 28px;
 }
+
+/* ---------- Online ---------- */
+.online-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.online-row input {
+  flex: 1;
+  min-width: 0;
+  font: 400 20px 'VT323', ui-monospace, monospace;
+  color: var(--accent);
+  background: rgba(0, 0, 0, 0.35);
+  border: 3px solid rgba(255, 255, 255, 0.22);
+  border-radius: 0;
+  padding: 3px 8px;
+  user-select: text;
+  -webkit-user-select: text;
+  touch-action: manipulation;
+}
+
+.net-connect {
+  font: 400 20px 'VT323', ui-monospace, monospace;
+  letter-spacing: 0.1em;
+  color: #111;
+  background: var(--accent);
+  border: 0;
+  border-radius: 0;
+  padding: 4px 14px;
+}
+
+.net-status {
+  font: 400 18px 'VT323', ui-monospace, monospace;
+  color: var(--dim);
+}
+
+.net-status.on {
+  color: #7fe08a;
+}
+
+#chat {
+  position: fixed;
+  left: calc(10px + var(--sl));
+  top: 70px;
+  width: min(40vw, 320px);
+  font: 400 18px 'VT323', ui-monospace, monospace;
+  color: #ffd2a0;
+  text-shadow: 1px 1px 0 #000;
+  pointer-events: none;
+  z-index: 3;
+}
+
+#chat-log b {
+  font-weight: 400;
+  color: var(--accent);
+}
+
+#chat-input {
+  pointer-events: auto;
+  width: 100%;
+  margin-top: 4px;
+  font: 400 18px 'VT323', ui-monospace, monospace;
+  color: var(--ink);
+  background: rgba(6, 6, 8, 0.5);
+  border: 2px solid rgba(255, 150, 50, 0.5);
+  border-radius: 0;
+  padding: 2px 6px;
+  opacity: 0.6;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+#chat-input:focus {
+  opacity: 1;
+}

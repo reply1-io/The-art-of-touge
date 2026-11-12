@@ -52,6 +52,10 @@
     </div>
 
     <div id="toast"></div>
+    <div id="chat" class="hidden">
+      <div id="chat-log"></div>
+      <input type="text" id="chat-input" maxlength="80" placeholder="Say something" aria-label="Chat message" />
+    </div>
     <div id="vhs" aria-hidden="true"><span id="vhs-play">&#9654; PLAY</span></div>
 
     <section id="title" class="screen side">
@@ -72,6 +76,17 @@
         <div class="field">
           <span class="label">Transmission</span>
           <div class="choices" data-setting="mode"></div>
+        </div>
+        <div class="field online">
+          <span class="label">Online</span>
+          <div class="online-row">
+            <input type="text" class="net-name" maxlength="16" placeholder="Your name" aria-label="Driver name" />
+            <input type="text" class="net-server" placeholder="Server address" aria-label="Server address" />
+          </div>
+          <div class="online-row">
+            <button type="button" class="net-connect">CONNECT</button>
+            <span class="net-status">Offline</span>
+          </div>
         </div>
         <div class="row">
           <button type="button" id="btn-drive" class="big">DRIVE</button>
@@ -95,6 +110,17 @@
         <div class="field">
           <span class="label">Transmission</span>
           <div class="choices" data-setting="mode"></div>
+        </div>
+        <div class="field online">
+          <span class="label">Online</span>
+          <div class="online-row">
+            <input type="text" class="net-name" maxlength="16" placeholder="Your name" aria-label="Driver name" />
+            <input type="text" class="net-server" placeholder="Server address" aria-label="Server address" />
+          </div>
+          <div class="online-row">
+            <button type="button" class="net-connect">CONNECT</button>
+            <span class="net-status">Offline</span>
+          </div>
         </div>
         <div class="field">
           <span class="label">Steering</span>
