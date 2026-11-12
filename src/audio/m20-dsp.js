@@ -69,9 +69,9 @@ export function randn() { // cheap gaussian-ish
 
 export class M20Dsp {
   constructor(fs) {
-    this.mode = 'off';         // off | crank | run | stopping
+    this.mode = 'off';         // off | crank | run | stopping | direct
     this.clock = 0; this.modeT0 = 0; this.stopFrom = 0;
-    this.target = { rpm: IDLE_RPM, throttle: 0, exhaust: 0 };
+    this.target = { rpm: IDLE_RPM, throttle: 0, exhaust: 0, ignition: 1, starter: 0, idleRpm: IDLE_RPM };
     this.c = { rpm: 0, throttle: 0, ignition: 0, starter: 0, exhaust: 0, idleRpm: IDLE_RPM };
     this.onCycle = null;
     this.fs = fs;
@@ -108,15 +108,18 @@ export class M20Dsp {
     this.cyc = new Float32Array(Math.ceil(fs * 0.4)); this.cycN = 0; this.sincePost = 0;
   }
 
-  /** Values from the game: { rpm, throttle (0..1), exhaust (0 stock .. 1 sport) }. */
+  /** Values from the game: { rpm, throttle (0..1), exhaust (0 stock .. 1 sport), idleRpm },
+   *  and in 'direct' mode also { ignition (0/1), starter (0/1) }. */
   set(v) { Object.assign(this.target, v); }
 
-  /** 'crank' (key start), 'start' (straight to idle), 'stop' (key off). */
+  /** 'crank' (key start), 'start' (straight to idle), 'stop' (key off),
+   *  'direct' (the game's engine model drives rpm, ignition and starter itself). */
   command(cmd) {
     this.modeT0 = this.clock;
     if (cmd === 'crank') { this.mode = 'crank'; this.target.rpm = IDLE_RPM; this.target.throttle = 0; }
     else if (cmd === 'start') { this.mode = 'run'; this.target.rpm = IDLE_RPM; this.rpmS = IDLE_RPM; }
     else if (cmd === 'stop') { this.mode = 'stopping'; this.stopFrom = this.rpmS; }
+    else if (cmd === 'direct') { this.mode = 'direct'; this.rpmS = this.target.rpm; }
   }
 
   _control(n) {
@@ -133,12 +136,15 @@ export class M20Dsp {
       if (c.throttle > 0.6 && this.rpmS > 3500) this.popArmed = true;
     }
     c.exhaust += (t.exhaust - c.exhaust) * 0.05;
+    c.idleRpm = t.idleRpm;
     if (this.mode === 'crank') {
       c.rpm = crankRpm(dt); c.throttle = 0;
       c.starter = dt < 1.05 ? 1 : 0; c.ignition = dt >= 0.95 ? 1 : 0;
       if (dt >= CRANK_SECONDS) { this.mode = 'run'; t.rpm = c.rpm; }
     } else if (this.mode === 'run') {
       c.rpm = t.rpm; c.throttle = t.throttle; c.ignition = 1; c.starter = 0;
+    } else if (this.mode === 'direct') {
+      c.rpm = t.rpm; c.throttle = t.throttle; c.ignition = t.ignition; c.starter = t.starter;
     } else if (this.mode === 'stopping') {
       c.rpm = Math.max(0, this.stopFrom * (1 - dt / 0.9)); c.throttle = 0; c.ignition = 0; c.starter = 0;
       if (dt > 0.9) this.mode = 'off';

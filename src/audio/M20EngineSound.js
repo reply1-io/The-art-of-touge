@@ -108,6 +108,20 @@ export class M20EngineSound {
     return new Promise((res) => setTimeout(() => { this.cranking = false; res(); }, (CRANK_SECONDS + 0.05) * 1000));
   }
 
+  /**
+   * Let your own engine model drive everything: call this once, then every frame
+   * engine.setState({ rpm, throttle, ignition: running ? 1 : 0, starter: cranking ? 1 : 0 }).
+   * Stalls, run-downs and restarts then sound right without the built-in scripts.
+   */
+  direct({ idleRpm = IDLE_RPM } = {}) {
+    this.running = true;
+    this._send({ set: { idleRpm } });
+    this._send({ cmd: 'direct' });
+    this._fade(1, 0.05);
+  }
+
+  setState(v) { this._send({ set: v }); }
+
   /** Key off: ignition cut, engine runs down and stops. */
   stop() {
     this.running = false;
