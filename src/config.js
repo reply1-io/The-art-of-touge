@@ -139,7 +139,6 @@ export const TUNABLE_DEFAULTS = {
   angleKit: 'stock',
   weight: 'stock',
   paint: '#efeee6',
-  bodyKit: 'stock',
   headlights: 'white',
   taillights: 'red',
   numbers: false,
@@ -186,11 +185,6 @@ export const WEIGHTS = {
   stock: { name: 'Stock', blurb: '1,100 kg with you and a tank of fuel.', kg: 0 },
   light: { name: 'Light', blurb: 'Rear seats, spare wheel and sound deadening out: -55 kg.', kg: -55 },
   stripped: { name: 'Stripped', blurb: 'Bare shell, bucket seats, carbon bonnet: -120 kg.', kg: -120 },
-};
-export const BODY_KITS = {
-  stock: { name: 'Stock', blurb: 'Chrome bumpers, the 318is front lip.' },
-  mtech1: { name: 'M-Tech 1', blurb: 'Deeper front lip, side skirts and a boot-lid spoiler.' },
-  mtech2: { name: 'M-Tech 2', blurb: 'Body-coloured bumpers, deep skirts and a rear wing.' },
 };
 export const PAINTS = [
   ['Alpine White', '#efeee6'],

@@ -88,9 +88,9 @@ const BOTTOM = [
 ];
 // Top of the sides / shoulder line: wings along the bonnet, window line, boot.
 const BELT = [
-  [2.13, 0.74],
-  [2.1, 0.765],
-  [1.9, 0.78],
+  [2.13, 0.7],
+  [2.1, 0.73],
+  [1.9, 0.765],
   [0.78, 0.86],
   [0.0, 0.9],
   [-1.5, 0.94],
@@ -99,9 +99,9 @@ const BELT = [
 ];
 // Centreline: bonnet, (cabin floor under the glass), boot lid.
 const TOP = [
-  [2.13, 0.745],
-  [2.1, 0.775],
-  [1.9, 0.795],
+  [2.13, 0.705],
+  [2.1, 0.74],
+  [1.9, 0.78],
   [0.78, 0.885],
   [0.0, 0.91],
   [-1.55, 0.97],
@@ -249,10 +249,10 @@ const LENS_WHITE = [0.85, 0.85, 0.82];
 // Round lamps for the nose: [x, y, radius]. The E30 has two per side in a black surround, the outer
 // (dipped) lamp slightly larger than the inner (main beam).
 export const HEADLAMPS = [
-  [0.585, 0.635, 0.068],
-  [0.345, 0.635, 0.06],
-  [-0.345, 0.635, 0.06],
-  [-0.585, 0.635, 0.068],
+  [0.6, 0.615, 0.064],
+  [0.405, 0.615, 0.058],
+  [-0.405, 0.615, 0.058],
+  [-0.6, 0.615, 0.064],
 ];
 
 function detailPolys() {
@@ -261,19 +261,19 @@ function detailPolys() {
   const tail = [];
   const zn = NOSE + 0.006;
   const front = (x0, x1, y0, y1, z, color) => trim.push({ pts: [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], color, out: [0, 0, 1] });
-  // Black headlamp surrounds, one each side of the grille.
-  for (const side of [1, -1]) front(side * 0.24, side * 0.7, 0.555, 0.715, zn, BLACK);
+  // One black band across the whole nose: both pairs of headlamps and the grille sit in it.
+  front(0.785, -0.785, 0.54, 0.69, zn, BLACK);
   // Twin kidneys: chrome frames standing slightly proud, black slats inside.
   for (const x of [0.075, -0.075]) {
     const z = zn + 0.02;
-    chrome.push({ pts: [[x + 0.07, 0.545, z], [x + 0.065, 0.735, z], [x - 0.065, 0.735, z], [x - 0.07, 0.545, z]], color: CHROME, out: [0, 0, 1] });
-    trim.push({ pts: [[x + 0.052, 0.56, z + 0.004], [x + 0.048, 0.72, z + 0.004], [x - 0.048, 0.72, z + 0.004], [x - 0.052, 0.56, z + 0.004]], color: BLACK, out: [0, 0, 1] });
-    for (let k = 0; k < 3; k++) {
-      const sx = x - 0.03 + k * 0.03;
-      chrome.push({ pts: [[sx + 0.004, 0.565, z + 0.008], [sx + 0.004, 0.715, z + 0.008], [sx - 0.004, 0.715, z + 0.008], [sx - 0.004, 0.565, z + 0.008]], color: CHROME, out: [0, 0, 1] });
+    chrome.push({ pts: [[x + 0.07, 0.548, z], [x + 0.066, 0.7, z], [x - 0.066, 0.7, z], [x - 0.07, 0.548, z]], color: CHROME, out: [0, 0, 1] });
+    trim.push({ pts: [[x + 0.056, 0.56, z + 0.004], [x + 0.052, 0.688, z + 0.004], [x - 0.052, 0.688, z + 0.004], [x - 0.056, 0.56, z + 0.004]], color: BLACK, out: [0, 0, 1] });
+    for (let k = 0; k < 4; k++) {
+      const sx = x - 0.036 + k * 0.024;
+      chrome.push({ pts: [[sx + 0.004, 0.566, z + 0.008], [sx + 0.004, 0.682, z + 0.008], [sx - 0.004, 0.682, z + 0.008], [sx - 0.004, 0.566, z + 0.008]], color: CHROME, out: [0, 0, 1] });
     }
     // Sides of the kidney frame so it reads as a raised part.
-    for (const sgn of [1, -1]) chrome.push({ pts: [[x + sgn * 0.07, 0.545, zn], [x + sgn * 0.07, 0.545, z], [x + sgn * 0.065, 0.735, z], [x + sgn * 0.065, 0.735, zn]], color: CHROME, out: [sgn, 0, 0] });
+    for (const sgn of [1, -1]) chrome.push({ pts: [[x + sgn * 0.07, 0.548, zn], [x + sgn * 0.07, 0.548, z], [x + sgn * 0.066, 0.7, z], [x + sgn * 0.066, 0.7, zn]], color: CHROME, out: [sgn, 0, 0] });
   }
   // Chrome-style bumpers with a black rubber strip, standing proud of the body.
   const bumper = (z0, z1, y0, y1, hw) => {
@@ -288,28 +288,41 @@ function detailPolys() {
     b.push({ pts: [[hw, y0 + 0.045, z1 + d * 0.004], [hw, y1 - 0.05, z1 + d * 0.004], [-hw, y1 - 0.05, z1 + d * 0.004], [-hw, y0 + 0.045, z1 + d * 0.004]], color: TRIM, out: [0, 0, d] });
     return b;
   };
-  chrome.push(...bumper(NOSE - 0.06, NOSE + 0.09, 0.36, 0.53, 0.835));
+  chrome.push(...bumper(NOSE - 0.04, NOSE + 0.08, 0.445, 0.525, 0.835));
   chrome.push(...bumper(TAIL + 0.06, TAIL - 0.09, 0.37, 0.55, 0.835));
   // Amber indicators set into the front bumper corners.
   for (const side of [1, -1]) {
-    trim.push({ pts: [[side * 0.62, 0.42, NOSE + 0.096], [side * 0.79, 0.42, NOSE + 0.096], [side * 0.79, 0.47, NOSE + 0.096], [side * 0.62, 0.47, NOSE + 0.096]], color: AMBER, out: [0, 0, 1] });
+    trim.push({ pts: [[side * 0.6, 0.462, NOSE + 0.086], [side * 0.78, 0.462, NOSE + 0.086], [side * 0.78, 0.508, NOSE + 0.086], [side * 0.6, 0.508, NOSE + 0.086]], color: AMBER, out: [0, 0, 1] });
   }
-  // 318is front lip spoiler under the bumper.
-  trim.push({ pts: [[0.8, 0.24, NOSE + 0.05], [0.8, 0.36, NOSE + 0.02], [-0.8, 0.36, NOSE + 0.02], [-0.8, 0.24, NOSE + 0.05]], color: BLACK, out: [0, -0.3, 1] });
+  // Body-coloured air dam under the bumper, with dark vents and a black lip along the bottom.
+  const dam = [];
+  const zd = NOSE + 0.05;
+  dam.push({ pts: [[0.81, 0.25, zd], [0.81, 0.445, NOSE + 0.03], [-0.81, 0.445, NOSE + 0.03], [-0.81, 0.25, zd]], out: [0, -0.15, 1] });
+  for (const side of [1, -1]) dam.push({ pts: [[side * 0.81, 0.25, zd], [side * 0.81, 0.445, NOSE + 0.03], [side * 0.81, 0.445, NOSE - 0.08], [side * 0.81, 0.25, NOSE - 0.08]], out: [side, 0, 0] });
+  for (const [x0, x1] of [[0.62, 0.36], [0.2, -0.2], [-0.36, -0.62]]) {
+    trim.push({ pts: [[x0, 0.3, zd + 0.004], [x0, 0.36, zd - 0.0], [x1, 0.36, zd - 0.0], [x1, 0.3, zd + 0.004]], color: BLACK, out: [0, -0.15, 1] });
+  }
+  trim.push({ pts: [[0.8, 0.235, zd + 0.01], [0.8, 0.258, zd + 0.005], [-0.8, 0.258, zd + 0.005], [-0.8, 0.235, zd + 0.01]], color: BLACK, out: [0, -0.3, 1] });
 
   // Facelift tail lamps: wide banded units, red over amber and white, with dark ribs.
   const zt = TAIL - 0.006;
   const rear = (x0, x1, y0, y1, color, list = trim) => list.push({ pts: [[x0, y0, zt - 0.004], [x1, y0, zt - 0.004], [x1, y1, zt - 0.004], [x0, y1, zt - 0.004]], color, out: [0, 0, -1] });
-  rear(0.8, -0.8, 0.6, 0.84, BLACK);
+  rear(0.8, -0.8, 0.6, 0.845, BLACK);
   for (const side of [1, -1]) {
-    const o = side * 0.785;
-    const i = side * 0.3;
-    const m = side * 0.56;
-    rear(o, i, 0.765, 0.83, RED, tail); // tail / brake
-    rear(o, m, 0.69, 0.755, AMBER); // indicator
-    rear(m, i, 0.69, 0.755, RED, tail);
-    rear(o, m, 0.615, 0.68, RED, tail);
-    rear(m, i, 0.615, 0.68, LENS_WHITE); // reversing lamp
+    // Big wraparound-style lamps: an amber block at the outer end, then a red field split by a
+    // dark grid of ribs.
+    const o = side * 0.79;
+    const a = side * 0.7;
+    const i = side * 0.29;
+    rear(o, a, 0.61, 0.835, AMBER);
+    rear(a, i, 0.61, 0.835, RED, tail);
+    const ribs = [];
+    for (const y of [0.684, 0.76]) ribs.push([a, i, y - 0.006, y + 0.006]);
+    for (let k = 1; k < 4; k++) {
+      const x = a + ((i - a) * k) / 4;
+      ribs.push([x - 0.006, x + 0.006, 0.61, 0.835]);
+    }
+    for (const [x0, x1, y0, y1] of ribs) trim.push({ pts: [[x0, y0, zt - 0.007], [x1, y0, zt - 0.007], [x1, y1, zt - 0.007], [x0, y1, zt - 0.007]], color: BLACK, out: [0, 0, -1] });
   }
   // Number plate on the black panel between the lamps.
   rear(0.25, -0.25, 0.63, 0.77, [0.92, 0.92, 0.86]);
@@ -340,7 +353,7 @@ function detailPolys() {
     ];
     for (const pts of box) trim.push({ pts, color: BLACK });
   }
-  return { trim, chrome, tail };
+  return { trim, chrome, tail, paint: dam };
 }
 
 // ---------- Wheels: rim face textures per style ----------
@@ -460,14 +473,11 @@ export class CarModel {
     // Painted panels get their own material so the paint colour can change.
     const white = (polys) => polys.map((p) => ({ ...p, color: [1, 1, 1] }));
     this.paintMat = new THREE.MeshLambertMaterial({ color: 0xefeee6, vertexColors: true, flatShading: true });
-    this.kitPaintMat = new THREE.MeshLambertMaterial({ color: 0xefeee6, flatShading: true }); // body-kit parts
-    body.add(new THREE.Mesh(polyGeometry(white([...shell.paint, ...cabin.paint])), this.paintMat));
+    body.add(new THREE.Mesh(polyGeometry(white([...shell.paint, ...cabin.paint, ...detail.paint])), this.paintMat));
     this.cabinTop = new THREE.Mesh(polyGeometry(white(shell.cabinTop)), this.paintMat);
     body.add(this.cabinTop);
     body.add(new THREE.Mesh(polyGeometry([...shell.trim, ...cabin.trim, ...detail.trim, ...detail.chrome]), flat));
     this.body = body;
-    this.kit = new THREE.Group();
-    body.add(this.kit);
     this.numberBoards = new THREE.Group();
     body.add(this.numberBoards);
     this.glass = new THREE.Mesh(polyGeometry(cabin.glass), glassMat);
@@ -603,54 +613,15 @@ export class CarModel {
   // ---------- Looks from the tuning shop: paint, body kit, light colours, number boards ----------
   #applyLooks(t) {
     this.paintMat.color.set(t.paint || '#efeee6');
-    this.kitPaintMat.color.set(t.paint || '#efeee6');
     this.headColor = t.headlights || 'white';
     const head = (HEADLIGHTS[this.headColor] || HEADLIGHTS.white)[1];
     this.headMat.color.setHex(head).lerp(new THREE.Color(0xe8ecf0), 0.35);
     this.tailMat.color.setHex((TAILLIGHTS[t.taillights] || TAILLIGHTS.red)[1]);
-    if (this.kitKey !== t.bodyKit) {
-      this.kitKey = t.bodyKit;
-      this.#buildKit(t.bodyKit || 'stock');
-    }
     const numKey = `${t.numbers}|${t.number}|${t.numberW}|${t.numberH}`;
     if (this.numKey !== numKey) {
       this.numKey = numKey;
       this.#buildNumbers(t);
     }
-  }
-
-  #buildKit(kit) {
-    this.kit.traverse((o) => o.geometry?.dispose());
-    this.kit.clear();
-    if (kit === 'stock') return;
-    const paint = this.kitPaintMat;
-    const black = new THREE.MeshLambertMaterial({ color: 0x141416, flatShading: true });
-    const box = (w, h, d, x, y, z, mat = paint) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-      m.position.set(x, y, z);
-      this.kit.add(m);
-      return m;
-    };
-    // Side skirts between the wheel arches.
-    const zf = FRONT_AXLE - ARCH_R - 0.02;
-    const zr = REAR_AXLE + ARCH_R + 0.02;
-    const skirtH = kit === 'mtech2' ? 0.17 : 0.11;
-    for (const side of [1, -1]) box(0.06, skirtH, zf - zr, side * 0.815, 0.2 + skirtH / 2, (zf + zr) / 2);
-    if (kit === 'mtech1') {
-      // Deeper black front lip and a small spoiler on the boot lid.
-      box(1.64, 0.07, 0.16, 0, 0.22, NOSE + 0.04, black);
-      const lid = box(1.24, 0.035, 0.24, 0, 0.995, TAIL + 0.2);
-      lid.rotation.x = -0.12;
-      return;
-    }
-    // M-Tech 2: body-coloured bumpers over the chrome ones, a deep splitter and a rear wing.
-    box(1.72, 0.27, 0.2, 0, 0.42, NOSE + 0.03);
-    box(1.6, 0.05, 0.22, 0, 0.27, NOSE + 0.05, black);
-    box(1.72, 0.26, 0.2, 0, 0.45, TAIL - 0.03);
-    for (const x of [0.5, -0.5]) box(0.04, 0.16, 0.08, x, 1.04, TAIL + 0.2, black);
-    const wing = box(1.5, 0.035, 0.28, 0, 1.13, TAIL + 0.18);
-    wing.rotation.x = -0.1;
-    for (const x of [0.75, -0.75]) box(0.02, 0.12, 0.3, x, 1.12, TAIL + 0.18);
   }
 
   // Race number boards on both doors: a white square with a black number, size set in the shop.
