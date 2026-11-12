@@ -308,7 +308,8 @@ function detailPolys() {
   // Facelift tail lamps: wide banded units, red over amber and white, with dark ribs.
   const zt = TAIL - 0.006;
   const rear = (x0, x1, y0, y1, color, list = trim) => list.push({ pts: [[x0, y0, zt - 0.004], [x1, y0, zt - 0.004], [x1, y1, zt - 0.004], [x0, y1, zt - 0.004]], color, out: [0, 0, -1] });
-  rear(0.79, -0.79, 0.59, 0.81, BLACK);
+  // A black surround behind each lamp only; the panel between them is body colour.
+  for (const side of [1, -1]) rear(side * 0.79, side * 0.28, 0.59, 0.81, BLACK);
   for (const side of [1, -1]) {
     // Big wraparound-style lamps: an amber block at the outer end, then a red field split by a
     // dark grid of ribs.
