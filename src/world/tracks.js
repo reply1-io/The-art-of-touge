@@ -7,7 +7,7 @@ export const TRACKS = {
   akina: {
     name: 'Akina',
     blurb: '5 km downhill · five hairpins',
-    road: () => new Road(AKINA_POINTS, 5000),
+    road: () => new Road(AKINA_POINTS, 5000, { width: 'narrow' }), // skinny Japanese touge road
     cornerLights: true,
     relief: 110, // ridges and valleys away from the road (m)
     peaks: 750, // height of the surrounding ranges (m)

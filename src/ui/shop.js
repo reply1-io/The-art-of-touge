@@ -788,7 +788,7 @@ export class Shop {
     stage.addEventListener('pointercancel', up);
     const title = document.createElement('div');
     title.className = 'shop-car';
-    title.innerHTML = '<b>BMW E30 318is</b><span>Drag to turn</span>';
+    title.innerHTML = '<b>BMW E30 325i</b><span>Drag to turn</span>';
     this.readoutEl = document.createElement('div');
     this.readoutEl.className = 'shop-readout';
     stage.append(title, this.readoutEl);

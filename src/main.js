@@ -5,7 +5,6 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { CAR } from './config.js';
 import { Vehicle } from './physics/vehicle.js';
 import { SoftBarrier } from './physics/barrier.js';
-import { RAIL } from './world/road.js';
 import { MODES, MODE_LABELS } from './physics/transmission.js';
 import { CarModel } from './render/carModel.js';
 import { CameraRig } from './render/camera.js';
@@ -675,7 +674,7 @@ async function boot() {
     r.query(x, z, run.hint, railQ);
     const side = railQ.lateral > 0 ? 1 : -1;
     if (!mountain.layout.rail[side][railQ.index]) return false;
-    const pen = Math.abs(railQ.lateral) - (RAIL - 0.45);
+    const pen = Math.abs(railQ.lateral) - (r.w.RAIL - 0.45);
     if (pen <= 0 || pen > 1.5) return false;
     out.pen = pen;
     out.nx = -side * Math.cos(railQ.heading);

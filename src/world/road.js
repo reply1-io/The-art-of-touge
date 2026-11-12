@@ -18,6 +18,14 @@ export const GUTTER_IN = 4.42;
 export const GUTTER_OUT = 4.82;
 export const GUTTER_DEPTH = 0.1;
 
+// Road widths. 'wide' is the two-lane Dragon's Tail with a paved shoulder; 'narrow' is a skinny
+// Japanese touge road: two tight lanes, the gutter right at the edge, the rail just past it.
+// LANE is the middle of the left (downhill) lane.
+export const WIDTHS = {
+  wide: { HALF, PAVED, SHOULDER, RAIL, GUTTER_IN, GUTTER_OUT, LANE: 1.7 },
+  narrow: { HALF: 2.6, PAVED: 2.75, SHOULDER: 3.9, RAIL: 3.45, GUTTER_IN: 2.92, GUTTER_OUT: 3.3, LANE: 1.3 },
+};
+
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 function smooth(src, window, passes = 1) {
@@ -77,7 +85,8 @@ export class Road {
   // points: map pixels scaled to targetLength, or (opts.world) world metres used as they are.
   // opts.gradeBase / opts.twistGain shape the elevation profile.
   constructor(points = AKINA_POINTS, targetLength = 5000, opts = {}) {
-    const { world: inMetres = false, gradeBase = 0.058, twistGain = 1.1 } = opts;
+    const { world: inMetres = false, gradeBase = 0.058, twistGain = 1.1, width = 'wide' } = opts;
+    this.w = WIDTHS[width] || WIDTHS.wide;
     // ---- Plan view: spline, scale to length, resample at STEP ----
     const dense = inMetres ? points : catmullRom(points);
     let pxLength = 0;
@@ -291,7 +300,7 @@ export class Road {
 
   // Distance from sample i, along its lateral ray on `side`, before another leg of the road comes
   // within `margin` metres. Keeps walls, trees and rails from cutting across other legs.
-  clearance(i, side, maxDist, margin = SHOULDER + 1) {
+  clearance(i, side, maxDist, margin = this.w.SHOULDER + 1) {
     const h = this.heading[i];
     const lx = Math.cos(h) * side;
     const lz = -Math.sin(h) * side;
@@ -314,24 +323,25 @@ export class Road {
 export function crossSection(road, i) {
   const gl = road.gutterLeft[i];
   const gr = road.gutterRight[i];
+  const { HALF: H, PAVED: P, GUTTER_IN: GI, GUTTER_OUT: GO, SHOULDER: SH } = road.w;
   return [
     [VERGE, -0.6, 'verge'],
     // The shoulder carries on the road's banking up to the rail, with no step down.
-    [SHOULDER, 0, 'shoulder'],
-    [GUTTER_OUT, 0, gl > 0 ? 'gutter' : 'shoulder'],
-    [GUTTER_OUT - 0.14, -gl, gl > 0 ? 'gutter' : 'shoulder'],
-    [GUTTER_IN, -gl, gl > 0 ? 'gutter' : 'shoulder'],
-    [PAVED, 0, 'asphalt'],
-    [HALF, 0, 'asphalt'],
-    [HALF / 2, 0, 'asphalt'],
+    [SH, 0, 'shoulder'],
+    [GO, 0, gl > 0 ? 'gutter' : 'shoulder'],
+    [GO - 0.14, -gl, gl > 0 ? 'gutter' : 'shoulder'],
+    [GI, -gl, gl > 0 ? 'gutter' : 'shoulder'],
+    [P, 0, 'asphalt'],
+    [H, 0, 'asphalt'],
+    [H / 2, 0, 'asphalt'],
     [0, 0, 'asphalt'],
-    [-HALF / 2, 0, 'asphalt'],
-    [-HALF, 0, 'asphalt'],
-    [-PAVED, 0, 'asphalt'],
-    [-GUTTER_IN, -gr, gr > 0 ? 'gutter' : 'shoulder'],
-    [-(GUTTER_OUT - 0.14), -gr, gr > 0 ? 'gutter' : 'shoulder'],
-    [-GUTTER_OUT, 0, gr > 0 ? 'gutter' : 'shoulder'],
-    [-SHOULDER, 0, 'shoulder'],
+    [-H / 2, 0, 'asphalt'],
+    [-H, 0, 'asphalt'],
+    [-P, 0, 'asphalt'],
+    [-GI, -gr, gr > 0 ? 'gutter' : 'shoulder'],
+    [-(GO - 0.14), -gr, gr > 0 ? 'gutter' : 'shoulder'],
+    [-GO, 0, gr > 0 ? 'gutter' : 'shoulder'],
+    [-SH, 0, 'shoulder'],
     [-VERGE, -0.6, 'verge'],
   ];
 }
@@ -368,7 +378,7 @@ export function barrierLayout(road, terrain) {
       let off = Math.min(WALL, road.clearance(i, side, WALL + 6) - 1.5);
       const k = road.kappa[i] * side;
       if (k > 1e-4) off = Math.min(off, 0.85 / k);
-      wall[side][i] = Math.max(SHOULDER + 0.6, off);
+      wall[side][i] = Math.max(road.w.SHOULDER + 0.6, off);
     }
   }
   // Points along the run where a rail or wall should be split into straight segments.

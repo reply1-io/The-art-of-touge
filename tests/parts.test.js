@@ -13,7 +13,7 @@ async function zeroToSixty(parts) {
   let t = 0;
   let last = 0;
   while (mph(car) < 60 && t < 20) {
-    if (car.rpm > 6800 && car.trans.gear < 5 && t - last > 0.6) {
+    if (car.rpm > 6300 && car.trans.gear < 5 && t - last > 0.6) {
       car.trans.requestGear(car.trans.gear + 1, car.forwardSpeed);
       last = t;
     }
@@ -30,7 +30,7 @@ test('engine parts make the car quicker: ITBs, weight reduction, a turbo', async
   const turbo = await zeroToSixty({ turbo: 'small' });
   assert.ok(itb < stock, `itb ${itb} vs ${stock}`);
   assert.ok(light < stock, `light ${light} vs ${stock}`);
-  assert.ok(turbo < stock - 0.5, `turbo ${turbo} vs ${stock}`);
+  assert.ok(turbo < stock - 0.2, `turbo ${turbo} vs ${stock}`);
 });
 
 test('a turbo lags: boost builds over time after the throttle goes down', async () => {
@@ -73,14 +73,14 @@ test('angle kit gives more lock; hydraulic handbrake and big brakes stop harder'
 
 test('gearing: a shorter final drive revs higher at the same speed', async () => {
   const rpm = {};
-  for (const finalDrive of [3.64, 4.73]) {
+  for (const finalDrive of [3.46, 4.45]) {
     const { car, run } = await makeWorld('autoClutch');
     car.tune.finalDrive = finalDrive;
     car.trans.requestGear(3, 0);
     run(8, () => ({ throttle: car.forwardSpeed < 15 ? 1 : 0 }));
     rpm[finalDrive] = car.rpm;
   }
-  assert.ok(rpm[4.73] > rpm[3.64] * 1.2, JSON.stringify(rpm));
+  assert.ok(rpm[4.45] > rpm[3.46] * 1.2, JSON.stringify(rpm));
 });
 
 test('a race clutch bites over a much shorter pedal travel than the stock one', async () => {

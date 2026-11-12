@@ -40,10 +40,10 @@ test('drift scoring: hitting a rail loses the chain', async () => {
   assert.equal(score.total, 0);
 });
 
-test('dyno: stock is about 136 hp; ITBs and turbos add power', () => {
+test('dyno: stock is about 170 hp; ITBs and turbos add power', () => {
   const stock = dynoRun(TUNABLE_DEFAULTS);
-  assert.ok(Math.abs(stock.peakHp.hp - 136) < 6, `stock ${stock.peakHp.hp}`);
+  assert.ok(Math.abs(stock.peakHp.hp - 170) < 6, `stock ${stock.peakHp.hp}`);
   const itb = dynoRun({ ...TUNABLE_DEFAULTS, intake: 'itb' });
   const big = dynoRun({ ...TUNABLE_DEFAULTS, turbo: 'big' });
-  assert.ok(itb.peakHp.hp > stock.peakHp.hp * 1.05 && big.peakHp.hp > stock.peakHp.hp * 1.8, `${itb.peakHp.hp} ${big.peakHp.hp}`);
+  assert.ok(itb.peakHp.hp > stock.peakHp.hp + 12 && big.peakHp.hp > stock.peakHp.hp * 1.6, `${itb.peakHp.hp} ${big.peakHp.hp}`);
 });

@@ -5,12 +5,12 @@ JavaScript, no backend. Builds to a static site.
 
 ## Status: Phase 2 — the mountain
 
-- **Car:** BMW E30 318is, low-poly, Alpine White, BBS-style mesh wheels.
+- **Car:** BMW E30 325i, low-poly, Alpine White, BBS-style mesh wheels.
 - **Physics:** Rapier rigid-body chassis with four suspension raycasts, springs, dampers, anti-roll
   bars and a combined-slip tyre model. Each wheel spins on its own, driven through the clutch, a
-  Getrag 240 five-speed (3.72 / 2.02 / 1.32 / 1.00 / 0.81, 4.10 final) and a limited-slip diff, so
+  Getrag 260 five-speed (3.83 / 2.20 / 1.40 / 1.00 / 0.81, 3.73 final) and a limited-slip diff, so
   wheelspin, weight transfer, body roll and drifts come out of the simulation.
-- **Engine:** M42 torque curve (136 hp, 172 N m), rpm tied to wheel speed through the gears, rev
+- **Engine:** M20B25 straight-six torque curve (170 hp, 222 N m), rpm tied to wheel speed through the gears, rev
   limiter at about 7,000 rpm, engine braking, and stalling.
 - **Transmission settings** (title screen and pause menu, saved on the device):
   1. **Full Manual** — clutch to shift; shifting without it grinds; drop the clutch at idle and it stalls.

@@ -9,7 +9,7 @@ async function cornering(tire) {
   run(6, () => ({ throttle: car.forwardSpeed < 14 ? 1 : 0 }));
   let maxG = 0;
   run(4, (t) => {
-    if (Math.abs(car.slideAngle) < 0.25) maxG = Math.max(maxG, car.wheels.reduce((a, w) => a + Math.abs(w.fy), 0) / (1100 * 9.81));
+    if (Math.abs(car.slideAngle) < 0.25) maxG = Math.max(maxG, car.wheels.reduce((a, w) => a + Math.abs(w.fy), 0) / (1230 * 9.81));
     return { throttle: car.forwardSpeed < 14 ? 1 : 0, steer: -Math.min(1, t / 3) };
   });
   return maxG;
@@ -90,7 +90,7 @@ async function corneringWith(setup) {
   run(6, () => ({ throttle: car.forwardSpeed < 14 ? 1 : 0 }));
   let maxG = 0;
   run(4, (t) => {
-    if (Math.abs(car.slideAngle) < 0.25) maxG = Math.max(maxG, car.wheels.reduce((a, w) => a + Math.abs(w.fy), 0) / (1100 * 9.81));
+    if (Math.abs(car.slideAngle) < 0.25) maxG = Math.max(maxG, car.wheels.reduce((a, w) => a + Math.abs(w.fy), 0) / (1230 * 9.81));
     return { throttle: car.forwardSpeed < 14 ? 1 : 0, steer: -Math.min(1, t / 3) };
   });
   return maxG;

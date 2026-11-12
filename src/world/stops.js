@@ -5,7 +5,7 @@
 // A zone runs along the road from sample i0 to i1 on one side. Its surface starts at the outer lip
 // of the drainage gutter and reaches `width` metres further out (narrower at the tapered ends).
 
-import { GUTTER_OUT, SHOULDER } from './road.js';
+import { GUTTER_OUT } from './road.js';
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const smoothstep = (a, b, x) => {
@@ -13,10 +13,12 @@ const smoothstep = (a, b, x) => {
   return t * t * (3 - 2 * t);
 };
 
-export const ZONE_INNER = GUTTER_OUT;
+export const ZONE_INNER = GUTTER_OUT; // wide-road default; each zone has its own `inner`
 
 export class Zone {
-  constructor(kind, i0, i1, side, width, taper) {
+  constructor(kind, i0, i1, side, width, taper, road) {
+    this.inner = road ? road.w.GUTTER_OUT : ZONE_INNER; // where the zone starts, from the centreline
+    this.shoulder = road ? road.w.SHOULDER : 5.4;
     this.kind = kind; // 'pulloff' | 'station' | 'show'
     this.i0 = i0;
     this.i1 = i1;
@@ -38,13 +40,13 @@ export class Zone {
 
   // Outer edge, metres from the centreline.
   outerAt(i) {
-    return ZONE_INNER + this.widthAt(i);
+    return this.inner + this.widthAt(i);
   }
 
   // Height of the zone surface at sample i, lateral distance l (metres, unsigned): it follows the
   // road's banked plane to the end of the shoulder, then stays level.
   heightAt(road, i, l) {
-    return road.pointAt(i, this.side * Math.min(l, SHOULDER))[1] + 0.02;
+    return road.pointAt(i, this.side * Math.min(l, this.shoulder))[1] + 0.02;
   }
 }
 
@@ -76,12 +78,12 @@ export function stopsFor(road) {
   const s0 = 2;
   const s1 = Math.max(s0 + 14, road.startIndex - 8);
   const sSide = room(s0, s1, -1, 34) ? -1 : 1;
-  zones.push(new Zone('station', s0, s1, sSide, 24, 3));
+  zones.push(new Zone('station', s0, s1, sSide, 24, 3, road));
 
   // Car-show lot halfway down: the quietest 80 m near the middle with room beside it.
   const mid = Math.floor(road.count / 2);
   const show = quietStretch(road, mid - 120, mid + 120, 40, 34);
-  if (show) zones.push(new Zone('show', show.i, show.i + 40, show.side, 22, 5));
+  if (show) zones.push(new Zone('show', show.i, show.i + 40, show.side, 22, 5, road));
 
   // Small pull-offs on the outside of medium corners, about every 600 m.
   let last = -1e9;
@@ -93,7 +95,7 @@ export function stopsFor(road) {
     const i0 = i - 9;
     const i1 = i + 9;
     if (!free(i0, i1, side) || !room(i0, i1, side, 22)) continue;
-    zones.push(new Zone('pulloff', i0, i1, side, 5.5, 5));
+    zones.push(new Zone('pulloff', i0, i1, side, 5.5, 5, road));
     last = i;
   }
   return zones;
@@ -115,17 +117,25 @@ export function zonePoint(road, zone, f, l) {
 
 // Gas station: a canopy over two islands of two pumps, and the kiosk at the back of the lot.
 export function stationLayout(road, zone) {
-  const L0 = ZONE_INNER;
+  const L0 = zone.inner;
   const pumps = [];
   for (const l of [L0 + 9, L0 + 13]) for (const f of [0.38, 0.62]) pumps.push(zonePoint(road, zone, f, l));
   const pillars = [];
   for (const l of [L0 + 7, L0 + 15]) for (const f of [0.25, 0.75]) pillars.push(zonePoint(road, zone, f, l));
-  return { pumps, pillars, canopy: zonePoint(road, zone, 0.5, L0 + 11), kiosk: zonePoint(road, zone, 0.5, L0 + 20.5) };
+  return {
+    pumps,
+    pillars,
+    canopy: zonePoint(road, zone, 0.5, L0 + 11),
+    kiosk: zonePoint(road, zone, 0.5, L0 + 20.5),
+    truck: zonePoint(road, zone, 0.86, L0 + 18.5), // box truck parked out of the way
+    pylon: zonePoint(road, zone, 0.16, L0 + 2.2), // tall price sign by the road
+    air: zonePoint(road, zone, 0.3, L0 + 19.5), // air and water stand
+  };
 }
 
 // Car-show lot: a row of marked bays along the back, and the parts cabin at the far end.
 export function showLayout(road, zone) {
-  const L0 = ZONE_INNER;
+  const L0 = zone.inner;
   const bays = [];
   for (let f = 0.14; f <= 0.66; f += 0.075) bays.push(zonePoint(road, zone, f, L0 + 16));
   return { bays, cabin: zonePoint(road, zone, 0.84, L0 + 15) };

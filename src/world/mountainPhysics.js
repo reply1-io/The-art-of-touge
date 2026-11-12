@@ -43,7 +43,7 @@ export function buildMountainPhysics(world, road, terrain) {
     const b = kinds[c + 1];
     if (a === 'asphalt' && b === 'asphalt') return 'asphalt';
     const off = Math.abs(crossSection(road, 0)[c][0]) + Math.abs(crossSection(road, 0)[c + 1][0]);
-    return off / 2 < GUTTER_OUT + 0.03 ? 'asphalt' : off / 2 < SHOULDER + 0.1 ? 'gravel' : 'grass';
+    return off / 2 < road.w.GUTTER_OUT + 0.03 ? 'asphalt' : off / 2 < road.w.SHOULDER + 0.1 ? 'gravel' : 'grass';
   };
   const byHandle = new Map();
   for (const surface of ['asphalt', 'gravel', 'grass']) {
@@ -89,9 +89,9 @@ export function buildMountainPhysics(world, road, terrain) {
     const zv = [];
     const zi = [];
     for (let j = z.i0; j <= z.i1; j++) {
-      const outer = Math.max(z.outerAt(j), ZONE_INNER + 0.3);
+      const outer = Math.max(z.outerAt(j), z.inner + 0.3);
       for (let c = 0; c < cols; c++) {
-        const l = ZONE_INNER + ((outer - ZONE_INNER) * c) / (cols - 1);
+        const l = z.inner + ((outer - z.inner) * c) / (cols - 1);
         const p = road.pointAt(j, z.side * l);
         zv.push(p[0], z.heightAt(road, j, l), p[2]);
       }
@@ -118,6 +118,9 @@ export function buildMountainPhysics(world, road, terrain) {
       for (const p of st.pumps) solid(p, 0.45, 0.9, 0.35);
       for (const p of st.pillars) solid(p, 0.2, 2.5, 0.2);
       solid(st.kiosk, 2.6, 1.6, 4.2);
+      solid(st.truck, 1.25, 1.6, 3.6);
+      solid(st.pylon, 0.25, 3, 0.25);
+      solid(st.air, 0.3, 0.7, 0.3);
     } else if (z.kind === 'show') {
       solid(showLayout(road, z).cabin, 3.2, 1.8, 2.6);
     }
@@ -131,7 +134,7 @@ export function buildMountainPhysics(world, road, terrain) {
     };
     for (let i = 0; i < road.count; i++) {
       if (layout.rail[side][i]) {
-        if (i % 3 === 0 || !layout.rail[side][i + 1]) run.push(road.pointAt(i, side * (RAIL + 0.1)));
+        if (i % 3 === 0 || !layout.rail[side][i + 1]) run.push(road.pointAt(i, side * (road.w.RAIL + 0.1)));
       } else flush();
     }
     flush();

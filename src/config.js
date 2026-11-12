@@ -1,15 +1,15 @@
-// BMW E30 318is (1990, M42 1.8 16V). Numbers follow the real car where known.
+// BMW E30 325i (1988, M20B25 2.5 straight-six). Numbers follow the real car where known.
 // Values in TUNABLE can be changed live from the dev tuning panel.
 
 export const CAR = {
-  name: 'BMW E30 318is',
-  mass: 1100, // kg with driver and fuel
+  name: 'BMW E30 325i',
+  mass: 1230, // kg with driver and fuel (the six is heavier than the 318is four)
   // Body box used for the collider (half extents, metres): width, height, length.
   halfExtents: { x: 0.8, y: 0.32, z: 2.12 },
   // Centre of mass relative to the body origin (low, slightly forward).
-  centerOfMass: { x: 0, y: -0.18, z: 0.06 },
+  centerOfMass: { x: 0, y: -0.18, z: 0.1 }, // a little more nose-heavy with the long six
   // Principal moments of inertia (pitch about x, yaw about y, roll about z).
-  inertia: { x: 1500, y: 1750, z: 430 },
+  inertia: { x: 1650, y: 1950, z: 470 },
   dragArea: 0.66, // Cd 0.38 x 1.74 m2
   rollingResistance: 0.013,
 
@@ -19,7 +19,7 @@ export const CAR = {
   frontAxleZ: 1.28, // relative to the body origin
   rearAxleZ: -1.29,
   wheelMountY: -0.1, // suspension top, relative to the body origin
-  wheelRadius: 0.305, // 195/65 R14
+  wheelRadius: 0.305, // 195/65 R14 (325i: 14" BBS cross-spokes)
   wheelWidth: 0.195,
   wheelInertia: 1.0, // kg m2: wheel, tyre, hub and brake rotor
   suspensionRest: 0.3, // free length of the strut travel used by the raycast
@@ -27,40 +27,40 @@ export const CAR = {
   maxSteer: (36 * Math.PI) / 180,
 
   engine: {
-    idleRpm: 850,
-    redline: 7000,
-    limiterRpm: 7050,
-    limiterResumeRpm: 6750,
-    stallRpm: 480,
-    inertia: 0.17, // kg m2: crank and flywheel
-    // rpm -> N m at full throttle (M42: 136 hp at 6,000 rpm, 172 N m at 4,600 rpm)
+    idleRpm: 760,
+    redline: 6500,
+    limiterRpm: 6600,
+    limiterResumeRpm: 6350,
+    stallRpm: 430,
+    inertia: 0.22, // kg m2: the six's longer crank and heavier flywheel
+    // rpm -> N m at full throttle (M20B25: 170 hp at 5,800 rpm, 222 N m at 4,300 rpm)
     torqueCurve: [
-      [0, 80],
-      [800, 110],
-      [1500, 128],
-      [2500, 145],
-      [3500, 160],
-      [4600, 172],
-      [5200, 170],
-      [6000, 160],
-      [6500, 150],
-      [7000, 138],
-      [7500, 120],
+      [0, 110],
+      [800, 160],
+      [1500, 182],
+      [2500, 200],
+      [3500, 214],
+      [4300, 222],
+      [5000, 218],
+      [5800, 208],
+      [6300, 196],
+      [6600, 186],
+      [7000, 165],
     ],
-    frictionTorque: 18, // N m at zero rpm when off throttle
-    frictionPerRpm: 0.007, // extra engine braking per rpm (closed-throttle pumping losses)
+    frictionTorque: 22, // N m at zero rpm when off throttle
+    frictionPerRpm: 0.008, // extra engine braking per rpm (closed-throttle pumping losses)
   },
 
-  // Getrag 240 five-speed, 4.10 final drive.
-  gears: [3.72, 2.02, 1.32, 1.0, 0.81],
-  reverse: 3.45,
-  finalDrive: 4.1,
+  // Getrag 260 five-speed, 3.73 final drive (the 325i's limited-slip axle).
+  gears: [3.83, 2.2, 1.4, 1.0, 0.81],
+  reverse: 3.46,
+  finalDrive: 3.73,
   drivelineEfficiency: 0.9,
-  clutchTorque: 280, // N m capacity
+  clutchTorque: 340, // N m capacity
 
-  brakeTorqueFront: 1600, // N m per wheel at full pedal
-  brakeTorqueRear: 750,
-  handbrakeTorque: 1800, // N m per rear wheel
+  brakeTorqueFront: 1800, // N m per wheel at full pedal (vented front discs)
+  brakeTorqueRear: 820,
+  handbrakeTorque: 1900, // N m per rear wheel
 
   paint: 0xefeee6, // Alpine White
 };
@@ -97,7 +97,7 @@ export const TIRES = {
 
 export const DIFFS = {
   open: { name: 'Open', blurb: 'Power goes to the wheel with least grip: the inside rear spins up out of tight corners.' },
-  lsd: { name: 'LSD', blurb: 'Clutch-type limited slip (the 318is had one). Keeps both rears driving; predictable slides.' },
+  lsd: { name: 'LSD', blurb: 'Clutch-type limited slip (the 325i had one). Keeps both rears driving; predictable slides.' },
   welded: { name: 'Welded', blurb: 'Both rears locked together. Snaps into slides and holds them; scrubs and hops in tight turns.' },
 };
 
@@ -136,7 +136,7 @@ export const TUNABLE_DEFAULTS = {
   turbo: 'none',
   clutch: 'stock',
   gearbox: 'stock',
-  finalDrive: 4.1,
+  finalDrive: 3.73,
   coilovers: false,
   bump: 0.3, // coilover damping ratios (compression / extension)
   rebound: 0.36,
@@ -160,7 +160,7 @@ export const INTAKES = {
   itb: { name: 'ITBs', blurb: 'Individual throttle bodies: +20 Nm and +15 hp, razor response, and a deep, soft intake grumble.' },
 };
 export const TURBOS = {
-  none: { name: 'None', blurb: 'Naturally aspirated M42. Linear and predictable.' },
+  none: { name: 'None', blurb: 'Naturally aspirated M20 six. Smooth, linear and predictable.' },
   small: { name: 'Small turbo', blurb: 'T25-size. Spools early, about +45% torque, gentle lag. Breathy diesel-style spool and a little poof when you lift.' },
   big: { name: 'Big turbo', blurb: 'T3-size. Nothing below 4,000 rpm, then it doubles the torque. Laggy, savage, loud: deep diesel spool and flutter on lift-off.' },
 };
@@ -170,10 +170,10 @@ export const CLUTCHES = {
   race: { name: 'Race paddle', blurb: 'Grabs hard and holds anything. Pulling away without stalling takes care.' },
 };
 export const GEARBOXES = {
-  stock: { name: 'Stock', blurb: 'Getrag 240: 3.72 / 2.02 / 1.32 / 1.00 / 0.81.' },
+  stock: { name: 'Stock', blurb: 'Getrag 260: 3.83 / 2.20 / 1.40 / 1.00 / 0.81.' },
   close: { name: 'Close-ratio', blurb: 'Gears packed together: 3.35 / 2.17 / 1.58 / 1.24 / 1.00. Stays in the power band through the bends.' },
 };
-export const FINAL_DRIVES = [3.64, 3.91, 4.1, 4.27, 4.45, 4.73];
+export const FINAL_DRIVES = [3.46, 3.64, 3.73, 3.91, 4.1, 4.27, 4.45];
 export const BRAKES = {
   stock: { name: 'Stock', blurb: 'Fine for the road. Fades if you lean on them run after run.' },
   bbk: { name: 'Big brake kit', blurb: '4-pot calipers and bigger discs: about 30% more bite and far less fade.' },
@@ -188,7 +188,7 @@ export const ANGLE_KITS = {
   full: { name: 'Full lock', blurb: '58° of lock. Huge angle, twitchy at speed.' },
 };
 export const WEIGHTS = {
-  stock: { name: 'Stock', blurb: '1,100 kg with you and a tank of fuel.', kg: 0 },
+  stock: { name: 'Stock', blurb: '1,230 kg with you and a tank of fuel.', kg: 0 },
   light: { name: 'Light', blurb: 'Rear seats, spare wheel and sound deadening out: -55 kg.', kg: -55 },
   stripped: { name: 'Stripped', blurb: 'Bare shell, bucket seats, carbon bonnet: -120 kg.', kg: -120 },
 };
@@ -217,7 +217,7 @@ export function cleanPlate(text) {
 
 export const SEATS = {
   stock: { name: 'Road seats', blurb: 'Comfy cloth seats. Your head moves with every corner and brake.' },
-  bucket: { name: 'Bucket seats', blurb: 'Fixed-back race buckets. They hold you tight, so the in-car view stays locked.' },
+  bucket: { name: 'Bucket seats', blurb: 'Fixed-back race buckets. They hold you tight: every camera stays locked to the car.' },
 };
 
 export const HEADLIGHTS = { white: ['White', 0xfff2d8], yellow: ['Yellow', 0xffc94a], blue: ['Cool blue', 0xcfe2ff] };
@@ -241,8 +241,8 @@ export function partsSetup(t) {
     maxSteer: ((t.angleKit === 'full' ? 58 : t.angleKit === 'kit' ? 48 : 36) * Math.PI) / 180,
     brakeScale: t.brakes === 'bbk' ? 1.3 : 1,
     brakeCapacity: t.brakes === 'bbk' ? 1.8 : 1,
-    handbrakeTorque: t.handbrake === 'hydro' ? 3400 : CAR.handbrakeTorque,
-    clutchTorque: { stock: 280, sport: 380, race: 540 }[clutch],
+    handbrakeTorque: t.handbrake === 'hydro' ? 3600 : CAR.handbrakeTorque,
+    clutchTorque: { stock: 340, sport: 440, race: 600 }[clutch],
     // Pedal travel over which the clutch bites (fraction pressed): narrower = grabbier.
     bite: { stock: [0.25, 0.8], sport: [0.33, 0.72], race: [0.44, 0.6] }[clutch],
     gears: t.gearbox === 'close' ? [3.35, 2.17, 1.58, 1.24, 1.0] : CAR.gears,

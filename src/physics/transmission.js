@@ -143,7 +143,7 @@ export class Transmission {
 
   #autoShift(throttle, engineRpm, inputRpm) {
     if (this.drive !== 'D' || this.shiftTimer > 0 || this.gear < 1) return;
-    const up = 3000 + 3600 * clamp(throttle, 0, 1);
+    const up = 2800 + 3400 * clamp(throttle, 0, 1);
     const down = 1500 + 2300 * clamp(throttle, 0, 1);
     const last = this.gears.length;
     if (engineRpm > up && this.gear < last && this.coupling > 0.9) {
@@ -151,7 +151,7 @@ export class Transmission {
       this.shiftTimer = 0.28;
     } else if (engineRpm < down && this.gear > 1) {
       const next = (Math.abs(inputRpm) * this.ratio(this.gear - 1)) / this.ratio(this.gear);
-      if (next < 6300) {
+      if (next < 5900) {
         this.gear--;
         this.shiftTimer = 0.28;
       }

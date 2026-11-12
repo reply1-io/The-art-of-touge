@@ -1,7 +1,7 @@
 // The mountain's visuals: road (chunked for culling), terrain tiles, guardrails, streetlights at the
 // hairpins, cedar forest, the summit lake, the town at the bottom, and start / finish lines.
 import * as THREE from 'three';
-import { crossSection, HALF, PAVED, RAIL, STEP } from './road.js';
+import { crossSection, STEP } from './road.js';
 import { TRACKS } from './tracks.js';
 import { Terrain, noise2 } from './terrain.js';
 import { buildMountainPhysics } from './mountainPhysics.js';
@@ -12,7 +12,7 @@ const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const ROAD_CHUNK = 60; // samples per road chunk (120 m)
 const TILE = 24; // terrain cells per tile
 
-function asphaltTexture() {
+function asphaltTexture({ HALF, PAVED }) {
   const c = document.createElement('canvas');
   c.width = 64;
   c.height = 256;
@@ -31,7 +31,7 @@ function asphaltTexture() {
   g.fillRect(64 - line, 0, line, 256);
   // Tyre-polished lines in each lane.
   g.fillStyle = 'rgba(20,20,22,0.25)';
-  for (const l of [2.55, 0.85, -0.85, -2.55]) g.fillRect((64 * (PAVED - l)) / (2 * PAVED) - 2, 0, 4, 256);
+  for (const l of [0.75 * HALF, 0.25 * HALF, -0.25 * HALF, -0.75 * HALF]) g.fillRect((64 * (PAVED - l)) / (2 * PAVED) - 2, 0, 4, 256);
   // White edge lines and the yellow no-overtaking centre line.
   g.fillStyle = '#d9d9d2';
   g.fillRect(line - 1, 0, 2, 256);
@@ -77,6 +77,90 @@ function windowsTexture() {
   }
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// BW Racing Fuels branding. `wide`: the long fascia strip ("BW RACING FUELS" beside the logo);
+// otherwise just the logo: a red sideways oval with "BWracing" in blue.
+function brandTex(w, h, wide) {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const g = c.getContext('2d');
+  g.fillStyle = '#ffffff';
+  g.fillRect(0, 0, w, h);
+  const logo = (cx, cy, rx, ry) => {
+    g.fillStyle = '#d0201a';
+    g.beginPath();
+    g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = '#ffffff';
+    g.beginPath();
+    g.ellipse(cx, cy, rx * 0.88, ry * 0.76, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = '#1f4fb4';
+    g.font = `italic 900 ${ry * 0.95}px 'Arial Black', Arial, sans-serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('BWracing', cx, cy + ry * 0.05, rx * 1.6);
+  };
+  if (wide) {
+    logo(h * 1.2, h / 2, h * 1.05, h * 0.42);
+    g.fillStyle = '#16161a';
+    g.font = `900 ${h * 0.5}px 'Arial Black', Arial, sans-serif`;
+    g.textAlign = 'left';
+    g.textBaseline = 'middle';
+    g.fillText('BW RACING FUELS', h * 2.5, h / 2 + 2, w - h * 2.7);
+  } else logo(w / 2, h / 2, w * 0.46, h * 0.42);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+// A neon-style shop sign: glowing letters on a dark board.
+function neonTex(text, glow, core) {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 96;
+  const g = c.getContext('2d');
+  g.fillStyle = '#0a0a0c';
+  g.fillRect(0, 0, 256, 96);
+  g.strokeStyle = glow;
+  g.lineWidth = 4;
+  g.shadowColor = glow;
+  g.shadowBlur = 14;
+  g.strokeRect(6, 6, 244, 84);
+  g.font = "bold 58px 'Arial Narrow', Arial, sans-serif";
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillStyle = core;
+  g.fillText(text, 128, 50, 230);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// Fuel prices for the price sign.
+function priceTex() {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = '#121214';
+  g.fillRect(0, 0, 256, 128);
+  g.font = "bold 30px 'Arial Narrow', Arial, sans-serif";
+  g.textBaseline = 'middle';
+  [['RACE 100', '189'], ['HI-OCT', '172'], ['REG', '158']].forEach(([n, v], k) => {
+    g.fillStyle = '#ffffff';
+    g.textAlign = 'left';
+    g.fillText(n, 12, 24 + k * 40);
+    g.fillStyle = '#ffb000';
+    g.textAlign = 'right';
+    g.fillText(v, 244, 24 + k * 40);
+  });
+  const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
@@ -171,9 +255,9 @@ export class Mountain {
       const idx = [];
       const base = z.kind === 'station' ? [0.42, 0.41, 0.39] : [0.2, 0.2, 0.22];
       for (let j = z.i0; j <= z.i1; j++) {
-        const outer = Math.max(z.outerAt(j), ZONE_INNER + 0.3);
+        const outer = Math.max(z.outerAt(j), z.inner + 0.3);
         for (let c = 0; c < cols; c++) {
-          const l = ZONE_INNER + ((outer - ZONE_INNER) * c) / (cols - 1);
+          const l = z.inner + ((outer - z.inner) * c) / (cols - 1);
           const p = road.pointAt(j, z.side * l);
           pos.push(p[0], z.heightAt(road, j, l) + 0.01, p[2]);
           const n = noise2(p[0] * 0.4, p[2] * 0.4) * 0.05;
@@ -232,63 +316,162 @@ export class Mountain {
         }
         this.#cabin(lay.cabin, at, lambert, z.side);
       }
-      const mid = zonePoint(road, z, 0.5, ZONE_INNER + z.width / 2);
+      const mid = zonePoint(road, z, 0.5, z.inner + z.width / 2);
       this.#addChunk(group, mid.x, mid.z, (z.i1 - z.i0) * STEP * 0.6 + z.width);
     }
   }
 
-  // Gas station: a white canopy with a red band on four pillars, four pumps, and a little kiosk.
+  // Gas station: BW Racing Fuels. A canopy over four pumps with the brand on its fascia, a kiosk
+  // with an OPEN / CLOSED sign, vending machines, an ice chest, bins, an air stand, a tall price
+  // sign by the road, and a box truck parked out of the way.
   #station(z, at, lambert) {
     const road = this.road;
     const st = stationLayout(road, z);
+    const side = z.side;
+    const toRoad = -side; // local x pointing back toward the road
     const red = lambert(0xc8241d);
+    const blue = lambert(0x1f4fb4);
     const whiteM = lambert(0xeeeeea);
+    const grey = lambert(0x9a9a96);
     const dark = lambert(0x2a2c31);
+    const black = lambert(0x161618);
+    const basic = (color) => new THREE.MeshBasicMaterial({ color });
+    const box = (w, h, d, mat, x, y, zz, parent) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      m.position.set(x, y, zz);
+      parent.add(m);
+      return m;
+    };
+    const plane = (w, h, mat, x, y, zz, rotY, parent) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+      m.position.set(x, y, zz);
+      m.rotation.y = rotY;
+      parent.add(m);
+      return m;
+    };
+    const brandMat = new THREE.MeshBasicMaterial({ map: brandTex(1024, 128, true) });
+    const logoMat = new THREE.MeshBasicMaterial({ map: brandTex(512, 256, false) });
+
+    // ---- Canopy ----
     const canopy = new THREE.Group();
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(11, 0.5, 15), whiteM);
-    roof.position.y = 5.2;
-    const band = new THREE.Mesh(new THREE.BoxGeometry(11.1, 0.32, 15.1), red);
-    band.position.y = 5.05;
+    box(11, 0.32, 15, whiteM, 0, 5.4, 0, canopy);
+    // Deep fascia round the edge, with the brand on all four sides.
+    box(11.2, 0.9, 15.2, whiteM, 0, 5.05, 0, canopy);
+    box(11.25, 0.14, 15.25, red, 0, 4.62, 0, canopy);
+    box(11.25, 0.08, 15.25, blue, 0, 4.52, 0, canopy);
+    for (const sx of [1, -1]) plane(14, 0.82, brandMat, sx * 5.62, 5.05, 0, sx * (Math.PI / 2), canopy);
+    for (const sz of [1, -1]) plane(10.4, 0.82, brandMat, 0, 5.05, sz * 7.62, sz > 0 ? 0 : Math.PI, canopy);
     // Lit panels under the canopy (they glow after dark).
-    const glowMat = new THREE.MeshBasicMaterial({ color: 0xfff4dc });
-    const under = new THREE.Mesh(new THREE.PlaneGeometry(9, 13).rotateX(Math.PI / 2), glowMat);
-    under.position.y = 4.88;
-    canopy.add(roof, band, under);
+    const under = new THREE.Mesh(new THREE.PlaneGeometry(9, 13).rotateX(Math.PI / 2), basic(0xfff4dc));
+    under.position.y = 4.45;
+    canopy.add(under);
     this.lampGlows.push(under);
     at(st.canopy, canopy);
-    for (const p of st.pillars) at(p, new THREE.Mesh(new THREE.BoxGeometry(0.4, 5, 0.4), whiteM), 2.5);
+    for (const p of st.pillars) {
+      const pillar = new THREE.Group();
+      box(0.4, 4.5, 0.4, whiteM, 0, 2.25, 0, pillar);
+      box(0.46, 0.5, 0.46, red, 0, 0.25, 0, pillar);
+      at(p, pillar);
+    }
+    // ---- Pumps: island, kerb, bollards, pump with hoses, price display and a bin ----
     for (const p of st.pumps) {
       const pump = new THREE.Group();
-      const island = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.18, 1.2), lambert(0x9a9a96));
-      island.position.y = 0.09;
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.7, 0.6), whiteM);
-      body.position.y = 1.03;
-      const top = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.3, 0.64), red);
-      top.position.y = 1.93;
-      const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.25), new THREE.MeshBasicMaterial({ color: 0x9fe08a }));
-      screen.position.set(0, 1.45, 0.301);
-      const screen2 = screen.clone();
-      screen2.position.z = -0.301;
-      screen2.rotation.y = Math.PI;
-      const hose = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.9, 0.06), dark);
-      hose.position.set(0.42, 0.9, 0);
-      pump.add(island, body, top, screen, screen2, hose);
+      box(1.5, 0.2, 3.2, grey, 0, 0.1, 0, pump);
+      box(1.6, 0.06, 3.3, lambert(0xd9c22a), 0, 0.22, 0, pump);
+      for (const zz of [-1.45, 1.45]) {
+        box(0.16, 0.9, 0.16, lambert(0xd9c22a), 0, 0.65, zz, pump);
+      }
+      box(0.75, 1.6, 0.55, whiteM, 0, 1.0, 0, pump);
+      box(0.8, 0.32, 0.6, red, 0, 1.95, 0, pump);
+      box(0.8, 0.07, 0.6, blue, 0, 1.76, 0, pump);
+      for (const sx of [1, -1]) {
+        plane(0.42, 0.24, basic(0x9fe08a), sx * 0.38, 1.4, 0, sx * (Math.PI / 2), pump);
+        plane(0.42, 0.14, basic(0xffb000), sx * 0.38, 1.12, 0, sx * (Math.PI / 2), pump);
+        // Nozzle holster and a looping hose.
+        box(0.1, 0.22, 0.12, black, sx * 0.43, 0.95, 0.18, pump);
+        const hose = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.025, 4, 10, Math.PI), black);
+        hose.position.set(sx * 0.46, 0.7, 0.18);
+        hose.rotation.set(0, Math.PI / 2, Math.PI);
+        pump.add(hose);
+      }
+      box(0.35, 0.6, 0.35, lambert(0x2f6b4f), 0, 0.5, 1.1, pump); // bin
       at(p, pump);
     }
-    // Kiosk with a lit window and a sign.
+    // ---- Kiosk ----
     const kiosk = new THREE.Group();
-    const walls = new THREE.Mesh(new THREE.BoxGeometry(5.2, 3.2, 8.4), lambert(0xd8d4c8));
-    walls.position.y = 1.6;
-    const flat = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.3, 8.8), dark);
-    flat.position.y = 3.35;
-    const win = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.4), new THREE.MeshBasicMaterial({ color: 0xffe2a6 }));
-    win.position.set(-z.side * 2.61, 1.6, 0);
-    win.rotation.y = -z.side * (Math.PI / 2);
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(6, 0.9), new THREE.MeshBasicMaterial({ map: textTex('TOUGE OIL', '#c8241d', '#ffffff') }));
-    sign.position.set(-z.side * 2.62, 2.85, 0);
-    sign.rotation.y = -z.side * (Math.PI / 2);
-    kiosk.add(walls, flat, win, sign);
+    box(5.2, 3.2, 8.4, lambert(0xd8d4c8), 0, 1.6, 0, kiosk);
+    box(5.6, 0.3, 8.8, dark, 0, 3.35, 0, kiosk);
+    box(5.62, 0.5, 8.82, red, 0, 3.0, 0, kiosk);
+    const front = toRoad * 2.61;
+    const rot = toRoad * (Math.PI / 2);
+    plane(5.4, 1.5, basic(0xffe2a6), front, 1.5, -1.3, rot, kiosk); // shop window
+    plane(1.2, 2.2, lambert(0x3a4a5a), front, 1.1, 2.6, rot, kiosk); // glass door
+    plane(4.6, 0.46, logoMat, front * 1.002, 3.0, -1.3, rot, kiosk);
+    // OPEN (day and sunset) or CLOSED (night) glowing in the window.
+    const openSign = plane(1.1, 0.4, new THREE.MeshBasicMaterial({ map: neonTex('OPEN', '#ff3a3a', '#ffd0d0') }), front * 1.004, 1.75, 1.0, rot, kiosk);
+    const closedSign = plane(1.3, 0.4, new THREE.MeshBasicMaterial({ map: neonTex('CLOSED', '#6a7486', '#c8d0dc') }), front * 1.004, 1.75, 1.0, rot, kiosk);
+    this.openSigns = { open: openSign, closed: closedSign };
+    // Vending machines, an ice chest and bins along the front wall.
+    const vend = [basic(0xdff4ff), basic(0xffe0e0)];
+    vend.forEach((m, k) => {
+      const v = box(0.9, 1.85, 0.75, m, toRoad * 3.05, 0.93, -4.6 + k * 1.0, kiosk);
+      v.rotation.y = rot;
+    });
+    box(0.7, 0.9, 1.4, lambert(0x2f6fb8), toRoad * 3.0, 0.45, 4.0, kiosk); // ice chest
+    box(0.72, 0.15, 1.42, whiteM, toRoad * 3.0, 0.95, 4.0, kiosk);
+    for (const zz of [-3.0, 3.6]) box(0.4, 0.75, 0.4, lambert(0x3a3c40), toRoad * 3.2, 0.38, zz, kiosk);
+    // Stacked oil cans by the door.
+    for (let k = 0; k < 6; k++) box(0.22, 0.3, 0.22, k % 2 ? blue : red, toRoad * 3.1, 0.15 + Math.floor(k / 3) * 0.32, 1.7 + (k % 3) * 0.25, kiosk);
+    // Roof clutter: an AC unit and a vent.
+    box(1.2, 0.6, 1.0, grey, 0.8, 3.8, -2, kiosk);
+    box(0.3, 0.5, 0.3, grey, -1, 3.75, 2, kiosk);
     at(st.kiosk, kiosk);
+
+    // ---- Tall price sign by the road ----
+    const pylon = new THREE.Group();
+    box(0.35, 6.5, 0.35, dark, 0, 3.25, 0, pylon);
+    box(0.3, 2.2, 2.6, whiteM, 0, 6.3, 0, pylon);
+    for (const sx of [1, -1]) {
+      plane(2.4, 1.2, logoMat, sx * 0.16, 6.75, 0, sx * (Math.PI / 2), pylon);
+      plane(2.4, 0.8, new THREE.MeshBasicMaterial({ map: priceTex() }), sx * 0.16, 5.7, 0, sx * (Math.PI / 2), pylon);
+    }
+    pylon.rotation.y = Math.PI / 2;
+    const pylonWrap = new THREE.Group();
+    pylonWrap.add(pylon);
+    at(st.pylon, pylonWrap);
+
+    // ---- Air and water stand ----
+    const air = new THREE.Group();
+    box(0.5, 1.3, 0.4, lambert(0x1f4fb4), 0, 0.65, 0, air);
+    box(0.52, 0.25, 0.42, red, 0, 1.4, 0, air);
+    at(st.air, air);
+
+    // ---- Box truck parked at the back of the lot ----
+    const truck = new THREE.Group();
+    box(2.4, 2.6, 5.2, whiteM, 0, 1.95, -0.9, truck); // box
+    plane(4.6, 0.7, logoMat, -1.21, 2.4, -0.9, -Math.PI / 2, truck);
+    plane(4.6, 0.7, logoMat, 1.21, 2.4, -0.9, Math.PI / 2, truck);
+    box(2.3, 1.9, 1.7, lambert(0x2f5a8a), 0, 1.45, 2.55, truck); // cab
+    plane(2.0, 0.8, lambert(0x1a2430), 0, 1.85, 3.41, 0, truck); // windscreen
+    box(2.35, 0.35, 0.2, dark, 0, 0.6, 3.45, truck); // bumper
+    box(2.2, 0.25, 7.2, dark, 0, 0.6, 0.1, truck); // chassis
+    for (const [x, zz] of [[1.05, 2.4], [-1.05, 2.4], [1.05, -2.2], [-1.05, -2.2], [1.05, -1.3], [-1.05, -1.3]]) {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.3, 12).rotateZ(Math.PI / 2), black);
+      w.position.set(x, 0.45, zz);
+      truck.add(w);
+    }
+    at(st.truck, truck);
+
+    // ---- Kerbs and lines on the forecourt ----
+    const kerb = lambert(0xbdbab0);
+    const line = basic(0xe8e6dc);
+    for (const f of [0.2, 0.8]) {
+      const p = zonePoint(road, z, f, z.inner + 11);
+      const stripe = new THREE.Mesh(new THREE.PlaneGeometry(9, 0.15).rotateX(-Math.PI / 2), line);
+      at(p, stripe, 0.03);
+    }
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 30), kerb);
+    at(zonePoint(road, z, 0.5, z.inner + 23.4), back, 0.1);
   }
 
   // Parts cabin on the car-show lot: log walls, a pitched roof, a porch and a sign.
@@ -356,7 +539,7 @@ export class Mountain {
   get spawn() {
     const r = this.road;
     const i = r.startIndex - 12;
-    const p = r.pointAt(i, -1.7);
+    const p = r.pointAt(i, -r.w.LANE);
     return { pos: [p[0], p[1] + 0.8, p[2]], yaw: r.heading[i], index: i };
   }
 
@@ -364,7 +547,7 @@ export class Mountain {
   recoverAt(i) {
     const r = this.road;
     const k = Math.max(4, Math.min(r.count - 10, i));
-    const p = r.pointAt(k, -1.7);
+    const p = r.pointAt(k, -r.w.LANE);
     return { pos: [p[0], p[1] + 0.8, p[2]], yaw: r.heading[k], index: k };
   }
 
@@ -376,7 +559,7 @@ export class Mountain {
 
   #buildRoad() {
     const road = this.road;
-    const asphaltMat = new THREE.MeshLambertMaterial({ map: asphaltTexture() });
+    const asphaltMat = new THREE.MeshLambertMaterial({ map: asphaltTexture(road.w) });
     const edgeMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     const xs = crossSection(road, 0);
     const asphaltCols = xs.map((c, k) => (c[2] === 'asphalt' ? k : -1)).filter((k) => k >= 0);
@@ -394,7 +577,7 @@ export class Mountain {
         for (const k of asphaltCols) {
           const [l, dy] = sec[k];
           aPos.push(...road.pointAt(i, l, dy + 0.005));
-          aUv.push((PAVED - l) / (2 * PAVED), (i * STEP) / 10);
+          aUv.push((road.w.PAVED - l) / (2 * road.w.PAVED), (i * STEP) / 10);
         }
         if (i > i0) {
           for (let c = 0; c < sec.length - 1; c++) {
@@ -507,8 +690,8 @@ export class Mountain {
         const on = this.layout.rail[side];
         for (let i = i0; i < i1; i++) {
           if (!on[i] || !on[i + 1]) continue;
-          const a = road.pointAt(i, side * RAIL);
-          const b = road.pointAt(i + 1, side * RAIL);
+          const a = road.pointAt(i, side * road.w.RAIL);
+          const b = road.pointAt(i + 1, side * road.w.RAIL);
           // The W-beam: a 0.3 m tall band at 0.45-0.75 m.
           const q = [
             [a[0], a[1] + 0.45, a[2]],
@@ -563,7 +746,7 @@ export class Mountain {
     pool.rotateX(-Math.PI / 2);
     for (const [i, side] of spots) {
       if (this.inZone(i, side)) continue;
-      const base = road.pointAt(i, side * (RAIL + 0.8));
+      const base = road.pointAt(i, side * (road.w.RAIL + 0.8));
       const h = road.heading[i];
       const toward = [-Math.cos(h) * side, Math.sin(h) * side];
       const g = new THREE.Group();
@@ -742,7 +925,7 @@ export class Mountain {
       for (const side of [1, -1]) {
         // Reflector posts every 20 m where there is no guardrail.
         if (i % 10 === 0 && !this.layout.rail[side][i] && !this.inZone(i, side)) {
-          const p = road.pointAt(i, side * (RAIL + 0.3));
+          const p = road.pointAt(i, side * (road.w.RAIL + 0.3));
           posts.push([p, road.heading[i]]);
           reflectors.push([[p[0], p[1] + 0.95, p[2]], road.heading[i]]);
         }
@@ -757,7 +940,7 @@ export class Mountain {
       if (Math.abs(k) > 1 / 40 && i % 6 === 0) {
         const side = k > 0 ? -1 : 1;
         if (this.inZone(i, side)) continue;
-        const p = road.pointAt(i, side * (RAIL + 0.6));
+        const p = road.pointAt(i, side * (road.w.RAIL + 0.6));
         chevrons.push([p, road.heading[i], side]);
       }
       // Utility poles down one side.
@@ -966,7 +1149,7 @@ export class Mountain {
     }
     // Vending machine by the finish.
     const f = road.finishIndex + 10;
-    const p = road.pointAt(f, -(RAIL + 1.6));
+    const p = road.pointAt(f, -(road.w.RAIL + 1.6));
     const vend = new THREE.Mesh(new THREE.BoxGeometry(1, 1.9, 0.8), new THREE.MeshBasicMaterial({ color: 0xdff4ff }));
     vend.position.set(p[0], p[1] + 0.95, p[2]);
     vend.rotation.y = road.heading[f];
@@ -993,8 +1176,8 @@ export class Mountain {
     tex.magFilter = THREE.NearestFilter;
     const mat = new THREE.MeshLambertMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -2 });
     for (const i of [road.startIndex, road.finishIndex]) {
-      const a = road.pointAt(i, PAVED, 0.02);
-      const b = road.pointAt(i, -PAVED, 0.02);
+      const a = road.pointAt(i, road.w.PAVED, 0.02);
+      const b = road.pointAt(i, -road.w.PAVED, 0.02);
       const h = road.heading[i];
       const f = [Math.sin(h) * 0.6, 0, Math.cos(h) * 0.6];
       const pos = [a[0] - f[0], a[1], a[2] - f[2], b[0] - f[0], b[1], b[2] - f[2], b[0] + f[0], b[1], b[2] + f[2], a[0] + f[0], a[1], a[2] + f[2]];
@@ -1305,6 +1488,12 @@ export class Mountain {
   // Recolour for the time of day and switch the streetlight glow on after dark.
   setTime(preset) {
     this.cloudSea.setTime(preset);
+    // The gas station is open by day and at sunset, closed at night.
+    if (this.openSigns) {
+      const night = preset.stars >= 0.9;
+      this.openSigns.open.visible = !night;
+      this.openSigns.closed.visible = night;
+    }
     for (const o of this.lampGlows) o.visible = preset.lights;
   }
 

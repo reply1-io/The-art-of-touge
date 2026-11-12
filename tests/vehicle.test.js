@@ -47,14 +47,14 @@ test('full manual: revs and a clutch release launch the car without stalling', a
   assert.ok(mph(car) > 18, `speed ${mph(car)}`);
 });
 
-test('rev limiter holds the engine near 7,000 rpm', async () => {
+test('rev limiter holds the engine near 6,500 rpm', async () => {
   const { car, run } = await makeWorld('manual');
   let max = 0;
   run(2, (t) => {
     max = Math.max(max, car.rpm);
     return { throttle: 1 };
   });
-  assert.ok(max > 6800 && max < 7400, `max rpm ${max}`);
+  assert.ok(max > 6400 && max < 6900, `max rpm ${max}`);
 });
 
 test('0-60 mph in roughly the real car time and a believable top speed', async () => {
@@ -64,7 +64,7 @@ test('0-60 mph in roughly the real car time and a believable top speed', async (
   let t60 = null;
   let lastShift = 0;
   while (t < 45) {
-    if (car.rpm > 6800 && car.trans.gear < 5 && t - lastShift > 0.6) {
+    if (car.rpm > 6300 && car.trans.gear < 5 && t - lastShift > 0.6) {
       car.trans.requestGear(car.trans.gear + 1, car.forwardSpeed);
       lastShift = t;
     }
@@ -91,7 +91,7 @@ test('brakes stop the car from 60 mph in a sensible distance', async () => {
   let t = 0;
   let lastShift = 0;
   while (mph(car) < 60 && t < 20) {
-    if (car.rpm > 6800 && car.trans.gear < 5 && t - lastShift > 0.6) {
+    if (car.rpm > 6300 && car.trans.gear < 5 && t - lastShift > 0.6) {
       car.trans.requestGear(car.trans.gear + 1, car.forwardSpeed);
       lastShift = t;
     }

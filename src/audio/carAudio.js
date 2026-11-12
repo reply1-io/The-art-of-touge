@@ -1,6 +1,6 @@
 // Synthesised car sound (Web Audio, no files).
 //
-// Engine: a four-cylinder fires twice per crank revolution, so the main pitch is rpm / 30 Hz. The
+// Engine: a straight six fires three times per crank revolution, so the main pitch is rpm / 20 Hz. The
 // tone is built from a custom harmonic waveform (firing order pulses), a half-order "lumpy" layer,
 // intake noise tuned to the revs, and a load-dependent drive stage, then a low-pass that opens with
 // the throttle. On top: limiter bounce, overrun pops on lift-off and downshifts, stall sputter, the
@@ -504,7 +504,7 @@ export class CarAudio {
     const load = running ? e.throttleApplied : 0;
 
     // Engine note.
-    const f = Math.max(rpm, 1) / 30;
+    const f = Math.max(rpm, 1) / 20;
     this.fire.frequency.setTargetAtTime(f, t, 0.012);
     this.fire2.frequency.setTargetAtTime(f * 1.006, t, 0.012);
     this.lump.frequency.setTargetAtTime(f / 2, t, 0.012);
@@ -513,9 +513,9 @@ export class CarAudio {
     const loud = this.exhaust && this.exhaust !== 'stock';
     this.engineFilter.frequency.setTargetAtTime((220 + load * 900 + rpm * 0.1) * (loud ? 0.82 : 1), t, 0.03);
     // The half-order rumble carries the low end, strongest at low revs.
-    this.lumpGain.gain.setTargetAtTime(0.6 - clamp(rpm / 7000, 0, 1) * 0.25, t, 0.05);
+    this.lumpGain.gain.setTargetAtTime(0.6 - clamp(rpm / 6500, 0, 1) * 0.25, t, 0.05);
     const turning = clamp(rpm / 500, 0, 1);
-    let level = running ? 0.16 + load * 0.3 + (rpm / 7000) * 0.14 : 0.25 * turning * clamp(rpm / 1500, 0, 1);
+    let level = running ? 0.16 + load * 0.3 + (rpm / 6500) * 0.14 : 0.25 * turning * clamp(rpm / 1500, 0, 1);
     if (loud) level *= this.exhaust === 'race' ? 1.28 : 1.16;
     // Rev limiter: the fuel cut chops the note.
     if (e.limiterCut) level *= 0.35;
@@ -536,7 +536,7 @@ export class CarAudio {
     this.indLfo.frequency.setTargetAtTime(f / 2, t, 0.012);
     this.indTone.frequency.setTargetAtTime(clamp(f * 0.75, 30, 300), t, 0.02);
     this.indFilter.frequency.setTargetAtTime(160 + rpm * 0.05 + load * 120, t, 0.03);
-    this.indGain.gain.setTargetAtTime(running ? indLevel * (0.25 + load * 0.75) * clamp(0.35 + rpm / 7000, 0, 1.2) : 0, t, 0.03);
+    this.indGain.gain.setTargetAtTime(running ? indLevel * (0.25 + load * 0.75) * clamp(0.35 + rpm / 6500, 0, 1.2) : 0, t, 0.03);
     // Inside, the exhaust note is muffled by the bulkhead.
     if (inCar) this.engineFilter.frequency.setTargetAtTime((220 + load * 900 + rpm * 0.1) * 0.7, t, 0.03);
     // Turbo spool follows boost; it flutters when you lift with boost up.

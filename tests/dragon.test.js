@@ -44,7 +44,7 @@ test("Dragon's Tail: a careful driver gets from start to finish", async () => {
   buildMountainPhysics(world, road, terrain);
   const car = new Vehicle(world, CAR, { ...TUNABLE_DEFAULTS }, 'auto');
   const i0 = road.startIndex - 12;
-  const p = road.pointAt(i0, -1.7);
+  const p = road.pointAt(i0, -road.w.LANE);
   car.reset([p[0], p[1] + 0.8, p[2]], road.heading[i0]);
   car.trans.setDrive('D', 0);
   const q = {};
@@ -56,7 +56,7 @@ test("Dragon's Tail: a careful driver gets from start to finish", async () => {
     if (q.index >= road.finishIndex) break;
     assert.ok(pos.y > q.height - 1.5, `fell through at s=${q.s}`);
     const la = Math.min(road.count - 1, q.index + Math.round(3 + car.speed * 0.4));
-    const [tx, , tz] = road.pointAt(la, -1.7);
+    const [tx, , tz] = road.pointAt(la, -road.w.LANE);
     const r = car.body.rotation();
     const yaw = Math.atan2(2 * (r.w * r.y + r.x * r.z), 1 - 2 * (r.y * r.y + r.x * r.x));
     let err = Math.atan2(tx - pos.x, tz - pos.z) - yaw;
@@ -65,7 +65,7 @@ test("Dragon's Tail: a careful driver gets from start to finish", async () => {
     let k = 0;
     for (let j = q.index; j < Math.min(road.count, q.index + 60); j++) k = Math.max(k, Math.abs(road.kappa[j]));
     const target = Math.min(26, Math.sqrt((0.42 * 9.81) / Math.max(k, 1e-4)));
-    car.step(1 / 60, { throttle: car.speed < target ? 1 : 0, brake: car.speed > target + 1.5 ? 1 : 0, handbrake: 0, clutch: false, steer: Math.max(-1, Math.min(1, -err * 2.2 + (q.lateral + 1.7) * 0.15)) });
+    car.step(1 / 60, { throttle: car.speed < target ? 1 : 0, brake: car.speed > target + 1.5 ? 1 : 0, handbrake: 0, clutch: false, steer: Math.max(-1, Math.min(1, -err * 2.2 + (q.lateral + road.w.LANE) * 0.15)) });
     world.step();
   }
   assert.ok(q.index >= road.finishIndex, `stopped at s=${q.s}`);

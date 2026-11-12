@@ -73,6 +73,17 @@ export class CameraRig {
       cam.fov = 60;
       cam.updateProjectionMatrix();
     }
+    // Bucket seats: the camera is bolted to the car. It sits dead behind it and turns with it, with
+    // no lag and no swing toward the slide, so the car never moves on screen.
+    if (this.headSway < 0.5) {
+      const yawQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(fwd.x, fwd.z));
+      cam.position.copy(new THREE.Vector3(0, 2.3, -5.8).applyQuaternion(yawQ).add(carObject.position));
+      cam.lookAt(new THREE.Vector3(0, 0.6, 9).applyQuaternion(yawQ).add(carObject.position));
+      this.pos.copy(cam.position);
+      this.look.copy(carObject.position);
+      this.ready = true;
+      return;
+    }
     // Behind the car, leaning toward the direction of travel when sliding.
     const v = new THREE.Vector3(velocity.x, 0, velocity.z);
     const speed = v.length();
