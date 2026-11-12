@@ -90,7 +90,8 @@
           </div>
         </div>
         <div class="row">
-          <button type="button" id="btn-drive" class="big">DRIVE</button>
+          <button type="button" id="btn-drive" class="big">FREE DRIVE</button>
+          <button type="button" id="btn-race" class="big">RACE</button>
           <button type="button" id="btn-shop" class="big ghost">TUNING SHOP</button>
         </div>
         <p class="hint" id="loading">Loading physics&hellip;</p>
@@ -136,8 +137,49 @@
           <button type="button" id="btn-recover" class="big ghost">BACK ON ROAD</button>
           <button type="button" id="btn-restart" class="big ghost">RESTART AT SUMMIT</button>
         </div>
-        <button type="button" id="btn-shop2" class="big ghost">TUNING SHOP</button>
+        <div class="row">
+          <button type="button" id="btn-race2" class="big">RACE</button>
+          <button type="button" id="btn-shop2" class="big ghost">TUNING SHOP</button>
+        </div>
         <button type="button" id="btn-tuning" class="link">Dev tuning panel</button>
+      </div>
+    </section>
+
+    <section id="race" class="screen side hidden">
+      <div class="panel">
+        <h2>RACE</h2>
+        <div class="field">
+          <span class="label">Event</span>
+          <div class="choices" id="race-mode">
+            <button type="button" data-mode="attack">Time Attack</button>
+            <button type="button" data-mode="battle">Battle a Rival</button>
+          </div>
+        </div>
+        <div class="field" id="race-ghost-field">
+          <span class="label">Ghost of your best run</span>
+          <div class="choices" id="race-ghost">
+            <button type="button" data-ghost="on">On</button>
+            <button type="button" data-ghost="off">Off</button>
+          </div>
+        </div>
+        <p class="race-info" id="race-info"></p>
+        <div class="row">
+          <button type="button" id="btn-race-go" class="big">START</button>
+          <button type="button" id="btn-race-back" class="big ghost">BACK</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="results" class="screen hidden">
+      <div class="panel">
+        <h2 id="res-title">FINISH</h2>
+        <p class="res-time" id="res-time"></p>
+        <p class="race-info" id="res-detail"></p>
+        <p class="res-money" id="res-money"></p>
+        <div class="row">
+          <button type="button" id="btn-res-retry" class="big">RACE AGAIN</button>
+          <button type="button" id="btn-res-free" class="big ghost">FREE DRIVE</button>
+        </div>
       </div>
     </section>
 

@@ -20,6 +20,8 @@ import { Hud, formatTime } from './ui/hud.js';
 import { CarAudio } from './audio/carAudio.js';
 import { ExhaustEvents } from './audio/exhaust.js';
 import { DriftScore } from './game/drift.js';
+import { Race } from './game/race.js';
+import { lookOf } from './net/online.js';
 import { Wallet, money } from './game/wallet.js';
 import { Sparks } from './render/sparks.js';
 import { Deer } from './world/deer.js';
@@ -125,6 +127,7 @@ const exhaustEvents = new ExhaustEvents();
 const drift = new DriftScore();
 let sparks;
 let deer;
+let race;
 let online;
 const sparkP = new THREE.Vector3();
 const sparkPush = new THREE.Vector3();
@@ -173,12 +176,14 @@ let toastTimer = 0;
 function toast(text, seconds = 1.4) {
   const el = $('toast');
   el.textContent = text;
+  // The race countdown is shown big.
+  el.classList.toggle('count', /^([123]|GO!)$/.test(text));
   el.classList.add('show');
   toastTimer = seconds;
 }
 
 function renderChoices() {
-  for (const box of document.querySelectorAll('.choices')) {
+  for (const box of document.querySelectorAll('.choices[data-setting]')) {
     const key = box.dataset.setting;
     const options =
       key === 'mode'
@@ -266,6 +271,10 @@ function resetCar() {
 // Back on the road where you are (stuck, rolled or off the road). Cancels a timed run.
 function recoverCar() {
   placeCar(mountain.recoverAt(run.hint - 5));
+  if (race?.active) {
+    race.recovered();
+    return;
+  }
   if (run.phase === 'running') {
     run.phase = 'ready';
     run.time = 0;
@@ -286,7 +295,8 @@ function setPaused(p) {
   last = performance.now();
 }
 
-$('btn-drive').addEventListener('click', () => {
+// Leave the menus and put the car on the road.
+function enterGame() {
   $('title').classList.add('hidden');
   $('controls').classList.remove('hidden');
   $('topbar').classList.remove('hidden');
@@ -302,15 +312,93 @@ $('btn-drive').addEventListener('click', () => {
       .then(() => screen.orientation?.lock?.('landscape').catch(() => {}))
       .catch(() => {});
   }
-  resetCar();
   online?.onChange();
+}
+
+$('btn-drive').addEventListener('click', () => {
+  race?.abort();
+  enterGame();
+  resetCar();
 });
 $('btn-pause').addEventListener('click', () => setPaused(true));
 $('btn-resume').addEventListener('click', () => setPaused(false));
 $('btn-restart').addEventListener('click', () => {
+  race?.abort();
   resetCar();
   setPaused(false);
 });
+
+// ---------- Race menu and results ----------
+const raceChoice = { mode: 'attack', ghost: settings.ghost !== false };
+function renderRaceMenu() {
+  for (const b of document.querySelectorAll('#race-mode button')) b.classList.toggle('sel', b.dataset.mode === raceChoice.mode);
+  for (const b of document.querySelectorAll('#race-ghost button')) b.classList.toggle('sel', (b.dataset.ghost === 'on') === raceChoice.ghost);
+  $('race-ghost-field').classList.toggle('hidden', raceChoice.mode !== 'attack');
+  const rec = race?.record;
+  const pz = race?.prize;
+  const best = rec ? `Your best: ${formatTime(rec.best)}` : 'No time set yet';
+  $('race-info').textContent =
+    raceChoice.mode === 'attack'
+      ? `${best}. Pays up to ${money(Math.round(pz.base * 1.6))}, plus ${money(250)} for a new best.${rec ? '' : ' Your first run becomes the ghost.'}`
+      : `Race the black 325i to the bottom. Win ${money(pz.win)}, or take ${money(pz.lose)} for finishing.`;
+}
+function openRaceMenu() {
+  document.body.classList.add('in-menu');
+  $('title').classList.add('hidden');
+  setPaused(false);
+  renderRaceMenu();
+  $('race').classList.remove('hidden');
+}
+$('btn-race').addEventListener('click', openRaceMenu);
+$('btn-race2').addEventListener('click', openRaceMenu);
+for (const b of document.querySelectorAll('#race-mode button'))
+  b.addEventListener('click', () => {
+    raceChoice.mode = b.dataset.mode;
+    renderRaceMenu();
+  });
+for (const b of document.querySelectorAll('#race-ghost button'))
+  b.addEventListener('click', () => {
+    raceChoice.ghost = b.dataset.ghost === 'on';
+    settings.ghost = raceChoice.ghost;
+    saveSettings(settings);
+    renderRaceMenu();
+  });
+$('btn-race-back').addEventListener('click', () => {
+  document.body.classList.remove('in-menu');
+  $('race').classList.add('hidden');
+  if (!running) $('title').classList.remove('hidden');
+});
+function startRace() {
+  document.body.classList.remove('in-menu');
+  $('race').classList.add('hidden');
+  $('results').classList.add('hidden');
+  enterGame();
+  run.phase = 'race';
+  run.time = 0;
+  drift.reset();
+  race.start(raceChoice.mode, raceChoice.ghost, (pose) => placeCar(pose));
+}
+$('btn-race-go').addEventListener('click', startRace);
+$('btn-res-retry').addEventListener('click', startRace);
+$('btn-res-free').addEventListener('click', () => {
+  $('results').classList.add('hidden');
+  race.abort();
+  resetCar();
+});
+function showResults(r) {
+  $('res-title').textContent = r.mode === 'battle' ? (r.won ? 'YOU WIN' : 'YOU LOSE') : r.pb ? 'NEW BEST' : 'FINISH';
+  $('res-time').textContent = formatTime(r.time);
+  $('res-detail').textContent =
+    r.mode === 'battle'
+      ? r.botTime !== null
+        ? `Rival: ${formatTime(r.botTime)}`
+        : 'The rival was still on the mountain.'
+      : r.pb
+        ? 'Saved as your ghost.'
+        : `Best: ${formatTime(r.best)} (+${(r.time - r.best).toFixed(3)})`;
+  $('res-money').textContent = `+${money(r.earned)}`;
+  setTimeout(() => $('results').classList.remove('hidden'), 1200);
+}
 $('btn-recover').addEventListener('click', () => {
   recoverCar();
   setPaused(false);
@@ -560,16 +648,23 @@ function frame(now) {
     handleEvents(controls.events);
     accumulator += dt;
     let steps = 0;
+    const drive = race.filter(controls);
     while (accumulator >= DT && steps < MAX_STEPS) {
-      vehicle.step(DT, controls);
+      vehicle.step(DT, drive);
       barrier.apply(vehicle.body);
+      race.step(DT, vehicle, run.hint);
       world.step();
+      race.afterStep();
       capturePose();
       accumulator -= DT;
       steps++;
     }
     if (steps === MAX_STEPS) accumulator = 0;
-    updateRun(dt);
+    if (race.active) {
+      const p = vehicle.body.translation();
+      mountain.road.query(p.x, p.z, run.hint, roadQ);
+      run.hint = roadQ.index;
+    } else updateRun(dt);
     throwSparks();
     deer.update(dt, run.hint, Math.max(0, vehicle.forwardSpeed));
     drift.update(dt, vehicle, barrier.touching && barrier.impact > 9000);
@@ -625,6 +720,7 @@ function frame(now) {
   carModel.root.position.lerpVectors(prevPos, curPos, alpha);
   carModel.root.quaternion.slerpQuaternions(prevQuat, curQuat, alpha);
   carModel.syncWheels(vehicle);
+  race.render(dt, alpha, timePreset.lights);
   carModel.setLights(timePreset.lights, controls.brake > 0);
   const nose = new THREE.Vector3(0, -0.05, 2.1).applyQuaternion(carModel.root.quaternion).add(carModel.root.position);
   headlight.position.copy(nose);
@@ -654,8 +750,9 @@ function frame(now) {
           showGear: tr.mode === 'auto',
           running: vehicle.engine.running,
           needClutchToStart: tr.mode === 'manual' && tr.gear !== 0,
-          lapTime: run.time,
-          bestTime: run.best,
+          lapTime: race.active ? race.hud().time : run.time,
+          bestTime: race.active ? race.record?.best ?? null : run.best,
+          race: race.hud(),
           boost: tune.turbo && tune.turbo !== 'none' ? vehicle.engine.boost : null,
           drift: drift.display,
           fps,
@@ -695,6 +792,9 @@ async function boot() {
   sparks = new Sparks(scene);
   deer = new Deer(scene, mountain.road, mountain.terrain);
   online = new Online(scene, world, RAPIER);
+  race = new Race({ scene, world, mountain, roadId: settings.map, wallet, toast, look: () => lookOf(tune) });
+  race.onFinish = showResults;
+  run.best = race.record?.best ?? null;
   setupOnline();
   // Blob shadow rides under the car, at ground level in the car's own frame.
   shadow = blobShadow();
@@ -710,7 +810,7 @@ async function boot() {
   $('loading').textContent = '';
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;

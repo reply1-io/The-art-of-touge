@@ -630,7 +630,8 @@ body.in-shop #toast,
 body.in-shop #hud,
 body.in-shop #flare,
 body.in-shop #vhs-play,
-body.paused #vhs-play {
+body.paused #vhs-play,
+body.in-menu #vhs-play {
   visibility: hidden;
 }
 
@@ -1143,4 +1144,41 @@ body.paused #vhs-play {
 
 .shop-flash.bad {
   background: #ff6a5a;
+}
+
+/* ---------- Races ---------- */
+.race-info {
+  margin: 8px 0;
+  font: 400 19px/1.2 'VT323', ui-monospace, monospace;
+  letter-spacing: 0.03em;
+  color: var(--ink);
+}
+
+#results {
+  z-index: 6;
+}
+
+#results .panel {
+  width: min(420px, 100%);
+}
+
+.res-time {
+  margin: 0;
+  font: 400 clamp(44px, 14vh, 72px) 'VT323', ui-monospace, monospace;
+  color: #fff;
+  text-shadow: 0 0 10px rgba(255, 140, 26, 0.6);
+}
+
+.res-money {
+  margin: 4px 0 6px;
+  font: 400 clamp(30px, 9vh, 44px) 'VT323', ui-monospace, monospace;
+  color: #7fe08a;
+  text-shadow: 0 0 8px rgba(127, 224, 138, 0.5);
+}
+
+#toast.count {
+  top: 18%;
+  font-size: clamp(60px, 22vh, 120px);
+  color: #ffb066;
+  text-shadow: 0 0 16px #ff8c1a, 0 3px 0 #000;
 }
