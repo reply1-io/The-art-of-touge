@@ -404,7 +404,7 @@ function throwSparks() {
   const speed = Math.hypot(v.x, v.z);
   let scrape = 0;
   if (speed < 2.5) {
-    audio.setScrape(0);
+    audio.setScrape(0, speed);
     return;
   }
   const n = Math.min(6, 1 + Math.floor(speed / 6));
@@ -438,7 +438,7 @@ function throwSparks() {
     sparks.emit(sparkP, v, sparkPush, Math.max(1, Math.round(n * Math.min(1, w.scrape * 30))));
     scrape = Math.max(scrape, 0.3 + w.scrape * 15);
   }
-  audio.setScrape(scrape);
+  audio.setScrape(scrape, speed);
 }
 
 // ---------- Online play ----------
@@ -581,6 +581,7 @@ function frame(now) {
     const ev = exhaustEvents.update(vehicle, dt, tune.exhaust);
     audio.setExhaust(tune.exhaust || 'stock');
     audio.setParts(tune.intake || 'stock', tune.turbo || 'none');
+    audio.setBigBrakes(tune.brakes === 'bbk');
     audio.update(vehicle, dt, ev);
     // Race exhaust: little flames off the limiter, on shifts and on lift-off.
     if (tune.exhaust === 'race') {
@@ -703,7 +704,7 @@ async function boot() {
   $('loading').textContent = '';
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;

@@ -240,10 +240,31 @@ export class CarAudio {
     scrMod.frequency.value = 23;
     const scrModGain = ctx.createGain();
     scrModGain.gain.value = 0.3;
-    scrMod.connect(scrModGain).connect(this.scrapeGain.gain);
-    scr.connect(scrF).connect(this.scrapeGain).connect(this.master);
+    // The chatter goes on its own gain stage, ahead of the volume, so silence really is silent
+    // (wobbling the volume itself left a quiet 23 Hz tick running all the time).
+    const scrChatter = ctx.createGain();
+    scrChatter.gain.value = 0.7;
+    scrMod.connect(scrModGain).connect(scrChatter.gain);
+    scr.connect(scrF).connect(scrChatter).connect(this.scrapeGain).connect(this.master);
     scr.start();
     scrMod.start();
+
+    // Carbon-ceramic brake squeal (big brake kit): a thin, high whistle at low speed under braking.
+    this.squeak = ctx.createOscillator();
+    this.squeak.type = 'triangle';
+    this.squeak2 = ctx.createOscillator();
+    this.squeak2.type = 'sine';
+    const sqBand = ctx.createBiquadFilter();
+    sqBand.type = 'bandpass';
+    sqBand.frequency.value = 3600;
+    sqBand.Q.value = 4;
+    this.squeakGain = ctx.createGain();
+    this.squeakGain.gain.value = 0;
+    this.squeak.connect(sqBand);
+    this.squeak2.connect(sqBand);
+    sqBand.connect(this.squeakGain).connect(this.master);
+    this.squeak.start();
+    this.squeak2.start();
 
     // ---- Tyres, wind, grind ----
     const squeal = ctx.createBufferSource();
@@ -283,8 +304,10 @@ export class CarAudio {
     grindMod.frequency.value = 37;
     const grindModGain = ctx.createGain();
     grindModGain.gain.value = 0.5;
-    grindMod.connect(grindModGain).connect(this.grindGain.gain);
-    grind.connect(grindFilter).connect(this.grindGain).connect(this.master);
+    const grindChatter = ctx.createGain();
+    grindChatter.gain.value = 0.5;
+    grindMod.connect(grindModGain).connect(grindChatter.gain);
+    grind.connect(grindFilter).connect(grindChatter).connect(this.grindGain).connect(this.master);
     grind.start();
     grindMod.start();
   }
@@ -342,6 +365,10 @@ export class CarAudio {
   }
 
   // In-car: the intake is right in front of you and the exhaust is behind the bulkhead.
+  setBigBrakes(on) {
+    this.bigBrakes = on;
+  }
+
   setInterior(on) {
     this.interior = on;
   }
@@ -412,10 +439,42 @@ export class CarAudio {
     air.stop(at + 0.05);
   }
 
-  // 0..1: how hard metal is scraping right now.
-  setScrape(level) {
+  // 0..1: how hard metal is scraping right now. The first moment of contact also clangs.
+  setScrape(level, speed = 0) {
     if (!this.ctx) return;
-    this.scrapeGain.gain.setTargetAtTime(Math.min(1, level) * 0.35, this.ctx.currentTime, level > 0 ? 0.01 : 0.06);
+    if (level > 0 && !(this.scraping > 0) && speed > 4) this.#clang(Math.min(1, speed / 25));
+    this.scraping = level;
+    this.scrapeGain.gain.setTargetAtTime(Math.min(1, level) * 0.5, this.ctx.currentTime, level > 0 ? 0.01 : 0.08);
+  }
+
+  // A hit: a dull thump of the body and a metallic ring.
+  #clang(strength) {
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 500;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.9 * strength, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+    src.connect(lp).connect(g).connect(this.master);
+    src.start(t, Math.random());
+    src.stop(t + 0.3);
+    for (const f of [620, 1310, 2140]) {
+      const o = ctx.createOscillator();
+      o.type = 'triangle';
+      o.frequency.value = f * (0.95 + Math.random() * 0.1);
+      const og = ctx.createGain();
+      og.gain.setValueAtTime(0.0001, t);
+      og.gain.linearRampToValueAtTime(0.12 * strength, t + 0.004);
+      og.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+      o.connect(og).connect(this.master);
+      o.start(t);
+      o.stop(t + 0.4);
+    }
   }
 
   setMuted(m) {
@@ -604,6 +663,12 @@ export class CarAudio {
     this.squealGain.gain.setTargetAtTime(squeal * 0.3, t, 0.05);
     this.squealFilter.frequency.setTargetAtTime(950 + squeal * 450 + Math.sin(t * 17) * 50, t, 0.05);
 
+    // Big brakes squeal as the car rolls to a stop on the pedal.
+    const squealing = this.bigBrakes && vehicle.brakePedal > 0.3 && speed > 0.4 && speed < 7;
+    const sq = squealing ? Math.min(1, (7 - speed) / 3) * Math.min(1, speed / 1.2) : 0;
+    this.squeak.frequency.setTargetAtTime(3400 + Math.sin(t * 3.1) * 120 + speed * 30, t, 0.05);
+    this.squeak2.frequency.setTargetAtTime(3405 * 1.5 + Math.sin(t * 2.3) * 90, t, 0.05);
+    this.squeakGain.gain.setTargetAtTime(sq * 0.09, t, squealing ? 0.08 : 0.04);
     this.windGain.gain.setTargetAtTime(clamp((speed / 50) ** 2, 0, 1) * 0.22, t, 0.2);
     this.windFilter.frequency.setTargetAtTime(300 + speed * 18, t, 0.2);
     this.grindGain.gain.setTargetAtTime(tr.grindTimer > 0 ? 0.35 : 0, t, 0.01);
