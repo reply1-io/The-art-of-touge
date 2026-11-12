@@ -1,12 +1,21 @@
 // Synthesised car sound (Web Audio, no files).
 //
+// The engine note itself comes from the M20 straight-six synth (M20EngineSound.js); the simple
+// oscillator engine described below is the fallback while it loads or if the browser blocks it.
+//
 // Engine: a straight six fires three times per crank revolution, so the main pitch is rpm / 20 Hz. The
 // tone is built from a custom harmonic waveform (firing order pulses), a half-order "lumpy" layer,
 // intake noise tuned to the revs, and a load-dependent drive stage, then a low-pass that opens with
 // the throttle. On top: limiter bounce, overrun pops on lift-off and downshifts, stall sputter, the
 // starter motor, tyre squeal, gear grind and wind.
 
+import { M20EngineSound } from './M20EngineSound.js';
+import m20DspSource from './m20-dsp.js?raw';
+
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+
+// Exhaust option -> how open the M20 synth's muffler is (0 stock .. 1 straight-through).
+const M20_EXHAUST = { stock: 0, street: 0.6, race: 1 };
 
 function makeNoise(ctx, seconds = 2) {
   const buf = ctx.createBuffer(1, ctx.sampleRate * seconds, ctx.sampleRate);
@@ -80,6 +89,27 @@ export class CarAudio {
     this.master = ctx.createGain();
     this.master.gain.value = this.muted ? 0 : 0.8;
     this.master.connect(comp).connect(ctx.destination);
+
+    // ---- M20 straight-six (procedural, see m20-dsp.js) ----
+    // Loads in the background; until it is ready, or if the browser refuses it, the simple
+    // oscillator engine below plays instead.
+    this.m20Cabin = ctx.createBiquadFilter(); // the bulkhead when you drive from the seat
+    this.m20Cabin.type = 'lowpass';
+    this.m20Cabin.frequency.value = 20000;
+    this.m20Bus = ctx.createGain();
+    this.m20Bus.gain.value = 0.62;
+    this.m20Cabin.connect(this.m20Bus).connect(this.master);
+    this.crankT = 0;
+    M20EngineSound.create(ctx, { dspSource: m20DspSource })
+      .then((m20) => {
+        m20.connect(this.m20Cabin);
+        m20.setState({ rpm: this.prevRpm || 760, throttle: 0, ignition: this.prevRunning ? 1 : 0, starter: 0 });
+        m20.direct({ idleRpm: 760 });
+        this.m20 = m20;
+      })
+      .catch(() => {
+        // Keep the oscillator engine.
+      });
 
     // ---- Engine ----
     this.engineFilter = ctx.createBiquadFilter();
@@ -519,11 +549,11 @@ export class CarAudio {
     if (loud) level *= this.exhaust === 'race' ? 1.28 : 1.16;
     // Rev limiter: the fuel cut chops the note.
     if (e.limiterCut) level *= 0.35;
-    this.engineGain.gain.setTargetAtTime(level, t, e.limiterCut !== this.limiterWas ? 0.004 : 0.02);
+    this.engineGain.gain.setTargetAtTime(this.m20 ? 0 : level, t, e.limiterCut !== this.limiterWas ? 0.004 : 0.02);
     this.limiterWas = e.limiterCut;
     this.intakeFilter.frequency.setTargetAtTime(f * 1.6, t, 0.03);
     const inCar = this.interior ? 1 : 0;
-    this.intakeGain.gain.setTargetAtTime(running ? load * 0.12 * clamp(rpm / 6000, 0.2, 1) * (1 + inCar) : 0, t, 0.04);
+    this.intakeGain.gain.setTargetAtTime(running ? load * 0.12 * clamp(rpm / 6000, 0.2, 1) * (1 + inCar) * (this.m20 ? 0.5 : 1) : 0, t, 0.04);
     // Induction roar: louder with ITBs, louder still from inside the car.
     const indLevel = { stock: 0.04, pod: 0.22, itb: 0.18 }[this.intake || 'stock'] * (1 + inCar * 1.4);
     // ITB grumble: strongest at low and middle revs and on the throttle, louder in the car.
@@ -562,10 +592,28 @@ export class CarAudio {
     this.prevBoost = boost;
 
     // Events: stall, start, lift-off pops, downshift blips.
-    if (this.prevRunning && !running) this.#sputter();
-    if (!this.prevRunning && running) this.#starter();
+    if (this.m20) {
+      // The M20 synth follows the engine model: stalls run down with the ignition off, and a
+      // restart gets a short turn of the starter before it catches.
+      if (!this.prevRunning && running) this.crankT = 0.45;
+      const cranking = this.crankT > 0;
+      this.crankT -= dt;
+      this.m20Cabin.frequency.setTargetAtTime(inCar ? 1100 : 20000, t, 0.05);
+      this.m20.setState({
+        rpm: cranking ? 250 : rpm,
+        throttle: cranking ? 0 : load,
+        ignition: running && !cranking ? 1 : 0,
+        starter: cranking ? 1 : 0,
+        exhaust: M20_EXHAUST[this.exhaust] ?? 0,
+        idleRpm: e.spec?.idleRpm ?? 760,
+      });
+    } else {
+      if (this.prevRunning && !running) this.#sputter();
+      if (!this.prevRunning && running) this.#starter();
+    }
     this.popTimer -= dt;
-    if (loud && ev) {
+    // With the M20 synth, afterfire pops come from the synth itself (only on a real lift-off).
+    if (loud && ev && !this.m20) {
       // Street and race: crackles and pops on every lift-off and gear change, bangs off the limiter.
       if (ev.lift) this.#crackle(6 + Math.floor(Math.random() * 5), 0.9);
       if (ev.shift) this.#crackle(3 + Math.floor(Math.random() * 3), 0.3);
@@ -576,16 +624,16 @@ export class CarAudio {
       this.prevRpm = rpm;
     }
     const lifted = this.prevThrottle > 0.6 && vehicle.throttlePedal < 0.2;
-    if (running && lifted && rpm > 3800 && this.popTimer <= 0) {
+    if (running && lifted && rpm > 3800 && this.popTimer <= 0 && !this.m20) {
       this.#crackle(3 + Math.floor(Math.random() * 4), 0.5);
       this.popTimer = 0.6;
     }
     const downshift = tr.gear > 0 && this.prevGear > tr.gear && rpm > this.prevRpm + 400;
-    if (running && downshift && this.popTimer <= 0) {
+    if (running && downshift && this.popTimer <= 0 && !this.m20) {
       this.#crackle(2 + Math.floor(Math.random() * 3), 0.35);
       this.popTimer = 0.4;
     }
-    if (running && e.limiterCut && Math.random() < dt * 6) this.#pop(t, 0.35);
+    if (running && e.limiterCut && Math.random() < dt * 6 && !this.m20) this.#pop(t, 0.35);
     this.prevRunning = running;
     this.prevThrottle = vehicle.throttlePedal;
     this.prevGear = tr.gear;

@@ -20,13 +20,20 @@
 import { M20Dsp, Biquad, Delay, randn, crankRpm, CRANK_SECONDS, IDLE_RPM, FIRING, TAU } from './m20-dsp.js';
 export { crankRpm, CRANK_SECONDS, IDLE_RPM };
 
-function workletSource() {
+function workletSource(dspSource) {
+  // Best: the original m20-dsp.js text (bundlers rename things when minifying, which breaks
+  // rebuilding it from function text). Otherwise rebuild it from the live classes.
+  const dsp = dspSource
+    ? dspSource.replace(/^export /gm, '')
+    : [
+        `const TAU = ${TAU};`,
+        `const FIRING = ${JSON.stringify(FIRING)};`,
+        `const IDLE_RPM = ${IDLE_RPM};`,
+        `const CRANK_SECONDS = ${CRANK_SECONDS};`,
+        randn, crankRpm, Biquad, Delay, M20Dsp,
+      ].map(String).join('\n');
   return [
-    `const TAU = ${TAU};`,
-    `const FIRING = ${JSON.stringify(FIRING)};`,
-    `const IDLE_RPM = ${IDLE_RPM};`,
-    `const CRANK_SECONDS = ${CRANK_SECONDS};`,
-    randn, crankRpm, Biquad, Delay, M20Dsp,
+    dsp,
     `class M20Processor extends AudioWorkletProcessor {
       constructor() {
         super();
@@ -47,11 +54,16 @@ function workletSource() {
 const timeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
 
 export class M20EngineSound {
-  static async create(ctx) {
+  /**
+   * @param {AudioContext} ctx
+   * @param {{ dspSource?: string }} [opts] dspSource: the text of m20-dsp.js. Pass it when the
+   *   code is minified by a bundler (with Vite: import dspSource from './m20-dsp.js?raw').
+   */
+  static async create(ctx, { dspSource } = {}) {
     const e = new M20EngineSound(ctx);
     if (ctx.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
       try {
-        const url = URL.createObjectURL(new Blob([workletSource()], { type: 'text/javascript' }));
+        const url = URL.createObjectURL(new Blob([workletSource(dspSource)], { type: 'text/javascript' }));
         await timeout(ctx.audioWorklet.addModule(url), 4000);
         const node = new AudioWorkletNode(ctx, 'm20-engine', {
           numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
