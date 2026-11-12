@@ -59,3 +59,16 @@ The game is published to GitHub Pages by `.github/workflows/pages.yml` on every 
 2. Open **https://reply1-io.github.io/The-art-of-touge/** on your phone.
 3. iPhone: Share → **Add to Home Screen**. Android: ⋮ → **Add to Home screen** / **Install app**.
 4. Launch it from the home-screen icon: it opens full screen in landscape with no browser bars.
+
+## Engine sound
+
+The engine note is a procedural M20B25 straight-six (no recordings): six exhaust pulses per cycle in
+firing order 1-5-3-6-2-4, two 3-into-1 manifolds, the exhaust pipe and muffler, rasp, rumble,
+overrun fuel cut and the occasional afterfire on a real lift-off.
+
+- `src/audio/m20-dsp.js` — the synth.
+- `src/audio/M20EngineSound.js` — runs it in an AudioWorklet (built in memory) or, if the browser
+  blocks that, on the main thread. `CarAudio` drives it in `direct` mode from the engine model:
+  rpm, applied throttle, ignition (stalls run down naturally) and a short crank on restarts.
+- `tools/engine-sound/` — a standalone test page (tach, pedals, scope).
+  `python3 tools/engine-sound/build_demo.py` writes a single-file copy.
