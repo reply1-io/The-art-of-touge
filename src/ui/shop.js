@@ -10,7 +10,7 @@ import { dynoRun } from '../physics/dyno.js';
 import { loadBuilds, saveBuilds } from '../settings.js';
 import { CarModel } from '../render/carModel.js';
 
-const SHOP_KEYS = ['intake', 'turbo', 'clutch', 'gearbox', 'finalDrive', 'coilovers', 'bump', 'rebound', 'brakes', 'handbrake', 'angleKit', 'weight', 'paint', 'headlights', 'taillights', 'numbers', 'number', 'numberW', 'numberH', 'exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
+const SHOP_KEYS = ['stretch', 'intake', 'turbo', 'clutch', 'gearbox', 'finalDrive', 'coilovers', 'bump', 'rebound', 'brakes', 'handbrake', 'angleKit', 'weight', 'paint', 'headlights', 'taillights', 'numbers', 'number', 'numberW', 'numberH', 'exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
 
 const TABS = [
   ['body', 'Body'],
@@ -233,7 +233,7 @@ export class Shop {
     const ws = wheelSetup(t);
     this.car.applySetup(t);
     // Static ride: each corner sinks by its share of the weight over its spring rate.
-    const rh = Math.max(-0.08, Math.min(0.05, (t.rideHeight || 0) / 1000));
+    const rh = Math.max(-0.2, Math.min(0.05, (t.rideHeight || 0) / 1000));
     const mountY = CAR.wheelMountY - rh;
     this.fake.mountY = mountY;
     const g = (CAR.mass * 9.81) / 4;
@@ -333,7 +333,7 @@ export class Shop {
     this.readoutEl.innerHTML = '';
     for (const line of [
       `${style.name} ${ws.rim}x${{ 14: 6.5, 15: 7, 16: 7.5, 17: 8 }[ws.rim]}`,
-      `${ws.width}/${ws.profile}R${ws.rim} ${TIRES[t.tire]?.name || ''}`,
+      `${ws.width}/${ws.profile}R${ws.rim} ${TIRES[t.tire]?.name || ''}${ws.stretched ? ' stretched' : ''}`,
       `Camber ${deg(t.camberFront)} F  ${deg(t.camberRear)} R`,
     ]) {
       const d = document.createElement('div');
@@ -372,6 +372,9 @@ export class Shop {
         this.#section(
           'Size & alignment',
           this.#chips('Rim size', 'rim', RIM_SIZES.map((r) => [r, `${r}"`])),
+          ...(t.tire !== 'semi'
+            ? [this.#chips('Tyre fit', 'stretch', [[false, 'Normal'], [true, 'Stretched']])]
+            : [this.#hint('Stretched tyres are not made in semi-slick.')]),
           this.#slider('profile', 'Tyre sidewall', 30, 75, 5, (v) => `${v}% · ${v <= 40 ? 'Stretched thin' : v <= 50 ? 'Low profile' : v <= 60 ? 'Sporty' : 'Tall & soft'}`),
           this.#slider('camberFront', 'Front camber', 0, 6, 0.5, (v) => `${deg(v)}${v > 3.5 ? ' · too much' : v >= 2 ? ' · grippy' : ''}`),
           this.#slider('camberRear', 'Rear camber', 0, 6, 0.5, (v) => `${deg(v)}${v > 3.5 ? ' · too much' : v >= 2 ? ' · grippy' : ''}`),
@@ -402,7 +405,7 @@ export class Shop {
       this.#section(
         'Suspension',
         this.#chips('Dampers', 'coilovers', [[false, 'Stock'], [true, 'Coilovers']]),
-        this.#slider('rideHeight', 'Ride height', t.coilovers ? -90 : -60, 30, 5, (v) => (v === 0 ? 'Stock' : `${v > 0 ? '+' : ''}${v} mm`)),
+        this.#slider('rideHeight', 'Ride height', -200, 30, 5, (v) => (v === 0 ? 'Stock' : `${v > 0 ? '+' : ''}${v} mm`)),
         this.#slider('springFront', 'Front springs', 18000, t.coilovers ? 90000 : 70000, 1000, stiffness),
         this.#slider('springRear', 'Rear springs', 18000, t.coilovers ? 90000 : 70000, 1000, stiffness),
         ...(t.coilovers

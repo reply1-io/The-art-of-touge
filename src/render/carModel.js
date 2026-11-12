@@ -438,23 +438,25 @@ function makeWheel(ws, styleId, tyreMat, wallMat) {
   const group = new THREE.Group();
   const R = ws.radius;
   const r = ws.rimRadius + 0.012;
-  const half = ws.width / 2000;
+  const half = ws.width / 2000; // tread
+  const rimHalf = ws.rimWidth / 2000; // rim lip (wider than the tread when stretched)
   const tread = new THREE.CylinderGeometry(R, R, half * 2, 20, 1, true);
   tread.rotateZ(Math.PI / 2);
   group.add(new THREE.Mesh(tread, tyreMat));
-  // Sidewall: a slightly bulged ring from the rim out to the tread.
-  const wall = new THREE.RingGeometry(r, R, 20, 1);
-  wall.rotateY(Math.PI / 2);
-  const outerWall = new THREE.Mesh(wall, wallMat);
-  outerWall.position.x = half;
-  group.add(outerWall);
+  // Sidewalls: from the rim lip out to the tread edge. Flat on a normal tyre; on a stretched one
+  // they angle inward, so the rim lip stands proud of the tyre.
+  for (const sgn of [1, -1]) {
+    const wall = new THREE.LatheGeometry([new THREE.Vector2(r, sgn * rimHalf), new THREE.Vector2(R, sgn * half)], 20);
+    wall.rotateZ(-Math.PI / 2);
+    group.add(new THREE.Mesh(wall, wallMat));
+  }
   const face = new THREE.CircleGeometry(r, 20);
   face.rotateY(Math.PI / 2);
   const rim = new THREE.Mesh(face, new THREE.MeshLambertMaterial({ map: rimTexture(styleId) }));
-  rim.position.x = half - 0.02; // rims sit a little inside the sidewall
+  rim.position.x = ws.stretched ? rimHalf + 0.004 : half - 0.02; // inside the sidewall, or proud when stretched
   group.add(rim);
   const back = new THREE.Mesh(new THREE.CircleGeometry(R, 20).rotateY(-Math.PI / 2), tyreMat);
-  back.position.x = -half;
+  back.position.x = -Math.max(half, rimHalf);
   group.add(back);
   return group;
 }
@@ -575,7 +577,7 @@ export class CarModel {
     this.#applyLooks(tune);
     if (this.exhaustType !== (tune.exhaust || 'stock')) this.#buildPipe(tune.exhaust || 'stock');
     const ws = wheelSetup(tune);
-    const key = `${tune.wheel}|${ws.rim}|${ws.profile}`;
+    const key = `${tune.wheel}|${ws.rim}|${ws.profile}|${ws.stretched}`;
     for (const w of this.wheels) {
       if (this.wheelKey !== key) {
         if (w.spin) {
@@ -587,7 +589,7 @@ export class CarModel {
         w.camber.add(w.spin);
       }
       // Wider tyres stick out a little; negative camber tilts the tops in.
-      w.spin.position.x = w.side * ((ws.width - 195) / 2000);
+      w.spin.position.x = w.side * ((ws.rimWidth - 195) / 2000);
       const deg = w.front ? tune.camberFront ?? 1 : tune.camberRear ?? 0.5;
       w.camber.rotation.z = (w.side * deg * Math.PI) / 180;
     }

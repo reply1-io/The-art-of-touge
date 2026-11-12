@@ -127,3 +127,29 @@ test('sway bars and strut braces: stiffer bars cut body roll', async () => {
   }
   assert.ok(roll.race < roll.soft * 0.8, JSON.stringify(roll));
 });
+
+test('slammed: -200 mm sits about 20 cm lower and still drives and corners', async () => {
+  const y = {};
+  for (const rh of [0, -200]) {
+    const { car, run } = await makeWorld('autoClutch');
+    car.tune.rideHeight = rh;
+    run(2);
+    y[rh] = car.body.translation().y;
+    car.trans.requestGear(3, 0);
+    run(8, () => ({ throttle: car.forwardSpeed < 17 ? 1 : 0 }));
+    run(3, () => ({ throttle: car.forwardSpeed < 17 ? 1 : 0, steer: -0.5 }));
+    const q = car.body.rotation();
+    assert.ok(1 - 2 * (q.x * q.x + q.z * q.z) > 0.97, `upright at ${rh}`);
+    assert.ok(car.speed > 12, `still moving at ${rh}: ${car.speed}`);
+  }
+  assert.ok(y[0] - y[-200] > 0.15, JSON.stringify(y));
+});
+
+test('stretched tyres: narrower, a little less grip, and never on semi-slicks', async () => {
+  const { wheelSetup, TUNABLE_DEFAULTS } = await import('../src/config.js');
+  const normal = wheelSetup({ ...TUNABLE_DEFAULTS, rim: 15 });
+  const stretched = wheelSetup({ ...TUNABLE_DEFAULTS, rim: 15, stretch: true });
+  const semi = wheelSetup({ ...TUNABLE_DEFAULTS, rim: 15, stretch: true, tire: 'semi' });
+  assert.ok(stretched.width < stretched.rimWidth && stretched.gripScale < normal.gripScale);
+  assert.equal(semi.stretched, false);
+});

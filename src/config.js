@@ -126,6 +126,7 @@ export const TUNABLE_DEFAULTS = {
   strutFront: false, // strut tower braces
   strutRear: false,
   exhaust: 'stock',
+  stretch: false,
   intake: 'stock',
   turbo: 'none',
   clutch: 'stock',
@@ -259,7 +260,11 @@ function camberLateral(deg) {
 // Everything the physics needs from the wheel, tyre and chassis setup.
 export function wheelSetup(t) {
   const rim = RIM_SIZES.includes(t.rim) ? t.rim : 14;
-  const width = TYRE_WIDTH[rim];
+  // Stretched tyres (stance): a tyre two sizes narrower than the rim, pulled over it so the
+  // sidewalls angle in. Not made in semi-slick.
+  const stretched = !!t.stretch && t.tire !== 'semi';
+  const rimWidth = TYRE_WIDTH[rim];
+  const width = stretched ? rimWidth - 30 : rimWidth;
   const profile = clamp(t.profile ?? 65, 30, 75);
   const sidewall = (width / 1000) * (profile / 100);
   const radius = rim * 0.0127 + sidewall;
@@ -272,13 +277,16 @@ export function wheelSetup(t) {
   return {
     rim,
     width,
+    rimWidth,
+    stretched,
     profile,
     radius,
     rimRadius: rim * 0.0127,
     inertia: CAR.wheelInertia * (radius / CAR.wheelRadius) ** 2 * (1 + (rim - 14) * 0.07),
-    relaxation: 0.45 * (0.45 + 0.55 * p),
-    peakScale: 0.8 + 0.2 * p,
-    gripScale: 1 + ((width - 195) / 195) * 0.25,
+    // A stretched sidewall is tight: instant response, but a smaller, edgier contact patch.
+    relaxation: 0.45 * (0.45 + 0.55 * p) * (stretched ? 0.75 : 1),
+    peakScale: (0.8 + 0.2 * p) * (stretched ? 0.85 : 1),
+    gripScale: (1 + ((width - 195) / 195) * 0.25) * (stretched ? 0.93 : 1),
     // Strut braces stop the towers flexing: a touch more grip and a sharper turn-in on that axle.
     latFront: camberLateral(cf) * (1 + 0.02 * brace(t.strutFront)),
     latRear: (camberLateral(cr) / camberLateral(0.5)) * (1 + 0.02 * brace(t.strutRear)),

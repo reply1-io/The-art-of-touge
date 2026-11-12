@@ -233,9 +233,10 @@ export class Vehicle {
     // Ride height moves the suspension mounts relative to the body: raise it and the body sits higher.
     const ws = wheelSetup(t);
     this.wheelSetup = ws;
-    const rh = clamp((t.rideHeight || 0) / 1000, t.coilovers ? -0.1 : -0.08, 0.05);
+    const rh = clamp((t.rideHeight || 0) / 1000, -0.2, 0.05);
     this.mountY = s.wheelMountY - rh;
-    const travel = Math.max(0.07, s.suspensionTravel + rh);
+    // Lowering eats bump travel, down to a short minimum on a slammed car.
+    const travel = Math.max(0.1, s.suspensionTravel + rh);
     const reach = s.suspensionRest + ws.radius;
     const down = scale(axisY, -1);
     for (const w of this.wheels) {
