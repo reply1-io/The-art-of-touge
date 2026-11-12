@@ -10,6 +10,33 @@ import { dynoRun } from '../physics/dyno.js';
 import { loadBuilds, saveBuilds } from '../settings.js';
 import { CarModel } from '../render/carModel.js';
 
+// ---------- Colour conversions for the paint wheel (h, s, l all 0..1) ----------
+function hslToRgb(h, s, l) {
+  const k = (n) => (n + h * 12) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
+}
+
+function hslToHex(h, s, l) {
+  return '#' + hslToRgb(h, s, l).map((v) => v.toString(16).padStart(2, '0')).join('');
+}
+
+function hexToHsl(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = ((n >> 16) & 255) / 255;
+  const g = ((n >> 8) & 255) / 255;
+  const b = (n & 255) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  const h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h / 6, s, l];
+}
+
 const SHOP_KEYS = ['seats', 'offsetFront', 'offsetRear', 'plateStyle', 'plateText', 'stretch', 'intake', 'turbo', 'clutch', 'gearbox', 'finalDrive', 'coilovers', 'brakes', 'handbrake', 'angleKit', 'weight', 'paint', 'headlights', 'taillights', 'numbers', 'number', 'numberW', 'numberH', 'exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
 
 const TABS = [
@@ -189,7 +216,7 @@ export class Shop {
     this.car = new CarModel(CAR);
     this.table.add(this.car.root);
     this.yaw = -2.4; // front three-quarter view
-    this.spin = 0.12; // slow turn, rad/s
+    this.spin = 0; // the table only turns when you drag it
     this.dragging = false;
     this.fake = {
       mountY: CAR.wheelMountY,
@@ -492,20 +519,94 @@ export class Shop {
       b.addEventListener('click', () => this.#change('paint', hex, true));
       wrap.append(b);
     }
-    const custom = document.createElement('label');
-    custom.className = 'shop-custom';
-    const input = document.createElement('input');
-    input.type = 'color';
-    input.value = this.tune.paint || '#efeee6';
-    input.addEventListener('input', () => this.#change('paint', input.value));
-    input.addEventListener('change', () => this.render());
-    custom.append(input, document.createTextNode('Custom'));
-    wrap.append(custom);
+    const box0 = document.createElement('div');
+    box0.className = 'shop-wheel';
+    box0.append(this.#colourWheel());
     const name = PAINTS.find(([, hex]) => hex === (this.tune.paint || '').toLowerCase());
     const p = this.#hint(name ? name[0] : `Custom ${this.tune.paint}`);
     const box = document.createElement('div');
-    box.append(wrap, p);
+    box.append(wrap, box0, p);
     return box;
+  }
+
+  // Colour wheel: tap or drag on the wheel for hue (around) and richness (out from the middle),
+  // and the slider underneath for how light or dark the paint is.
+  #colourWheel() {
+    const [h0, s0, l0] = hexToHsl(this.tune.paint || '#efeee6');
+    const state = { h: h0, s: s0, l: l0 };
+    const wrap = document.createElement('div');
+    wrap.className = 'colour-wheel';
+    const c = document.createElement('canvas');
+    const size = 150;
+    c.width = c.height = size * 2;
+    c.style.width = c.style.height = `${size}px`;
+    const g = c.getContext('2d');
+    const draw = () => {
+      const R = size;
+      const img = g.createImageData(R * 2, R * 2);
+      for (let y = 0; y < R * 2; y++) {
+        for (let x = 0; x < R * 2; x++) {
+          const dx = x - R;
+          const dy = y - R;
+          const d = Math.hypot(dx, dy) / R;
+          const k = (y * R * 2 + x) * 4;
+          if (d > 1) continue;
+          const [r, gg, b] = hslToRgb(((Math.atan2(dy, dx) / (2 * Math.PI)) + 1) % 1, d, state.l);
+          img.data.set([r, gg, b, 255], k);
+        }
+      }
+      g.putImageData(img, 0, 0);
+      // Marker for the current colour.
+      const a = state.h * 2 * Math.PI;
+      g.lineWidth = 5;
+      g.strokeStyle = state.l > 0.55 ? '#000' : '#fff';
+      g.beginPath();
+      g.arc(R + Math.cos(a) * state.s * R, R + Math.sin(a) * state.s * R, 12, 0, Math.PI * 2);
+      g.stroke();
+    };
+    const apply = () => {
+      draw();
+      this.#change('paint', hslToHex(state.h, state.s, state.l));
+      swatch.style.background = this.tune.paint;
+    };
+    const pick = (e) => {
+      const r = c.getBoundingClientRect();
+      const dx = e.clientX - r.left - r.width / 2;
+      const dy = e.clientY - r.top - r.height / 2;
+      state.h = ((Math.atan2(dy, dx) / (2 * Math.PI)) + 1) % 1;
+      state.s = Math.min(1, Math.hypot(dx, dy) / (r.width / 2));
+      apply();
+    };
+    c.addEventListener('pointerdown', (e) => {
+      c.setPointerCapture(e.pointerId);
+      pick(e);
+    });
+    c.addEventListener('pointermove', (e) => {
+      if (c.hasPointerCapture(e.pointerId)) pick(e);
+    });
+    const side = document.createElement('div');
+    side.className = 'colour-side';
+    const swatch = document.createElement('div');
+    swatch.className = 'colour-swatch';
+    swatch.style.background = this.tune.paint;
+    const label = document.createElement('label');
+    label.className = 'shop-slider';
+    label.innerHTML = '<span>Dark ↔ light</span>';
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = 0.04;
+    slider.max = 0.96;
+    slider.step = 0.01;
+    slider.value = state.l;
+    slider.addEventListener('input', () => {
+      state.l = Number(slider.value);
+      apply();
+    });
+    label.append(slider);
+    side.append(swatch, label);
+    wrap.append(c, side);
+    draw();
+    return wrap;
   }
 
   // Dyno sheet: torque and power against rpm for this setup, with stock dashed behind it.

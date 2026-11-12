@@ -21,7 +21,7 @@ export function dynoRun(tune) {
   let peakNm = { nm: 0, rpm: 0 };
   for (let rpm = 1000; rpm <= 7000; rpm += 100) {
     let nm = interpolate(CAR.engine.torqueCurve, rpm) * (tune.torque ?? 1);
-    if (p.intake) nm *= p.intake(rpm);
+    if (p.intake) nm += p.intake(rpm) * (tune.torque ?? 1);
     if (p.turbo) {
       const k = Math.min(1, Math.max(0, (rpm - p.turbo.spool) / p.turbo.range));
       nm *= 1 + p.turbo.gain * k * k * (3 - 2 * k);

@@ -177,9 +177,9 @@ body {
    brake. */
 #shifter {
   position: absolute;
-  right: calc(3vw + var(--sr) - 1vw);
-  bottom: calc(3vh + 35vh + 3vh + var(--sb));
-  width: 13vw;
+  right: calc(2.5vw + var(--sr) - 1vw);
+  bottom: calc(3vh + 42vh + 1vh + var(--sb));
+  width: 16vw;
   height: 40vh;
   min-width: 100px;
   min-height: 130px;
@@ -206,16 +206,16 @@ body {
 
 #dr {
   position: absolute;
-  right: calc(3vw + var(--sr));
-  bottom: calc(3vh + 35vh + 3vh + var(--sb));
+  right: calc(2.5vw + var(--sr));
+  bottom: calc(3vh + 42vh + 2vh + var(--sb));
   flex-direction: column;
   display: flex;
   gap: 10px;
 }
 
 #dr .btn {
-  width: 11vw;
-  height: 13vh;
+  width: 14vw;
+  height: 17vh;
   min-width: 56px;
   min-height: 70px;
   font-size: clamp(18px, 5vh, 30px);
@@ -231,25 +231,25 @@ body {
 
 #gas {
   position: absolute;
-  right: calc(3vw + var(--sr));
+  right: calc(2.5vw + var(--sr));
   bottom: calc(3vh + var(--sb));
-  width: 11vw;
-  height: 35vh;
+  width: 14vw;
+  height: 42vh;
 }
 
 #brake {
   position: absolute;
-  right: calc(3vw + 11vw + 2.5vw + var(--sr));
+  right: calc(2.5vw + 14vw + 2vw + var(--sr));
   bottom: calc(3vh + var(--sb));
-  width: 11vw;
-  height: 35vh;
+  width: 14vw;
+  height: 42vh;
 }
 
 #handbrake {
   position: absolute;
-  right: calc(3vw + 11vw + 2.5vw + var(--sr));
-  bottom: calc(3vh + 35vh + 3vh + var(--sb));
-  width: 11vw;
+  right: calc(2.5vw + 14vw + 2vw + var(--sr));
+  bottom: calc(3vh + 42vh + 2vh + var(--sb));
+  width: 14vw;
   height: 22vh;
   font-size: clamp(14px, 3.6vh, 20px);
   line-height: 1;
@@ -903,6 +903,29 @@ body.paused #vhs-play {
 .shop-paint button.sel {
   border-color: var(--accent);
   box-shadow: 0 0 10px rgba(255, 176, 0, 0.6);
+}
+
+.colour-wheel {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.colour-wheel canvas {
+  border-radius: 50%;
+  touch-action: none;
+  flex: none;
+}
+
+.colour-side {
+  flex: 1;
+  min-width: 0;
+}
+
+.colour-swatch {
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.25);
 }
 
 .shop-custom {

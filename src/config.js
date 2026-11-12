@@ -156,8 +156,8 @@ export const TUNABLE_DEFAULTS = {
 // ---------- Performance parts (tuning shop). Each option has a name and a one-line blurb. ----------
 export const INTAKES = {
   stock: { name: 'Stock airbox', blurb: 'Quiet factory airbox and paper filter.' },
-  pod: { name: 'Pod filter', blurb: 'Open cone filter. A little more top end and an audible gulp of air.' },
-  itb: { name: 'ITBs', blurb: 'Individual throttle bodies with trumpets. Sharp response, strong top end and a deep, hungry intake roar.' },
+  pod: { name: 'Pod filter', blurb: 'Open cone filter. A few extra Nm up top and an audible gulp of air.' },
+  itb: { name: 'ITBs', blurb: 'Individual throttle bodies: +20 Nm and +15 hp, razor response, and a deep, soft intake grumble.' },
 };
 export const TURBOS = {
   none: { name: 'None', blurb: 'Naturally aspirated M42. Linear and predictable.' },
@@ -231,7 +231,9 @@ const smooth01 = (a, b, x) => {
 // Everything the physics takes from the performance parts.
 export function partsSetup(t) {
   const turbo = t.turbo === 'small' ? { gain: 0.45, spool: 2700, range: 1500, lag: 0.35 } : t.turbo === 'big' ? { gain: 1.0, spool: 3900, range: 1600, lag: 0.85 } : null;
-  const intake = t.intake === 'itb' ? (rpm) => 1 + 0.09 * smooth01(3000, 6800, rpm) - 0.02 * (1 - smooth01(1200, 2600, rpm)) : t.intake === 'pod' ? (rpm) => 1 + 0.035 * smooth01(3500, 6800, rpm) : null;
+  // Intake: extra torque (N m) added at an rpm. ITBs: +20 N m through the mid-range, tapering to
+  // about +17 at the top, which is about +15 hp at the peak.
+  const intake = t.intake === 'itb' ? (rpm) => 20 * smooth01(1500, 3200, rpm) - 3 * smooth01(5000, 6500, rpm) : t.intake === 'pod' ? (rpm) => 6 * smooth01(3500, 6800, rpm) : null;
   const clutch = CLUTCHES[t.clutch] ? t.clutch : 'stock';
   const massDelta = (WEIGHTS[t.weight] || WEIGHTS.stock).kg;
   return {

@@ -32,6 +32,9 @@ const MAX_STEPS = 5;
 const $ = (id) => document.getElementById(id);
 
 const settings = loadSettings();
+// Options no longer in the menu: always the default (camera stays on the CAMERA button).
+if (settings.mode === 'autoClutch') settings.mode = 'manual';
+Object.assign(settings, { picture: 'sharp', vhs: true, sound: true });
 const tune = loadTuning();
 
 // ---------- Rendering ----------
@@ -175,7 +178,7 @@ function renderChoices() {
     const key = box.dataset.setting;
     const options =
       key === 'mode'
-        ? MODES.map((m) => [m, MODE_LABELS[m]])
+        ? MODES.filter((m) => m !== 'autoClutch').map((m) => [m, MODE_LABELS[m]])
         : key === 'map'
           ? Object.entries(TRACKS).map(([id, t]) => [id, t.name])
           : key === 'time'

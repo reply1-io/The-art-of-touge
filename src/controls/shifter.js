@@ -19,8 +19,8 @@ const SLOTS = {
 };
 const COLS = 2; // highest column index
 const GEAR_POS = { [-1]: [2, 1], 0: [1, 0], 1: [0, -1], 2: [0, 1], 3: [1, -1], 4: [1, 1], 5: [2, -1] };
-const ENGAGE = 0.6; // how far into a slot the knob must go before the gear is selected
-const SNAP = 0.5; // how close to a column the knob must be to enter it
+const ENGAGE = 0.5; // how far into a slot the knob must go before the gear is selected
+const SNAP = 0.65; // how close to a column the knob must be to enter it
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
@@ -47,13 +47,13 @@ export class Shifter {
   #toPx([x, y]) {
     const w = this.root.clientWidth;
     const h = this.root.clientHeight;
-    return [w * (0.18 + (x / COLS) * 0.64), h * (0.5 + y * 0.25)];
+    return [w * (0.16 + (x / COLS) * 0.68), h * (0.5 + y * 0.32)];
   }
 
   #fromPx(px, py) {
     const w = this.root.clientWidth;
     const h = this.root.clientHeight;
-    return [((px / w - 0.18) / 0.64) * COLS, (py / h - 0.5) / 0.25];
+    return [((px / w - 0.16) / 0.68) * COLS, (py / h - 0.5) / 0.32];
   }
 
   #draw() {
@@ -93,10 +93,10 @@ export class Shifter {
     g.font = `${Math.max(18, this.root.clientWidth * 0.17)}px 'VT323', ui-monospace, monospace`;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    const rad = Math.min(this.root.clientWidth * 0.13, this.root.clientHeight * 0.11);
+    const rad = Math.min(this.root.clientWidth * 0.15, this.root.clientHeight * 0.13);
     for (const [key, gear] of Object.entries(SLOTS)) {
       const [x, y] = key.split(',').map(Number);
-      const [px, py] = this.#toPx([x, y * 1.62]);
+      const [px, py] = this.#toPx([x, y * 1.38]);
       const label = gear === -1 ? 'R' : String(gear);
       const on = gear === this.gear;
       const color = on ? '#fff4e2' : gear === -1 ? '#ff6a3a' : '#ffb066';
@@ -143,11 +143,11 @@ export class Shifter {
     const r = this.root.getBoundingClientRect();
     const [gx, gy] = this.#fromPx(e.clientX - r.left, e.clientY - r.top);
     let target = null;
-    if (Math.abs(gy) < 0.45) target = 0;
+    if (Math.abs(gy) < 0.3) target = 0;
     else {
       const col = Math.round(clamp(gx, 0, COLS));
       const slot = SLOTS[`${col},${Math.sign(gy)}`];
-      if (slot !== undefined && Math.abs(gx - col) < 0.5) target = slot;
+      if (slot !== undefined) target = slot;
     }
     if (target === null || target === this.gear) return;
     if (this.onGear(target)) {
@@ -205,7 +205,7 @@ export class Shifter {
       // On the neutral rail: slide sideways, or drop into a slot if close to a column.
       const col = Math.round(clamp(tx, 0, COLS));
       const dir = Math.sign(ty);
-      if (Math.abs(ty) > 0.25 && Math.abs(tx - col) < SNAP && SLOTS[`${col},${dir}`] !== undefined) {
+      if (Math.abs(ty) > 0.18 && Math.abs(tx - col) < SNAP && SLOTS[`${col},${dir}`] !== undefined) {
         x = col;
         y = ty;
       } else {

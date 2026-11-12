@@ -26,7 +26,7 @@ export class Engine {
     this.lastTorque = 0;
     this.justStalled = false;
     this.turbo = null; // { gain, spool, range, lag } from the tuning shop
-    this.intake = null; // rpm -> torque multiplier
+    this.intake = null; // rpm -> extra torque (N m)
     this.boost = 0; // 0..1 of full boost
   }
 
@@ -47,7 +47,7 @@ export class Engine {
   // Full-throttle torque at an rpm with the fitted parts (boost given as 0..1).
   fullTorque(rpm, boost = this.boost) {
     let tq = interpolate(this.spec.torqueCurve, rpm) * this.torqueScale;
-    if (this.intake) tq *= this.intake(rpm);
+    if (this.intake) tq += this.intake(rpm) * this.torqueScale;
     if (this.turbo) tq *= 1 + this.turbo.gain * boost;
     return tq;
   }

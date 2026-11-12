@@ -174,6 +174,33 @@ export class CarAudio {
     this.indLfo.start();
     this.indTone.start();
 
+    // ITB grumble: a deep, soft, uneven rumble from the open trumpets. Low sawtooth at half the
+    // firing rate, rounded off by a low-pass, throbbing at the cam rate.
+    this.itb = ctx.createOscillator();
+    this.itb.type = 'sawtooth';
+    this.itb2 = ctx.createOscillator();
+    this.itb2.type = 'triangle';
+    const itbLow = ctx.createBiquadFilter();
+    itbLow.type = 'lowpass';
+    itbLow.frequency.value = 170;
+    itbLow.Q.value = 0.6;
+    this.itbLow = itbLow;
+    this.itbThrob = ctx.createGain();
+    this.itbThrob.gain.value = 0.6;
+    this.itbLfo = ctx.createOscillator();
+    this.itbLfo.type = 'sine';
+    const itbDepth = ctx.createGain();
+    itbDepth.gain.value = 0.4;
+    this.itbLfo.connect(itbDepth).connect(this.itbThrob.gain);
+    this.itbGain = ctx.createGain();
+    this.itbGain.gain.value = 0;
+    const itb2Gain = ctx.createGain();
+    itb2Gain.gain.value = 0.7;
+    this.itb.connect(itbLow);
+    this.itb2.connect(itb2Gain).connect(itbLow);
+    itbLow.connect(this.itbThrob).connect(this.itbGain).connect(this.master);
+    for (const o of [this.itb, this.itb2, this.itbLfo]) o.start();
+
     // Turbo: a spool whine that rises with boost, and flutter on lift-off.
     this.whistle = ctx.createOscillator();
     this.whistle.type = 'sine';
@@ -498,7 +525,14 @@ export class CarAudio {
     const inCar = this.interior ? 1 : 0;
     this.intakeGain.gain.setTargetAtTime(running ? load * 0.12 * clamp(rpm / 6000, 0.2, 1) * (1 + inCar) : 0, t, 0.04);
     // Induction roar: louder with ITBs, louder still from inside the car.
-    const indLevel = { stock: 0.04, pod: 0.22, itb: 0.5 }[this.intake || 'stock'] * (1 + inCar * 1.4);
+    const indLevel = { stock: 0.04, pod: 0.22, itb: 0.18 }[this.intake || 'stock'] * (1 + inCar * 1.4);
+    // ITB grumble: strongest at low and middle revs and on the throttle, louder in the car.
+    const isItb = this.intake === 'itb' && running;
+    this.itb.frequency.setTargetAtTime(f / 2, t, 0.015);
+    this.itb2.frequency.setTargetAtTime(f / 4, t, 0.015);
+    this.itbLfo.frequency.setTargetAtTime(f / 8, t, 0.02);
+    this.itbLow.frequency.setTargetAtTime(120 + rpm * 0.025 + load * 60, t, 0.03);
+    this.itbGain.gain.setTargetAtTime(isItb ? (0.22 + load * 0.38) * (1.15 - rpm / 14000) * (1 + inCar * 0.9) : 0, t, 0.04);
     this.indLfo.frequency.setTargetAtTime(f / 2, t, 0.012);
     this.indTone.frequency.setTargetAtTime(clamp(f * 0.75, 30, 300), t, 0.02);
     this.indFilter.frequency.setTargetAtTime(160 + rpm * 0.05 + load * 120, t, 0.03);
