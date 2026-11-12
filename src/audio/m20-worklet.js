@@ -76,6 +76,7 @@ class M20Processor extends AudioWorkletProcessor {
     this.cylGain = [1.0, 0.9, 1.07, 0.95, 1.04, 0.88];
     this.cylTiming = [0, 1.5, -1, 2, -0.5, 1]; // crank degrees
     this.jit = new Float32Array(6).fill(1);
+    this.tjit = new Float32Array(6); // per-cycle timing scatter, crank degrees
     this.pop = new Float32Array(6);
     this.lastX = new Float32Array(6).fill(1);
     this.hdrA = new Delay(512); this.hdrB = new Delay(512);
@@ -86,6 +87,7 @@ class M20Processor extends AudioWorkletProcessor {
     this.body = new Biquad(); this.drone = new Biquad();
     this.dcHp = new Biquad().set('hp', 28, 0.7, 0, fs);
     this.raspBp = new Biquad(); this.raspHp = new Biquad().set('hp', 900, 0.7, 0, fs);
+    this.rumbleBp = new Biquad(); this.rumbleLp = new Biquad().set('lp', 1200, 0.5, 0, fs);
     this.intakeBp = new Biquad();
     this.tickHp = new Biquad().set('hp', 3500, 0.7, 0, fs);
     this.starterBp = new Biquad().set('bp', 1100, 0.9, 0, fs);
@@ -98,10 +100,10 @@ class M20Processor extends AudioWorkletProcessor {
   }
 
   pulse(xDeg, width) {
-    // exhaust blowdown: very fast rise, exponential-ish decay
-    if (xDeg <= 0 || xDeg > width * 9) return 0;
+    // exhaust blowdown: smooth rise and decay (a sharp edge here = buzz)
+    if (xDeg <= 0 || xDeg > width * 7) return 0;
     const u = xDeg / width;
-    return u * Math.exp(1 - u);
+    return u * u * Math.exp(2 * (1 - u));
   }
 
   process(_in, outputs, P) {
@@ -113,11 +115,12 @@ class M20Processor extends AudioWorkletProcessor {
     const thr0 = g('throttle', 0), rpm0 = g('rpm', 0), exh = g('exhaust', 0);
     if (this.coef++ % 4 === 0) {
       const open = 1 + exh * 0.9;
-      this.muffLp.set('lp', (650 + 1400 * thr0 + rpm0 * 0.18) * open, 0.75, 0, fs);
-      this.muffLp2.set('lp', (2600 + 2500 * thr0) * open, 0.6, 0, fs);
+      this.muffLp.set('lp', (420 + 700 * thr0 + rpm0 * 0.09) * open, 0.6, 0, fs);
+      this.muffLp2.set('lp', (1500 + 1200 * thr0) * open, 0.5, 0, fs);
       this.body.set('pk', 115, 1.1, 4 + exh * 2, fs);
-      this.drone.set('pk', 240 + exh * 40, 2.2, 2.5 + exh * 3, fs);
-      this.raspBp.set('bp', 1600 + rpm0 * 0.25, 0.7, 0, fs);
+      this.drone.set('pk', 240 + exh * 40, 1.6, 1 + exh * 2.5, fs);
+      this.raspBp.set('bp', 1200 + rpm0 * 0.15, 0.6, 0, fs);
+      this.rumbleBp.set('bp', 260 + rpm0 * 0.06, 0.45, 0, fs);
       this.intakeBp.set('bp', 420 + rpm0 * 0.08, 1.4, 0, fs);
     }
 
@@ -143,15 +146,17 @@ class M20Processor extends AudioWorkletProcessor {
       const fuel = overrun ? 0 : 1;
       const load = ign * fuel * (0.32 + 0.68 * thr);
       const pump = 0.11;                       // air being pushed out with no combustion
-      const width = 26 - 8 * thr;              // crank degrees; harder hit under load
+      const width = 36 - 10 * thr;             // crank degrees; harder hit under load
 
       let a = 0, b = 0, env = 0, inEnv = 0;
       for (let k = 0; k < 6; k++) {
-        let x = (this.phase - k / 6) * 720 - this.cylTiming[k];
+        let x = (this.phase - k / 6) * 720 - this.cylTiming[k] - this.tjit[k];
         x = ((x % 720) + 720) % 720;
         if (x < this.lastX[k]) { // this cylinder's exhaust valve just opened: new cycle for it
-          const j = 0.025 + 0.09 * nearIdle + 0.03 * (1 - ign);
+          // no two combustions are the same; this scatter is what turns buzz into rumble
+          const j = 0.07 + 0.08 * nearIdle + 0.03 * (1 - ign);
           this.jit[k] = Math.max(0.5, 1 + j * randn());
+          this.tjit[k] = 3.5 * randn();
           // overrun pop: unburnt mixture lighting in the hot pipe
           this.pop[k] = overrun && ign > 0.5 && rpm > 2600 && Math.random() < 0.012 * (rpm / 4000) ? 1 : 0;
           if (this.pop[k]) this.popEnv = 1;
@@ -185,8 +190,11 @@ class M20Processor extends AudioWorkletProcessor {
       let y = this.muffLp2.run(this.muffLp.run(pipeOut));
       y = this.drone.run(this.body.run(y));
 
+      // rumble: gas turbulence in the pipe, fills the gaps between the harmonics
+      y += this.rumbleLp.run(this.rumbleBp.run(randn() * env)) * (0.3 + 1.5 * thr) * (0.8 + exh * 0.4);
+
       // rasp: turbulence that rides on each pulse, grows with rpm and load
-      const raspAmt = (0.10 + 0.5 * thr) * Math.min(1.4, rpm / 4500) * (0.7 + exh * 0.8);
+      const raspAmt = (0.05 + 0.22 * thr) * Math.min(1.3, rpm / 4500) * (0.7 + exh * 0.8);
       y += this.raspHp.run(this.raspBp.run(randn() * env)) * raspAmt;
 
       // intake roar (heard more than you'd think with the throttle open)
@@ -209,7 +217,7 @@ class M20Processor extends AudioWorkletProcessor {
       }
 
       y = this.dcHp.run(y);
-      const o = Math.tanh(y * 0.75) * 0.9;
+      const o = Math.tanh(y * 0.38) * 1.35; // gentle: mostly linear, only peaks round off
       out[i] = o;
 
       this.cyc[this.cycN] = o;
