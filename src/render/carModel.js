@@ -3,7 +3,7 @@
 // origin, which rides about 0.62 m above the ground.
 import * as THREE from 'three';
 import { Cockpit } from './cockpit.js';
-import { WHEELS, EXHAUSTS, HEADLIGHTS, TAILLIGHTS, wheelSetup, TUNABLE_DEFAULTS } from '../config.js';
+import { PLATES, cleanPlate, WHEELS, EXHAUSTS, HEADLIGHTS, TAILLIGHTS, wheelSetup, TUNABLE_DEFAULTS } from '../config.js';
 
 const GROUND = -0.62; // ground level in body space at static ride height
 
@@ -329,8 +329,6 @@ function detailPolys() {
     }
     for (const [x0, x1, y0, y1] of ribs) trim.push({ pts: [[x0, y0, zt - 0.007], [x1, y0, zt - 0.007], [x1, y1, zt - 0.007], [x0, y1, zt - 0.007]], color: BLACK, out: [0, 0, -1] });
   }
-  // Number plate on the black panel between the lamps.
-  rear(0.25, -0.25, 0.63, 0.77, [0.92, 0.92, 0.86]);
 
   // The "Sicke": the sharp shoulder crease that runs nose to tail just below the window line.
   for (let z = NOSE - 0.05; z > TAIL + 0.05; z -= 0.12) {
@@ -487,6 +485,17 @@ export class CarModel {
     this.body = body;
     this.numberBoards = new THREE.Group();
     body.add(this.numberBoards);
+    // Licence plate between the tail lamps (texture drawn from the shop settings).
+    this.plateCanvas = document.createElement('canvas');
+    this.plateCanvas.width = 256;
+    this.plateCanvas.height = 128;
+    this.plateTex = new THREE.CanvasTexture(this.plateCanvas);
+    this.plateTex.colorSpace = THREE.SRGBColorSpace;
+    this.plateTex.anisotropy = 4;
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.44, 0.22), new THREE.MeshLambertMaterial({ map: this.plateTex }));
+    plate.position.set(0, 0.7, TAIL - 0.014);
+    plate.rotation.y = Math.PI;
+    body.add(plate);
     this.glass = new THREE.Mesh(polyGeometry(cabin.glass), glassMat);
     body.add(this.glass);
     this.shellMats = [this.paintMat, flat];
@@ -624,11 +633,57 @@ export class CarModel {
     const head = (HEADLIGHTS[this.headColor] || HEADLIGHTS.white)[1];
     this.headMat.color.setHex(head).lerp(new THREE.Color(0xe8ecf0), 0.35);
     this.tailMat.color.setHex((TAILLIGHTS[t.taillights] || TAILLIGHTS.red)[1]);
+    const plateKey = `${t.plateStyle}|${t.plateText}`;
+    if (this.plateKey !== plateKey) {
+      this.plateKey = plateKey;
+      this.#drawPlate(t);
+    }
     const numKey = `${t.numbers}|${t.number}|${t.numberW}|${t.numberH}`;
     if (this.numKey !== numKey) {
       this.numKey = numKey;
       this.#buildNumbers(t);
     }
+  }
+
+  #drawPlate(t) {
+    const st = PLATES[t.plateStyle] || PLATES.white;
+    const c = this.plateCanvas;
+    const g = c.getContext('2d');
+    const W = c.width;
+    const H = c.height;
+    g.fillStyle = st.bg;
+    g.fillRect(0, 0, W, H);
+    // Pressed rim and the two bolts at the top, like a real plate.
+    g.strokeStyle = 'rgba(0,0,0,0.35)';
+    g.lineWidth = 6;
+    g.strokeRect(5, 5, W - 10, H - 10);
+    g.fillStyle = 'rgba(0,0,0,0.3)';
+    for (const x of [W * 0.22, W * 0.78]) {
+      g.beginPath();
+      g.arc(x, 18, 6, 0, Math.PI * 2);
+      g.fill();
+    }
+    if (st.slash) {
+      // A red bar from corner to corner.
+      g.strokeStyle = st.slash;
+      g.lineWidth = 16;
+      g.beginPath();
+      g.moveTo(8, H - 8);
+      g.lineTo(W - 8, 8);
+      g.stroke();
+    }
+    const text = cleanPlate(t.plateText) || ' ';
+    g.fillStyle = st.ink;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    let size = 82;
+    g.font = `700 ${size}px 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif`;
+    const fit = W - 30;
+    const wText = g.measureText(text).width;
+    if (wText > fit) size *= fit / wText;
+    g.font = `700 ${size}px 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif`;
+    g.fillText(text, W / 2, H / 2 + 8);
+    this.plateTex.needsUpdate = true;
   }
 
   // Race number boards on both doors: a white square with a black number, size set in the shop.

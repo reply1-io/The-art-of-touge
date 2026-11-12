@@ -127,6 +127,8 @@ export const TUNABLE_DEFAULTS = {
   strutRear: false,
   exhaust: 'stock',
   stretch: false,
+  plateStyle: 'white', // 'white' | 'yellow' | 'red'
+  plateText: 'AE 318',
   intake: 'stock',
   turbo: 'none',
   clutch: 'stock',
@@ -198,6 +200,18 @@ export const PAINTS = [
   ['Laguna Green', '#2f6b4f'],
   ['Dakar Yellow', '#e6b72b'],
 ];
+// Licence plates, Japanese style. Text colours follow the real plates.
+export const PLATES = {
+  white: { name: 'White', bg: '#f2f1ea', ink: '#1f5a32' },
+  yellow: { name: 'Yellow', bg: '#f2c51e', ink: '#151515' },
+  red: { name: 'White / red', bg: '#f2f1ea', ink: '#151515', slash: '#c8241d' },
+};
+
+// Up to 7 letters, numbers, spaces and dashes, upper case.
+export function cleanPlate(text) {
+  return String(text ?? '').toUpperCase().replace(/[^A-Z0-9 \-]/g, '').slice(0, 7);
+}
+
 export const HEADLIGHTS = { white: ['White', 0xfff2d8], yellow: ['Yellow', 0xffc94a], blue: ['Cool blue', 0xcfe2ff] };
 export const TAILLIGHTS = { red: ['Red', 0xd0141c], smoked: ['Smoked', 0x4a0a10], clear: ['Clear', 0xcfc6c6] };
 
