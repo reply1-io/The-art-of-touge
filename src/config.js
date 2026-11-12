@@ -126,7 +126,112 @@ export const TUNABLE_DEFAULTS = {
   strutFront: false, // strut tower braces
   strutRear: false,
   exhaust: 'stock',
+  intake: 'stock',
+  turbo: 'none',
+  clutch: 'stock',
+  gearbox: 'stock',
+  finalDrive: 4.1,
+  coilovers: false,
+  bump: 0.3, // coilover damping ratios (compression / extension)
+  rebound: 0.36,
+  brakes: 'stock',
+  handbrake: 'stock',
+  angleKit: 'stock',
+  weight: 'stock',
+  paint: '#efeee6',
+  bodyKit: 'stock',
+  headlights: 'white',
+  taillights: 'red',
+  numbers: false,
+  number: 18,
+  numberW: 0.4, // metres
+  numberH: 0.3,
 };
+
+// ---------- Performance parts (tuning shop). Each option has a name and a one-line blurb. ----------
+export const INTAKES = {
+  stock: { name: 'Stock airbox', blurb: 'Quiet factory airbox and paper filter.' },
+  pod: { name: 'Pod filter', blurb: 'Open cone filter. A little more top end and an audible gulp of air.' },
+  itb: { name: 'ITBs', blurb: 'Individual throttle bodies with trumpets. Sharp response, strong top end and a deep, hungry intake roar.' },
+};
+export const TURBOS = {
+  none: { name: 'None', blurb: 'Naturally aspirated M42. Linear and predictable.' },
+  small: { name: 'Small turbo', blurb: 'T25-size. Spools early, about +45% torque, gentle lag. Whistle and blow-off valve.' },
+  big: { name: 'Big turbo', blurb: 'T3-size. Nothing below 4,000 rpm, then it doubles the torque. Laggy, savage, loud.' },
+};
+export const CLUTCHES = {
+  stock: { name: 'Stock', blurb: 'Smooth and forgiving. Can slip if you add a lot of power.' },
+  sport: { name: 'Sport', blurb: 'Stronger, with a shorter bite point. Easier clutch kicks.' },
+  race: { name: 'Race paddle', blurb: 'Grabs hard and holds anything. Pulling away without stalling takes care.' },
+};
+export const GEARBOXES = {
+  stock: { name: 'Stock', blurb: 'Getrag 240: 3.72 / 2.02 / 1.32 / 1.00 / 0.81.' },
+  close: { name: 'Close-ratio', blurb: 'Gears packed together: 3.35 / 2.17 / 1.58 / 1.24 / 1.00. Stays in the power band through the bends.' },
+};
+export const FINAL_DRIVES = [3.64, 3.91, 4.1, 4.27, 4.45, 4.73];
+export const BRAKES = {
+  stock: { name: 'Stock', blurb: 'Fine for the road. Fades if you lean on them run after run.' },
+  bbk: { name: 'Big brake kit', blurb: '4-pot calipers and bigger discs: about 30% more bite and far less fade.' },
+};
+export const HANDBRAKES = {
+  stock: { name: 'Stock', blurb: 'Cable handbrake. Good enough to tuck the tail in.' },
+  hydro: { name: 'Hydraulic', blurb: 'Hydro handbrake: locks the rears instantly and hard. Made for drift entries.' },
+};
+export const ANGLE_KITS = {
+  stock: { name: 'Stock', blurb: '36° of steering lock.' },
+  kit: { name: 'Angle kit', blurb: 'Modified knuckles: 48° of lock to hold bigger angles.' },
+  full: { name: 'Full lock', blurb: '58° of lock. Huge angle, twitchy at speed.' },
+};
+export const WEIGHTS = {
+  stock: { name: 'Stock', blurb: '1,100 kg with you and a tank of fuel.', kg: 0 },
+  light: { name: 'Light', blurb: 'Rear seats, spare wheel and sound deadening out: -55 kg.', kg: -55 },
+  stripped: { name: 'Stripped', blurb: 'Bare shell, bucket seats, carbon bonnet: -120 kg.', kg: -120 },
+};
+export const BODY_KITS = {
+  stock: { name: 'Stock', blurb: 'Chrome bumpers, the 318is front lip.' },
+  mtech1: { name: 'M-Tech 1', blurb: 'Deeper front lip, side skirts and a boot-lid spoiler.' },
+  mtech2: { name: 'M-Tech 2', blurb: 'Body-coloured bumpers, deep skirts and a rear wing.' },
+};
+export const PAINTS = [
+  ['Alpine White', '#efeee6'],
+  ['Henna Red', '#9e1b1e'],
+  ['Diamond Black', '#16171b'],
+  ['Lachssilber', '#a9adb1'],
+  ['Brilliantrot', '#c8241d'],
+  ['Zinnoberrot', '#d9411e'],
+  ['Royal Blue', '#1d3a8a'],
+  ['Laguna Green', '#2f6b4f'],
+  ['Dakar Yellow', '#e6b72b'],
+];
+export const HEADLIGHTS = { white: ['White', 0xfff2d8], yellow: ['Yellow', 0xffc94a], blue: ['Cool blue', 0xcfe2ff] };
+export const TAILLIGHTS = { red: ['Red', 0xd0141c], smoked: ['Smoked', 0x4a0a10], clear: ['Clear', 0xcfc6c6] };
+
+const smooth01 = (a, b, x) => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+// Everything the physics takes from the performance parts.
+export function partsSetup(t) {
+  const turbo = t.turbo === 'small' ? { gain: 0.45, spool: 2700, range: 1500, lag: 0.35 } : t.turbo === 'big' ? { gain: 1.0, spool: 3900, range: 1600, lag: 0.85 } : null;
+  const intake = t.intake === 'itb' ? (rpm) => 1 + 0.09 * smooth01(3000, 6800, rpm) - 0.02 * (1 - smooth01(1200, 2600, rpm)) : t.intake === 'pod' ? (rpm) => 1 + 0.035 * smooth01(3500, 6800, rpm) : null;
+  const clutch = CLUTCHES[t.clutch] ? t.clutch : 'stock';
+  const massDelta = (WEIGHTS[t.weight] || WEIGHTS.stock).kg;
+  return {
+    mass: CAR.mass + massDelta,
+    maxSteer: ((t.angleKit === 'full' ? 58 : t.angleKit === 'kit' ? 48 : 36) * Math.PI) / 180,
+    brakeScale: t.brakes === 'bbk' ? 1.3 : 1,
+    brakeCapacity: t.brakes === 'bbk' ? 1.8 : 1,
+    handbrakeTorque: t.handbrake === 'hydro' ? 3400 : CAR.handbrakeTorque,
+    clutchTorque: { stock: 280, sport: 380, race: 540 }[clutch],
+    // Pedal travel over which the clutch bites (fraction pressed): narrower = grabbier.
+    bite: { stock: [0.25, 0.8], sport: [0.33, 0.72], race: [0.44, 0.6] }[clutch],
+    gears: t.gearbox === 'close' ? [3.35, 2.17, 1.58, 1.24, 1.0] : CAR.gears,
+    finalDrive: FINAL_DRIVES.includes(t.finalDrive) ? t.finalDrive : CAR.finalDrive,
+    turbo,
+    intake,
+  };
+}
 
 // Exhausts (tuning shop). Sound and looks only.
 export const EXHAUSTS = {

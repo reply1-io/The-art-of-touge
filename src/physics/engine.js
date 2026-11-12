@@ -25,6 +25,31 @@ export class Engine {
     this.throttleApplied = 0; // throttle after idle control and limiter (for sound and HUD)
     this.lastTorque = 0;
     this.justStalled = false;
+    this.turbo = null; // { gain, spool, range, lag } from the tuning shop
+    this.intake = null; // rpm -> torque multiplier
+    this.boost = 0; // 0..1 of full boost
+  }
+
+  // Turbo boost builds with revs and throttle, and lags behind them.
+  updateBoost(dt, throttle) {
+    const tb = this.turbo;
+    if (!tb || !this.running) {
+      this.boost = Math.max(0, this.boost - dt * 3);
+      return;
+    }
+    const rpm = this.rpm;
+    const k = Math.min(1, Math.max(0, (rpm - tb.spool) / tb.range));
+    const target = (this.limiterCut ? 0.6 : throttle) * k * k * (3 - 2 * k);
+    const tau = target > this.boost ? tb.lag : 0.12; // spools slowly, dumps quickly
+    this.boost += (target - this.boost) * Math.min(1, dt / tau);
+  }
+
+  // Full-throttle torque at an rpm with the fitted parts (boost given as 0..1).
+  fullTorque(rpm, boost = this.boost) {
+    let tq = interpolate(this.spec.torqueCurve, rpm) * this.torqueScale;
+    if (this.intake) tq *= this.intake(rpm);
+    if (this.turbo) tq *= 1 + this.turbo.gain * boost;
+    return tq;
   }
 
   get rpm() {
@@ -48,7 +73,7 @@ export class Engine {
     // Idle control holds about 850 rpm, but cannot save the engine from a heavy clutch load.
     thr = Math.max(thr, Math.min(1, Math.max(0, (s.idleRpm - rpm) / 150)) * 0.5);
     this.throttleApplied = thr;
-    const full = interpolate(s.torqueCurve, rpm) * this.torqueScale;
+    const full = this.fullTorque(rpm);
     this.lastTorque = thr * full - (1 - thr) * friction;
     return this.lastTorque;
   }

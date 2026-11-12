@@ -698,8 +698,14 @@ body.paused #vhs-play {
   border-bottom: 3px solid rgba(255, 255, 255, 0.15);
 }
 
+.shop-tabs {
+  overflow-x: auto;
+  touch-action: pan-x;
+  scrollbar-width: none;
+}
+
 .shop-tabs button {
-  flex: 1;
+  flex: 1 0 auto;
   padding: 6px 4px;
   color: var(--dim);
   background: none;
@@ -867,6 +873,71 @@ body.paused #vhs-play {
 
 .build-btns button:disabled {
   opacity: 0.35;
+}
+
+.shop-paint {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shop-paint button {
+  width: 42px;
+  height: 42px;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-radius: 0;
+  padding: 0;
+}
+
+.shop-paint button.sel {
+  border-color: var(--accent);
+  box-shadow: 0 0 10px rgba(255, 176, 0, 0.6);
+}
+
+.shop-custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 400 19px 'VT323', ui-monospace, monospace;
+  color: var(--ink);
+}
+
+.shop-custom input {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  background: none;
+}
+
+.shop-dyno {
+  width: 100%;
+  height: 200px;
+  display: block;
+  border: 3px solid rgba(255, 255, 255, 0.15);
+}
+
+.dyno-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+  margin-top: 8px;
+  font: 400 19px 'VT323', ui-monospace, monospace;
+}
+
+.dyno-stats div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dyno-stats span {
+  color: var(--dim);
+}
+
+.dyno-stats b {
+  font-weight: 400;
+  color: var(--accent);
 }
 
 .shop-hint {

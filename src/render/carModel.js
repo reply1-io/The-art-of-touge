@@ -2,7 +2,8 @@
 // Body space matches the physics body: +x left, +y up, +z forward; the origin is the physics body
 // origin, which rides about 0.62 m above the ground.
 import * as THREE from 'three';
-import { WHEELS, EXHAUSTS, wheelSetup, TUNABLE_DEFAULTS } from '../config.js';
+import { Cockpit } from './cockpit.js';
+import { WHEELS, EXHAUSTS, HEADLIGHTS, TAILLIGHTS, wheelSetup, TUNABLE_DEFAULTS } from '../config.js';
 
 const GROUND = -0.62; // ground level in body space at static ride height
 
@@ -142,10 +143,13 @@ function bodyPolys() {
     const l = ring(z);
     return [...l, ...l.slice(0, 5).reverse().map(mirror)];
   });
+  const cabinTop = [];
   for (let i = 0; i < rings.length - 1; i++) {
     const a = rings[i];
     const b = rings[i + 1];
-    for (let k = 0; k < a.length - 1; k++) paint.push({ pts: [a[k], a[k + 1], b[k + 1], b[k]] });
+    // The shell's top surface under the glasshouse is hidden in the in-car view.
+    const inCabin = stations[i] <= 0.8 && stations[i + 1] >= -1.44;
+    for (let k = 0; k < a.length - 1; k++) (inCabin && k >= 3 && k <= 6 ? cabinTop : paint).push({ pts: [a[k], a[k + 1], b[k + 1], b[k]] });
     trim.push({ pts: [a[0], a[a.length - 1], b[b.length - 1], b[0]], color: UNDER, out: [0, -1, 0] });
     // Black rub strip along the doors (skipped over the wheel arches).
     const s0 = section(stations[i]);
@@ -183,7 +187,7 @@ function bodyPolys() {
     pts.push([0, 0.15, zc - ARCH_R], [0, 0.15, zc + ARCH_R]);
     for (const side of [1, -1]) trim.push({ pts: pts.map((p) => [side * 0.6, p[1], p[2]]), color: UNDER, out: [side, 0, 0] });
   }
-  return { paint, trim };
+  return { paint, trim, cabinTop };
 }
 
 // ---------- Greenhouse: upright E30 glasshouse with thin pillars ----------
@@ -453,8 +457,24 @@ export class CarModel {
     const shell = bodyPolys();
     const cabin = greenhousePolys();
     const detail = detailPolys();
-    body.add(new THREE.Mesh(polyGeometry([...shell.paint, ...shell.trim, ...cabin.paint, ...cabin.trim, ...detail.trim, ...detail.chrome]), flat));
-    body.add(new THREE.Mesh(polyGeometry(cabin.glass), glassMat));
+    // Painted panels get their own material so the paint colour can change.
+    const white = (polys) => polys.map((p) => ({ ...p, color: [1, 1, 1] }));
+    this.paintMat = new THREE.MeshLambertMaterial({ color: 0xefeee6, vertexColors: true, flatShading: true });
+    this.kitPaintMat = new THREE.MeshLambertMaterial({ color: 0xefeee6, flatShading: true }); // body-kit parts
+    body.add(new THREE.Mesh(polyGeometry(white([...shell.paint, ...cabin.paint])), this.paintMat));
+    this.cabinTop = new THREE.Mesh(polyGeometry(white(shell.cabinTop)), this.paintMat);
+    body.add(this.cabinTop);
+    body.add(new THREE.Mesh(polyGeometry([...shell.trim, ...cabin.trim, ...detail.trim, ...detail.chrome]), flat));
+    this.body = body;
+    this.kit = new THREE.Group();
+    body.add(this.kit);
+    this.numberBoards = new THREE.Group();
+    body.add(this.numberBoards);
+    this.glass = new THREE.Mesh(polyGeometry(cabin.glass), glassMat);
+    body.add(this.glass);
+    this.shellMats = [this.paintMat, flat];
+    this.cockpit = new Cockpit();
+    body.add(this.cockpit.root);
     body.add(new THREE.Mesh(polyGeometry(detail.tail), this.tailMat));
     // Round headlamps with chrome rings.
     const ringMat = new THREE.MeshLambertMaterial({ color: 0xb9bcc2 });
@@ -537,6 +557,7 @@ export class CarModel {
 
   // Rebuild the wheels for a tuning setup: rim style and size, tyre sidewall and camber.
   applySetup(tune) {
+    this.#applyLooks(tune);
     if (this.exhaustType !== (tune.exhaust || 'stock')) this.#buildPipe(tune.exhaust || 'stock');
     const ws = wheelSetup(tune);
     const key = `${tune.wheel}|${ws.rim}|${ws.profile}`;
@@ -559,8 +580,113 @@ export class CarModel {
   }
 
   setLights(on, braking) {
-    this.headMat.emissive.setHex(on ? 0xfff2cc : 0x000000);
+    const head = (HEADLIGHTS[this.headColor] || HEADLIGHTS.white)[1];
+    this.headMat.emissive.setHex(on ? head : 0x000000);
     this.tailMat.emissive.setHex(braking ? 0xff1a1a : on ? 0x550000 : 0x000000);
+  }
+
+  // In-car view: show the cockpit, take the glass out so you can see through it, and draw the
+  // inside faces of the shell (pillars, roof edges).
+  setInterior(on) {
+    this.cockpit.root.visible = on;
+    this.glass.visible = !on;
+    this.cabinTop.visible = !on;
+    for (const m of this.shellMats) {
+      const side = on ? THREE.DoubleSide : THREE.FrontSide;
+      if (m.side !== side) {
+        m.side = side;
+        m.needsUpdate = true;
+      }
+    }
+  }
+
+  // ---------- Looks from the tuning shop: paint, body kit, light colours, number boards ----------
+  #applyLooks(t) {
+    this.paintMat.color.set(t.paint || '#efeee6');
+    this.kitPaintMat.color.set(t.paint || '#efeee6');
+    this.headColor = t.headlights || 'white';
+    const head = (HEADLIGHTS[this.headColor] || HEADLIGHTS.white)[1];
+    this.headMat.color.setHex(head).lerp(new THREE.Color(0xe8ecf0), 0.35);
+    this.tailMat.color.setHex((TAILLIGHTS[t.taillights] || TAILLIGHTS.red)[1]);
+    if (this.kitKey !== t.bodyKit) {
+      this.kitKey = t.bodyKit;
+      this.#buildKit(t.bodyKit || 'stock');
+    }
+    const numKey = `${t.numbers}|${t.number}|${t.numberW}|${t.numberH}`;
+    if (this.numKey !== numKey) {
+      this.numKey = numKey;
+      this.#buildNumbers(t);
+    }
+  }
+
+  #buildKit(kit) {
+    this.kit.traverse((o) => o.geometry?.dispose());
+    this.kit.clear();
+    if (kit === 'stock') return;
+    const paint = this.kitPaintMat;
+    const black = new THREE.MeshLambertMaterial({ color: 0x141416, flatShading: true });
+    const box = (w, h, d, x, y, z, mat = paint) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      m.position.set(x, y, z);
+      this.kit.add(m);
+      return m;
+    };
+    // Side skirts between the wheel arches.
+    const zf = FRONT_AXLE - ARCH_R - 0.02;
+    const zr = REAR_AXLE + ARCH_R + 0.02;
+    const skirtH = kit === 'mtech2' ? 0.17 : 0.11;
+    for (const side of [1, -1]) box(0.06, skirtH, zf - zr, side * 0.815, 0.2 + skirtH / 2, (zf + zr) / 2);
+    if (kit === 'mtech1') {
+      // Deeper black front lip and a small spoiler on the boot lid.
+      box(1.64, 0.07, 0.16, 0, 0.22, NOSE + 0.04, black);
+      const lid = box(1.24, 0.035, 0.24, 0, 0.995, TAIL + 0.2);
+      lid.rotation.x = -0.12;
+      return;
+    }
+    // M-Tech 2: body-coloured bumpers over the chrome ones, a deep splitter and a rear wing.
+    box(1.72, 0.27, 0.2, 0, 0.42, NOSE + 0.03);
+    box(1.6, 0.05, 0.22, 0, 0.27, NOSE + 0.05, black);
+    box(1.72, 0.26, 0.2, 0, 0.45, TAIL - 0.03);
+    for (const x of [0.5, -0.5]) box(0.04, 0.16, 0.08, x, 1.04, TAIL + 0.2, black);
+    const wing = box(1.5, 0.035, 0.28, 0, 1.13, TAIL + 0.18);
+    wing.rotation.x = -0.1;
+    for (const x of [0.75, -0.75]) box(0.02, 0.12, 0.3, x, 1.12, TAIL + 0.18);
+  }
+
+  // Race number boards on both doors: a white square with a black number, size set in the shop.
+  #buildNumbers(t) {
+    this.numberBoards.traverse((o) => {
+      o.geometry?.dispose();
+      o.material?.map?.dispose();
+    });
+    this.numberBoards.clear();
+    if (!t.numbers) return;
+    const w = Math.max(0.15, Math.min(0.8, t.numberW ?? 0.42));
+    const h = Math.max(0.15, Math.min(0.36, t.numberH ?? 0.3));
+    const c = document.createElement('canvas');
+    c.width = 128;
+    c.height = Math.round((128 * h) / w);
+    const g = c.getContext('2d');
+    g.fillStyle = '#f4f4ef';
+    g.fillRect(0, 0, c.width, c.height);
+    g.fillStyle = '#111';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    const label = String(Math.max(0, Math.min(999, Math.round(t.number ?? 18))));
+    const size = Math.min(c.height * 0.82, (c.width * 1.5) / Math.max(1, label.length));
+    g.font = `900 ${size}px Impact, 'Arial Black', sans-serif`;
+    g.fillText(label, c.width / 2, c.height / 2 + size * 0.04);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.MeshLambertMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -2 });
+    // Centre of the door, between the rub strip and the shoulder crease.
+    const y = 0.47 + h / 2;
+    for (const side of [1, -1]) {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+      m.position.set(side * (section(-0.3).hw + 0.012), y, -0.3);
+      m.rotation.y = side * (Math.PI / 2);
+      this.numberBoards.add(m);
+    }
   }
 
   // Place the wheels from the simulation: suspension travel, steering and spin.

@@ -2,17 +2,22 @@
 // drivetrain. Every change shows on the car straight away (wheels, sidewalls, camber and ride
 // height are all visible), applies to the physics, and is saved on the device.
 import * as THREE from 'three';
-import { CAR, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup } from '../config.js';
+import {
+  CAR, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup,
+  INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, BODY_KITS, PAINTS, HEADLIGHTS, TAILLIGHTS,
+} from '../config.js';
+import { dynoRun } from '../physics/dyno.js';
 import { loadBuilds, saveBuilds } from '../settings.js';
 import { CarModel } from '../render/carModel.js';
 
-const SHOP_KEYS = ['exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
+const SHOP_KEYS = ['intake', 'turbo', 'clutch', 'gearbox', 'finalDrive', 'coilovers', 'bump', 'rebound', 'brakes', 'handbrake', 'angleKit', 'weight', 'paint', 'bodyKit', 'headlights', 'taillights', 'numbers', 'number', 'numberW', 'numberH', 'exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
 
 const TABS = [
+  ['body', 'Body'],
   ['wheels', 'Wheels'],
-  ['tyres', 'Tyres'],
   ['chassis', 'Chassis'],
-  ['drive', 'Engine'],
+  ['engine', 'Engine'],
+  ['dyno', 'Dyno'],
   ['builds', 'Builds'],
 ];
 
@@ -170,7 +175,7 @@ export class Shop {
     this.el = el;
     this.tune = tune;
     this.onChange = onChange;
-    this.tab = 'wheels';
+    this.tab = 'body';
     this.isOpen = false;
     this.scene = new THREE.Scene();
     this.table = buildGarage(this.scene);
@@ -339,6 +344,29 @@ export class Shop {
 
   #tabContent() {
     const t = this.tune;
+    const label = { soft: 'Soft', stock: 'Stock', sport: 'Sport', race: 'Race', off: 'None' };
+    if (this.tab === 'body') {
+      return [
+        this.#section('Paint', this.#paint()),
+        this.#section('Body kit', this.#cards(BODY_KITS, 'bodyKit')),
+        this.#section(
+          'Lights',
+          this.#chips('Headlights', 'headlights', Object.entries(HEADLIGHTS).map(([k, v]) => [k, v[0]])),
+          this.#chips('Tail lights', 'taillights', Object.entries(TAILLIGHTS).map(([k, v]) => [k, v[0]])),
+        ),
+        this.#section(
+          'Number boards',
+          this.#chips('On the doors', 'numbers', [[false, 'None'], [true, 'Fitted']]),
+          ...(t.numbers
+            ? [
+                this.#slider('number', 'Number', 0, 99, 1, (v) => String(v)),
+                this.#slider('numberW', 'Width', 0.2, 0.7, 0.02, (v) => `${Math.round(v * 100)} cm`),
+                this.#slider('numberH', 'Height', 0.16, 0.36, 0.02, (v) => `${Math.round(v * 100)} cm`),
+              ]
+            : []),
+        ),
+      ];
+    }
     if (this.tab === 'wheels') {
       return [
         this.#section('Rims', this.#cards(WHEELS, 'wheel')),
@@ -350,24 +378,41 @@ export class Shop {
           this.#slider('camberRear', 'Rear camber', 0, 6, 0.5, (v) => `${deg(v)}${v > 3.5 ? ' · too much' : v >= 2 ? ' · grippy' : ''}`),
           this.#hint('Low sidewalls turn in sharper but break away sooner. A few degrees of camber adds cornering grip; past about -3.5° the tyre rides on its edge and grip drops.'),
         ),
+        this.#section('Tyre compound', this.#cards(TIRES, 'tire')),
       ];
     }
-    if (this.tab === 'tyres') return [this.#section('Compound', this.#cards(TIRES, 'tire'))];
     if (this.tab === 'builds') return [this.#builds()];
-    if (this.tab === 'drive') {
+    if (this.tab === 'dyno') return [this.#dyno()];
+    if (this.tab === 'engine') {
       return [
+        this.#section('Intake', this.#cards(INTAKES, 'intake')),
+        this.#section('Turbo', this.#cards(TURBOS, 'turbo')),
         this.#section('Exhaust', this.#cards(EXHAUSTS, 'exhaust')),
+        this.#section('Clutch', this.#cards(CLUTCHES, 'clutch')),
+        this.#section(
+          'Gearing',
+          this.#cards(GEARBOXES, 'gearbox'),
+          this.#chips('Final drive', 'finalDrive', FINAL_DRIVES.map((f) => [f, f.toFixed(2)])),
+          this.#hint('A higher final drive number is shorter: quicker out of corners, lower top speed.'),
+        ),
         this.#section('Differential', this.#cards(DIFFS, 'diff')),
-        this.#section('Brakes', this.#slider('brakeBias', 'Brake bias', 0.5, 0.8, 0.01, (v) => `${Math.round(v * 100)}% front`)),
       ];
     }
-    const label = { soft: 'Soft', stock: 'Stock', sport: 'Sport', race: 'Race', off: 'None' };
+    // Chassis
     return [
       this.#section(
-        'Springs & height',
-        this.#slider('rideHeight', 'Ride height', -60, 30, 5, (v) => (v === 0 ? 'Stock' : `${v > 0 ? '+' : ''}${v} mm`)),
-        this.#slider('springFront', 'Front springs', 18000, 70000, 1000, stiffness),
-        this.#slider('springRear', 'Rear springs', 18000, 70000, 1000, stiffness),
+        'Suspension',
+        this.#chips('Dampers', 'coilovers', [[false, 'Stock'], [true, 'Coilovers']]),
+        this.#slider('rideHeight', 'Ride height', t.coilovers ? -90 : -60, 30, 5, (v) => (v === 0 ? 'Stock' : `${v > 0 ? '+' : ''}${v} mm`)),
+        this.#slider('springFront', 'Front springs', 18000, t.coilovers ? 90000 : 70000, 1000, stiffness),
+        this.#slider('springRear', 'Rear springs', 18000, t.coilovers ? 90000 : 70000, 1000, stiffness),
+        ...(t.coilovers
+          ? [
+              this.#slider('bump', 'Bump damping', 0.12, 0.8, 0.02, (v) => `${Math.round(v * 100)}%`),
+              this.#slider('rebound', 'Rebound damping', 0.12, 0.9, 0.02, (v) => `${Math.round(v * 100)}%`),
+              this.#hint('Coilovers go lower and stiffer, and split the damping: bump controls how the car takes a hit, rebound how fast it settles.'),
+            ]
+          : []),
       ),
       this.#section(
         'Sway bars',
@@ -379,9 +424,125 @@ export class Shop {
         'Strut tower braces',
         this.#chips('Front brace', 'strutFront', [[false, 'None'], [true, 'Fitted']]),
         this.#chips('Rear brace', 'strutRear', [[false, 'None'], [true, 'Fitted']]),
-        this.#hint('Braces tie the strut towers together so the body flexes less: a little more grip and sharper turn-in on that end of the car.'),
       ),
+      this.#section('Brakes', this.#cards(BRAKES, 'brakes'), this.#slider('brakeBias', 'Brake bias', 0.5, 0.8, 0.01, (v) => `${Math.round(v * 100)}% front`)),
+      this.#section('Handbrake', this.#cards(HANDBRAKES, 'handbrake')),
+      this.#section('Steering angle', this.#cards(ANGLE_KITS, 'angleKit')),
+      this.#section('Weight reduction', this.#cards(WEIGHTS, 'weight')),
     ];
+  }
+
+  // Paint: period colours plus a picker for anything else.
+  #paint() {
+    const wrap = document.createElement('div');
+    wrap.className = 'shop-paint';
+    for (const [name, hex] of PAINTS) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.title = name;
+      b.setAttribute('aria-label', name);
+      b.style.background = hex;
+      if ((this.tune.paint || '').toLowerCase() === hex) b.classList.add('sel');
+      b.addEventListener('click', () => this.#change('paint', hex, true));
+      wrap.append(b);
+    }
+    const custom = document.createElement('label');
+    custom.className = 'shop-custom';
+    const input = document.createElement('input');
+    input.type = 'color';
+    input.value = this.tune.paint || '#efeee6';
+    input.addEventListener('input', () => this.#change('paint', input.value));
+    input.addEventListener('change', () => this.render());
+    custom.append(input, document.createTextNode('Custom'));
+    wrap.append(custom);
+    const name = PAINTS.find(([, hex]) => hex === (this.tune.paint || '').toLowerCase());
+    const p = this.#hint(name ? name[0] : `Custom ${this.tune.paint}`);
+    const box = document.createElement('div');
+    box.append(wrap, p);
+    return box;
+  }
+
+  // Dyno sheet: torque and power against rpm for this setup, with stock dashed behind it.
+  #dyno() {
+    const box = this.#section('Dyno');
+    const now = dynoRun(this.tune);
+    const stock = dynoRun({ ...TUNABLE_DEFAULTS, torque: this.tune.torque });
+    const c = document.createElement('canvas');
+    c.className = 'shop-dyno';
+    box.append(c);
+    const stats = document.createElement('div');
+    stats.className = 'dyno-stats';
+    const kgPerHp = now.mass / now.peakHp.hp;
+    for (const [k, v] of [
+      ['Power', `${Math.round(now.peakHp.hp)} hp @ ${now.peakHp.rpm}`],
+      ['Torque', `${Math.round(now.peakNm.nm)} Nm @ ${now.peakNm.rpm}`],
+      ['Weight', `${now.mass} kg`],
+      ['kg / hp', kgPerHp.toFixed(1)],
+    ]) {
+      const d = document.createElement('div');
+      d.innerHTML = '<span></span><b></b>';
+      d.querySelector('span').textContent = k;
+      d.querySelector('b').textContent = v;
+      stats.append(d);
+    }
+    box.append(stats, this.#hint(`Stock: ${Math.round(stock.peakHp.hp)} hp, ${Math.round(stock.peakNm.nm)} Nm (dashed lines). Turbo curves show full boost; on the road it takes a moment to build.`));
+    requestAnimationFrame(() => this.#drawDyno(c, now, stock));
+    return box;
+  }
+
+  #drawDyno(c, now, stock) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = c.clientWidth || 400;
+    const H = c.clientHeight || 200;
+    c.width = W * dpr;
+    c.height = H * dpr;
+    const g = c.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.fillStyle = 'rgba(6,6,8,0.85)';
+    g.fillRect(0, 0, W, H);
+    const pad = { l: 34, r: 34, t: 10, b: 22 };
+    const maxNm = Math.max(200, ...now.pts.map((p) => p.nm)) * 1.1;
+    const maxHp = Math.max(160, ...now.pts.map((p) => p.hp)) * 1.1;
+    const X = (rpm) => pad.l + ((rpm - 1000) / 6000) * (W - pad.l - pad.r);
+    const Yn = (nm) => H - pad.b - (nm / maxNm) * (H - pad.t - pad.b);
+    const Yh = (hp) => H - pad.b - (hp / maxHp) * (H - pad.t - pad.b);
+    g.strokeStyle = 'rgba(255,255,255,0.08)';
+    g.lineWidth = 1;
+    g.font = "14px 'VT323', monospace";
+    g.fillStyle = 'rgba(255,255,255,0.45)';
+    g.textAlign = 'center';
+    for (let rpm = 1000; rpm <= 7000; rpm += 1000) {
+      g.beginPath();
+      g.moveTo(X(rpm), pad.t);
+      g.lineTo(X(rpm), H - pad.b);
+      g.stroke();
+      g.fillText(String(rpm / 1000), X(rpm), H - 6);
+    }
+    const line = (pts, y, color, dash, blur) => {
+      g.setLineDash(dash);
+      g.strokeStyle = color;
+      g.lineWidth = 2.2;
+      g.shadowColor = color;
+      g.shadowBlur = blur;
+      g.beginPath();
+      pts.forEach((p, i) => (i ? g.lineTo(X(p.rpm), y(p)) : g.moveTo(X(p.rpm), y(p))));
+      g.stroke();
+      g.shadowBlur = 0;
+      g.setLineDash([]);
+    };
+    line(stock.pts, (p) => Yn(p.nm), 'rgba(120,200,255,0.45)', [5, 4], 0);
+    line(stock.pts, (p) => Yh(p.hp), 'rgba(255,170,90,0.45)', [5, 4], 0);
+    line(now.pts, (p) => Yn(p.nm), '#78c8ff', [], 6);
+    line(now.pts, (p) => Yh(p.hp), '#ff8c1a', [], 8);
+    g.textAlign = 'left';
+    g.fillStyle = '#78c8ff';
+    g.fillText('Nm', 4, pad.t + 10);
+    g.textAlign = 'right';
+    g.fillStyle = '#ff8c1a';
+    g.fillText('HP', W - 4, pad.t + 10);
+    g.fillStyle = 'rgba(255,255,255,0.45)';
+    g.textAlign = 'center';
+    g.fillText('RPM x1000', W / 2, pad.t + 10);
   }
 
   // Three named build slots: save the current setup into one, or load one back.

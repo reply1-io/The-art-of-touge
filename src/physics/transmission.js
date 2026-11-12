@@ -24,6 +24,16 @@ export class Transmission {
     this.message = '';
     this.messageTimer = 0;
     this.grindTimer = 0; // > 0 while the grind sound should play
+    this.gears = spec.gears;
+    this.finalDrive = spec.finalDrive;
+    this.bite = [0.25, 0.8];
+  }
+
+  // Gear set, final drive and clutch bite from the tuning shop.
+  setParts(p) {
+    this.gears = p.gears;
+    this.finalDrive = p.finalDrive;
+    this.bite = p.bite;
   }
 
   setMode(mode) {
@@ -43,8 +53,8 @@ export class Transmission {
   ratio(gear = this.gear) {
     const s = this.spec;
     if (gear === 0) return 0;
-    if (gear === -1) return -s.reverse * s.finalDrive;
-    return s.gears[gear - 1] * s.finalDrive;
+    if (gear === -1) return -s.reverse * this.finalDrive;
+    return this.gears[gear - 1] * this.finalDrive;
   }
 
   get label() {
@@ -109,7 +119,7 @@ export class Transmission {
     const rate = pressed > this.pedal ? 16 : 3.2;
     this.pedal += clamp(pressed - this.pedal, -rate * dt, rate * dt);
     // Pedal to engagement: bites between 30% and 75% of travel.
-    const pedalCoupling = 1 - smoothstep(0.25, 0.8, this.pedal);
+    const pedalCoupling = 1 - smoothstep(this.bite[0], this.bite[1], this.pedal);
 
     if (this.mode === 'manual') {
       this.coupling = pedalCoupling;
@@ -135,7 +145,7 @@ export class Transmission {
     if (this.drive !== 'D' || this.shiftTimer > 0 || this.gear < 1) return;
     const up = 3000 + 3600 * clamp(throttle, 0, 1);
     const down = 1500 + 2300 * clamp(throttle, 0, 1);
-    const last = this.spec.gears.length;
+    const last = this.gears.length;
     if (engineRpm > up && this.gear < last && this.coupling > 0.9) {
       this.gear++;
       this.shiftTimer = 0.28;

@@ -144,6 +144,55 @@ export class Hud {
       g.fillText(state.gear, cx + R + 8 * u, cy - 2 * u);
     }
 
+    // ---- Turbo boost: a segmented bar under the timer that lights up as boost builds ----
+    if (state.boost != null) {
+      const segs = 10;
+      const sw = 2.2 * u;
+      const gap = 0.6 * u;
+      // Top centre, under the drift total.
+      const right = w / 2 + (segs * (sw + gap)) / 2 + 4 * u;
+      const top = 15 * u;
+      const lit = Math.round(Math.max(0, Math.min(1, state.boost)) * segs);
+      g.textAlign = 'right';
+      g.font = `400 ${3.4 * u}px 'VT323', ui-monospace, monospace`;
+      glow(GLOW, 2);
+      g.fillStyle = ORANGE;
+      g.fillText('BOOST', right - segs * (sw + gap) - 1.2 * u, top + 2.4 * u);
+      for (let k = 0; k < segs; k++) {
+        const x = right - (segs - k) * (sw + gap) + gap;
+        g.shadowBlur = k < lit ? 2 * u : 0;
+        g.fillStyle = k < lit ? (k >= 8 ? RED : ORANGE) : 'rgba(255,140,26,0.18)';
+        g.fillRect(x, top, sw, 2.6 * u);
+      }
+      g.shadowBlur = 0;
+    }
+
+    // ---- Drift score: the live chain under the PLAY readout, the running total under the timer ----
+    if (state.drift) {
+      const d = state.drift;
+      g.textAlign = 'center';
+      glow(GLOW, 2.5);
+      // Dark outline first so the numbers read against any scenery, then the glow.
+      const say = (text, size, y, color) => {
+        g.font = `400 ${size * u}px 'VT323', ui-monospace, monospace`;
+        g.shadowBlur = 0;
+        g.lineWidth = 0.9 * u;
+        g.strokeStyle = 'rgba(0,0,0,0.75)';
+        g.strokeText(text, w / 2, y);
+        glow(GLOW, 2.5);
+        g.fillStyle = color;
+        g.fillText(text, w / 2, y);
+      };
+      if (d.active) {
+        say(d.chain.toLocaleString('en-US'), 10, 27 * u, ORANGE);
+        say(`DRIFT x${d.mult}   ${Math.round((d.angle * 180) / Math.PI)}°`, 4.6, 32 * u, '#ffd2a0');
+      } else if (d.message) {
+        say(d.message, 8, 27 * u, d.message === 'CHAIN LOST' ? RED : ORANGE);
+      }
+      if (d.total > 0) say(`DRIFT ${d.total.toLocaleString('en-US')}`, 4.2, 12.5 * u, ORANGE);
+      g.shadowBlur = 0;
+    }
+
     // ---- Engine state ----
     if (!state.running) {
       g.textAlign = 'center';

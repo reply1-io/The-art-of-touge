@@ -1,5 +1,8 @@
 // Chase camera (smoothed, swings toward the direction of travel in a slide) and bumper camera.
 import * as THREE from 'three';
+import { EYE } from './cockpit.js';
+
+const GROUND = -0.62; // body space: the car model's body group sits this far below the origin
 
 const tmp = new THREE.Vector3();
 
@@ -21,6 +24,19 @@ export class CameraRig {
     const cam = this.camera;
     const q = carObject.quaternion;
     const fwd = tmp.set(0, 0, 1).applyQuaternion(q).setY(0).normalize().clone();
+    if (this.mode === 'cockpit') {
+      // Driver's eyes, looking down the road over the bonnet.
+      const p = new THREE.Vector3(EYE.x, EYE.y + GROUND, EYE.z).applyQuaternion(q).add(carObject.position);
+      cam.position.copy(p);
+      cam.up.set(0, 1, 0).applyQuaternion(q);
+      cam.lookAt(p.clone().add(new THREE.Vector3(0, -0.9, 10).applyQuaternion(q)));
+      if (cam.fov !== 74) {
+        cam.fov = 74;
+        cam.updateProjectionMatrix();
+      }
+      this.ready = false;
+      return;
+    }
     if (this.mode === 'bumper') {
       const p = new THREE.Vector3(0, -0.08, 2.15).applyQuaternion(q).add(carObject.position);
       cam.position.copy(p);

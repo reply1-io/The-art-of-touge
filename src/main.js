@@ -20,6 +20,8 @@ import { Shifter } from './controls/shifter.js';
 import { Hud, formatTime } from './ui/hud.js';
 import { CarAudio } from './audio/carAudio.js';
 import { ExhaustEvents } from './audio/exhaust.js';
+import { DriftScore } from './game/drift.js';
+import { HEADLIGHTS } from './config.js';
 import { TuningPanel } from './ui/tuning.js';
 import { Shop } from './ui/shop.js';
 import { loadSettings, saveSettings, loadTuning, saveTuning } from './settings.js';
@@ -114,6 +116,7 @@ const input = new Input($('controls'));
 const rig = new CameraRig(camera);
 const audio = new CarAudio();
 const exhaustEvents = new ExhaustEvents();
+const drift = new DriftScore();
 rig.mode = settings.camera;
 
 let world;
@@ -124,6 +127,7 @@ let mountain;
 let barrier;
 const run = { phase: 'ready', time: 0, best: null, hint: -1 };
 const roadQ = {};
+let lastGear = null;
 let shifter;
 let tuning;
 let running = false;
@@ -180,7 +184,7 @@ function renderChoices() {
             ? [['buttons', 'Buttons'], ['slider', 'Slider']]
             : key === 'shifter'
               ? [['drag', 'Drag knob'], ['tap', 'Tap gears']]
-              : [['chase', 'Chase'], ['bumper', 'Bumper']];
+              : [['chase', 'Chase'], ['cockpit', 'In car'], ['bumper', 'Bumper']];
     box.innerHTML = '';
     for (const [value, label] of options) {
       const b = document.createElement('button');
@@ -242,6 +246,7 @@ function placeCar(pose) {
 // Back to the summit start line.
 function resetCar() {
   placeCar(mountain.spawn);
+  drift.reset();
   run.phase = 'ready';
   run.time = 0;
 }
@@ -295,7 +300,7 @@ $('btn-recover').addEventListener('click', () => {
   setPaused(false);
 });
 $('btn-cam').addEventListener('click', () => {
-  settings.camera = settings.camera === 'chase' ? 'bumper' : 'chase';
+  settings.camera = { chase: 'cockpit', cockpit: 'bumper', bumper: 'chase' }[settings.camera] || 'chase';
   saveSettings(settings);
   applySettings();
   renderChoices();
@@ -304,6 +309,7 @@ $('btn-tuning').addEventListener('click', () => tuning.toggle());
 const shop = new Shop($('shop'), tune, () => {
   saveTuning(tune);
   carModel?.applySetup(tune);
+  headlight.color.setHex((HEADLIGHTS[tune.headlights] || HEADLIGHTS.white)[1]);
 });
 shopRef = shop;
 shop.resize(window.innerWidth, window.innerHeight);
@@ -438,6 +444,7 @@ function frame(now) {
     }
     if (steps === MAX_STEPS) accumulator = 0;
     updateRun(dt);
+    drift.update(dt, vehicle, barrier.touching && barrier.impact > 9000);
     const tr = vehicle.trans;
     if (tr.messageTimer > 0 && tr.message) {
       toast(tr.message, tr.messageTimer);
@@ -451,6 +458,7 @@ function frame(now) {
   if (active) {
     const ev = exhaustEvents.update(vehicle, dt, tune.exhaust);
     audio.setExhaust(tune.exhaust || 'stock');
+    audio.setParts(tune.intake || 'stock', tune.turbo || 'none');
     audio.update(vehicle, dt, ev);
     // Race exhaust: little flames off the limiter, on shifts and on lift-off.
     if (tune.exhaust === 'race') {
@@ -460,6 +468,14 @@ function frame(now) {
     }
   }
   carModel.updateFx(dt);
+  // In-car view: cockpit on, arms follow the wheel, the shifter and the handbrake.
+  carModel.setInterior(running && rig.mode === 'cockpit' && !window.__touge?.debugCam);
+  if (vehicle.trans.gear !== lastGear) {
+    if (lastGear !== null) carModel.cockpit.shift();
+    lastGear = vehicle.trans.gear;
+  }
+  carModel.cockpit.update(dt, vehicle, controls.handbrake);
+  audio.setInterior?.(running && rig.mode === 'cockpit');
   $('start').classList.toggle('hidden', vehicle.engine.running);
   $('clutch').style.setProperty('--engaged', `${Math.round((1 - vehicle.trans.coupling) * 100)}%`);
 
@@ -508,6 +524,8 @@ function frame(now) {
           needClutchToStart: tr.mode === 'manual' && tr.gear !== 0,
           lapTime: run.time,
           bestTime: run.best,
+          boost: tune.turbo && tune.turbo !== 'none' ? vehicle.engine.boost : null,
+          drift: drift.display,
           fps,
         }
       : null,
@@ -540,6 +558,7 @@ async function boot() {
   });
   carModel = new CarModel(CAR);
   carModel.applySetup(tune);
+  headlight.color.setHex((HEADLIGHTS[tune.headlights] || HEADLIGHTS.white)[1]);
   scene.add(carModel.root);
   // Blob shadow rides under the car, at ground level in the car's own frame.
   shadow = blobShadow();
@@ -555,7 +574,7 @@ async function boot() {
   $('loading').textContent = '';
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;

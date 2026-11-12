@@ -10,7 +10,7 @@
 
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Engine, RAD_TO_RPM } from './engine.js';
-import { TIRES, wheelSetup } from '../config.js';
+import { TIRES, wheelSetup, partsSetup } from '../config.js';
 import { Transmission } from './transmission.js';
 
 const G = 9.81;
@@ -153,9 +153,27 @@ export class Vehicle {
   }
 
   // input: { throttle 0/1, brake 0/1, handbrake 0/1, clutch bool, steer -1 (left) .. +1 (right) }
+  // The car's spec with the tuning-shop parts applied (rebuilt only when the parts change).
+  #applyParts(t) {
+    const key = [t.intake, t.turbo, t.clutch, t.gearbox, t.finalDrive, t.brakes, t.handbrake, t.angleKit, t.weight].join('|');
+    if (key === this.partsKey) return this.partsSpec;
+    const p = partsSetup(t);
+    this.parts = p;
+    this.partsKey = key;
+    this.partsSpec = { ...this.spec, mass: p.mass, maxSteer: p.maxSteer, handbrakeTorque: p.handbrakeTorque, clutchTorque: p.clutchTorque, brakeTorqueFront: this.spec.brakeTorqueFront * p.brakeScale, brakeTorqueRear: this.spec.brakeTorqueRear * p.brakeScale };
+    this.engine.turbo = p.turbo;
+    this.engine.intake = p.intake;
+    this.trans.setParts(p);
+    // Weight reduction: lighter body, inertia scaled with it.
+    const k = p.mass / this.spec.mass;
+    const I = this.spec.inertia;
+    this.body.setAdditionalMassProperties(p.mass, this.spec.centerOfMass, { x: I.x * k, y: I.y * k, z: I.z * k }, { x: 0, y: 0, z: 0, w: 1 }, true);
+    return this.partsSpec;
+  }
+
   step(dt, input) {
-    const s = this.spec;
     const t = this.tune;
+    const s = this.#applyParts(t);
     const b = this.body;
     const q = b.rotation();
     const pos = v3(b.translation());
@@ -215,7 +233,7 @@ export class Vehicle {
     // Ride height moves the suspension mounts relative to the body: raise it and the body sits higher.
     const ws = wheelSetup(t);
     this.wheelSetup = ws;
-    const rh = clamp((t.rideHeight || 0) / 1000, -0.08, 0.05);
+    const rh = clamp((t.rideHeight || 0) / 1000, t.coilovers ? -0.1 : -0.08, 0.05);
     this.mountY = s.wheelMountY - rh;
     const travel = Math.max(0.07, s.suspensionTravel + rh);
     const reach = s.suspensionRest + ws.radius;
@@ -256,8 +274,10 @@ export class Vehicle {
         continue;
       }
       const k = w.front ? t.springFront : t.springRear;
-      const c = 2 * t.damping * Math.sqrt(k * cornerMass);
       const vel = (w.compression - w.prevCompression) / dt;
+      // Coilovers have separate bump (compressing) and rebound (extending) damping.
+      const ratio = t.coilovers ? (vel > 0 ? t.bump : t.rebound) : t.damping;
+      const c = 2 * ratio * Math.sqrt(k * cornerMass);
       // The damper rate is capped (real dampers blow off on sharp hits) and the bump stop is
       // progressive, so a big kerb or rut cannot fire the car into the air.
       let f = k * w.compression + c * clamp(vel, -1.2, 1.2);
@@ -313,6 +333,7 @@ export class Vehicle {
     const rearOmega = (this.wheels[2].omega + this.wheels[3].omega) / 2;
     tr.update(dt, input, { engineRpm: this.engine.rpm, inputRpm: rearOmega * ratio * RAD_TO_RPM });
     this.engine.torqueScale = t.torque;
+    this.engine.updateBoost(dt, tr.throttleCut ? 0 : this.throttlePedal);
     const h = dt / SUBSTEPS;
     const Iw = ws.inertia;
     const r = ws.radius;
@@ -407,7 +428,8 @@ export class Vehicle {
         // Brake bias splits the same total braking between the axles.
         const bias = clamp(t.brakeBias ?? 0.68, 0.4, 0.85);
         const axleTotal = s.brakeTorqueFront + s.brakeTorqueRear;
-        let tb = brake * axleTotal * (w.front ? bias : 1 - bias);
+        const fade = 1 - 0.4 * clamp(((this.brakeHeat ?? 0) - 0.55) / 0.45, 0, 1);
+        let tb = brake * axleTotal * (w.front ? bias : 1 - bias) * fade;
         // ABS: release the foot brake on a wheel the moment it starts to lock (not the handbrake).
         if (tb > 0 && w.grounded && Math.abs(w.vx) > 2) {
           const slip = (w.omega * r - w.vx) / Math.abs(w.vx);
@@ -421,6 +443,11 @@ export class Vehicle {
       this.engine.checkStall(allowStall);
     }
     this.clutchTorque = clutchTorqueSum / SUBSTEPS;
+    // Brake heat: hard braking warms the discs, and hot brakes fade. Moving air cools them.
+    let brakePower = 0;
+    for (const w of this.wheels) if (w.grounded) brakePower += brake * Math.abs(w.omega) * (w.front ? s.brakeTorqueFront : s.brakeTorqueRear);
+    const cap = 1.6e6 * this.parts.brakeCapacity;
+    this.brakeHeat = clamp((this.brakeHeat ?? 0) + (brakePower * dt) / cap - dt * (0.006 + 0.0012 * speed) * this.parts.brakeCapacity, 0, 1);
 
     // ---- Apply forces to the chassis ----
     for (const w of this.wheels) {

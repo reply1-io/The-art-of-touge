@@ -142,6 +142,50 @@ export class CarAudio {
     intake.connect(this.intakeFilter).connect(this.intakeGain).connect(this.master);
     intake.start();
 
+    // Induction: the deep, hungry gulp of air through a pod filter or ITB trumpets. Low band of
+    // noise, pulsed at the intake rate (half the firing frequency) by an oscillator.
+    const ind = ctx.createBufferSource();
+    ind.buffer = this.noise;
+    ind.loop = true;
+    this.indFilter = ctx.createBiquadFilter();
+    this.indFilter.type = 'bandpass';
+    this.indFilter.Q.value = 0.9;
+    this.indFilter.frequency.value = 260;
+    const indLow = ctx.createBiquadFilter();
+    indLow.type = 'lowpass';
+    indLow.frequency.value = 900;
+    this.indPulse = ctx.createGain();
+    this.indPulse.gain.value = 0.5;
+    this.indLfo = ctx.createOscillator();
+    this.indLfo.type = 'triangle';
+    const lfoDepth = ctx.createGain();
+    lfoDepth.gain.value = 0.5;
+    this.indLfo.connect(lfoDepth).connect(this.indPulse.gain);
+    this.indGain = ctx.createGain();
+    this.indGain.gain.value = 0;
+    // A tonal layer under the noise: the trumpets resonate a little.
+    this.indTone = ctx.createOscillator();
+    this.indTone.type = 'sine';
+    const indToneGain = ctx.createGain();
+    indToneGain.gain.value = 0.35;
+    ind.connect(this.indFilter).connect(indLow).connect(this.indPulse).connect(this.indGain).connect(this.master);
+    this.indTone.connect(indToneGain).connect(this.indPulse);
+    ind.start();
+    this.indLfo.start();
+    this.indTone.start();
+
+    // Turbo: a whistle that rises with boost, and the blow-off valve on lift-off.
+    this.whistle = ctx.createOscillator();
+    this.whistle.type = 'sine';
+    this.whistleGain = ctx.createGain();
+    this.whistleGain.gain.value = 0;
+    const whistleBand = ctx.createBiquadFilter();
+    whistleBand.type = 'bandpass';
+    whistleBand.Q.value = 6;
+    this.whistleBand = whistleBand;
+    this.whistle.connect(whistleBand).connect(this.whistleGain).connect(this.master);
+    this.whistle.start();
+
     // ---- Tyres, wind, grind ----
     const squeal = ctx.createBufferSource();
     squeal.buffer = this.noise;
@@ -230,6 +274,39 @@ export class CarAudio {
     const loud = type !== 'stock';
     this.bass.gain.value = loud ? 8 : 0;
     this.subGain.gain.value = loud ? 0.32 : 0;
+  }
+
+  // Intake: 'stock' | 'pod' | 'itb'; turbo: 'none' | 'small' | 'big'.
+  setParts(intake, turbo) {
+    this.intake = intake;
+    this.turbo = turbo;
+  }
+
+  // In-car: the intake is right in front of you and the exhaust is behind the bulkhead.
+  setInterior(on) {
+    this.interior = on;
+  }
+
+  // Blow-off valve: a sharp hiss of dumped boost.
+  #blowOff(strength) {
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 1400;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'peaking';
+    bp.frequency.value = 3200;
+    bp.gain.value = 8;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.32 * strength, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+    src.connect(hp).connect(bp).connect(g).connect(this.master);
+    src.start(t, Math.random());
+    src.stop(t + 0.5);
   }
 
   setMuted(m) {
@@ -336,7 +413,26 @@ export class CarAudio {
     this.engineGain.gain.setTargetAtTime(level, t, e.limiterCut !== this.limiterWas ? 0.004 : 0.02);
     this.limiterWas = e.limiterCut;
     this.intakeFilter.frequency.setTargetAtTime(f * 1.6, t, 0.03);
-    this.intakeGain.gain.setTargetAtTime(running ? load * 0.12 * clamp(rpm / 6000, 0.2, 1) : 0, t, 0.04);
+    const inCar = this.interior ? 1 : 0;
+    this.intakeGain.gain.setTargetAtTime(running ? load * 0.12 * clamp(rpm / 6000, 0.2, 1) * (1 + inCar) : 0, t, 0.04);
+    // Induction roar: louder with ITBs, louder still from inside the car.
+    const indLevel = { stock: 0.04, pod: 0.22, itb: 0.5 }[this.intake || 'stock'] * (1 + inCar * 1.4);
+    this.indLfo.frequency.setTargetAtTime(f / 2, t, 0.012);
+    this.indTone.frequency.setTargetAtTime(clamp(f * 0.75, 30, 300), t, 0.02);
+    this.indFilter.frequency.setTargetAtTime(160 + rpm * 0.05 + load * 120, t, 0.03);
+    this.indGain.gain.setTargetAtTime(running ? indLevel * (0.25 + load * 0.75) * clamp(0.35 + rpm / 7000, 0, 1.2) : 0, t, 0.03);
+    // Inside, the exhaust note is muffled by the bulkhead.
+    if (inCar) this.engineFilter.frequency.setTargetAtTime((220 + load * 900 + rpm * 0.1) * 0.7, t, 0.03);
+    // Turbo whistle follows boost; the blow-off valve fires when you lift with boost up.
+    const boost = e.boost || 0;
+    const big = this.turbo === 'big';
+    if (this.turbo && this.turbo !== 'none') {
+      this.whistle.frequency.setTargetAtTime(1800 + boost * (big ? 3800 : 5200) + rpm * 0.15, t, 0.05);
+      this.whistleBand.frequency.setTargetAtTime(1800 + boost * (big ? 3800 : 5200) + rpm * 0.15, t, 0.05);
+      this.whistleGain.gain.setTargetAtTime(boost * (big ? 0.16 : 0.1) * (1 + inCar * 0.5), t, 0.05);
+      if (this.prevBoost > 0.35 && vehicle.throttlePedal < 0.2 && this.prevThrottle > 0.5) this.#blowOff(big ? 1 : 0.7);
+    } else this.whistleGain.gain.setTargetAtTime(0, t, 0.05);
+    this.prevBoost = boost;
 
     // Events: stall, start, lift-off pops, downshift blips.
     if (this.prevRunning && !running) this.#sputter();
