@@ -158,7 +158,7 @@ export const INTAKES = {
 };
 export const TURBOS = {
   none: { name: 'None', blurb: 'Naturally aspirated M42. Linear and predictable.' },
-  small: { name: 'Small turbo', blurb: 'T25-size. Spools early, about +45% torque, gentle lag. Whistle and blow-off valve.' },
+  small: { name: 'Small turbo', blurb: 'T25-size. Spools early, about +45% torque, gentle lag. Soft spool whine and flutter on lift-off.' },
   big: { name: 'Big turbo', blurb: 'T3-size. Nothing below 4,000 rpm, then it doubles the torque. Laggy, savage, loud.' },
 };
 export const CLUTCHES = {

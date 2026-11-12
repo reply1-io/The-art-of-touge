@@ -174,14 +174,14 @@ export class CarAudio {
     this.indLfo.start();
     this.indTone.start();
 
-    // Turbo: a whistle that rises with boost, and the blow-off valve on lift-off.
+    // Turbo: a spool whine that rises with boost, and flutter on lift-off.
     this.whistle = ctx.createOscillator();
     this.whistle.type = 'sine';
     this.whistleGain = ctx.createGain();
     this.whistleGain.gain.value = 0;
     const whistleBand = ctx.createBiquadFilter();
     whistleBand.type = 'bandpass';
-    whistleBand.Q.value = 6;
+    whistleBand.Q.value = 3;
     this.whistleBand = whistleBand;
     this.whistle.connect(whistleBand).connect(this.whistleGain).connect(this.master);
     this.whistle.start();
@@ -287,26 +287,51 @@ export class CarAudio {
     this.interior = on;
   }
 
-  // Blow-off valve: a sharp hiss of dumped boost.
-  #blowOff(strength) {
+  // Turbo flutter (compressor surge) on lift-off: with nowhere to go, the boosted air pushes
+  // back through the turbo in a fast, chattering "stu-tu-tu-tu" that slows and fades as the
+  // pressure drops. Each chatter is a short puff of low, breathy noise.
+  #flutter(strength, big) {
     const ctx = this.ctx;
-    const t = ctx.currentTime;
-    const src = ctx.createBufferSource();
-    src.buffer = this.noise;
-    const hp = ctx.createBiquadFilter();
-    hp.type = 'highpass';
-    hp.frequency.value = 1400;
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'peaking';
-    bp.frequency.value = 3200;
-    bp.gain.value = 8;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.32 * strength, t + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
-    src.connect(hp).connect(bp).connect(g).connect(this.master);
-    src.start(t, Math.random());
-    src.stop(t + 0.5);
+    const t0 = ctx.currentTime;
+    const count = Math.round((big ? 11 : 8) * (0.6 + 0.4 * strength));
+    let at = t0 + 0.02;
+    let gap = big ? 0.045 : 0.038; // seconds between chatters, growing as it winds down
+    for (let k = 0; k < count; k++) {
+      const fade = 1 - k / count;
+      const src = ctx.createBufferSource();
+      src.buffer = this.noise;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = (big ? 520 : 680) - k * 18 + Math.random() * 60;
+      bp.Q.value = 1.6;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 1800;
+      const g = ctx.createGain();
+      const peak = 0.42 * strength * (0.35 + 0.65 * fade);
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.linearRampToValueAtTime(peak, at + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.001, at + gap * 0.85);
+      src.connect(bp).connect(lp).connect(g).connect(this.master);
+      src.start(at, Math.random());
+      src.stop(at + gap);
+      at += gap;
+      gap *= 1.07;
+    }
+    // A soft rush of air under the chatter.
+    const air = ctx.createBufferSource();
+    air.buffer = this.noise;
+    const af = ctx.createBiquadFilter();
+    af.type = 'bandpass';
+    af.frequency.value = 900;
+    af.Q.value = 0.7;
+    const ag = ctx.createGain();
+    ag.gain.setValueAtTime(0.0001, t0);
+    ag.gain.linearRampToValueAtTime(0.08 * strength, t0 + 0.02);
+    ag.gain.exponentialRampToValueAtTime(0.001, at);
+    air.connect(af).connect(ag).connect(this.master);
+    air.start(t0, Math.random());
+    air.stop(at + 0.05);
   }
 
   setMuted(m) {
@@ -423,14 +448,16 @@ export class CarAudio {
     this.indGain.gain.setTargetAtTime(running ? indLevel * (0.25 + load * 0.75) * clamp(0.35 + rpm / 7000, 0, 1.2) : 0, t, 0.03);
     // Inside, the exhaust note is muffled by the bulkhead.
     if (inCar) this.engineFilter.frequency.setTargetAtTime((220 + load * 900 + rpm * 0.1) * 0.7, t, 0.03);
-    // Turbo whistle follows boost; the blow-off valve fires when you lift with boost up.
+    // Turbo spool follows boost; it flutters when you lift with boost up.
     const boost = e.boost || 0;
     const big = this.turbo === 'big';
     if (this.turbo && this.turbo !== 'none') {
-      this.whistle.frequency.setTargetAtTime(1800 + boost * (big ? 3800 : 5200) + rpm * 0.15, t, 0.05);
-      this.whistleBand.frequency.setTargetAtTime(1800 + boost * (big ? 3800 : 5200) + rpm * 0.15, t, 0.05);
-      this.whistleGain.gain.setTargetAtTime(boost * (big ? 0.16 : 0.1) * (1 + inCar * 0.5), t, 0.05);
-      if (this.prevBoost > 0.35 && vehicle.throttlePedal < 0.2 && this.prevThrottle > 0.5) this.#blowOff(big ? 1 : 0.7);
+      // Spool: a lower, softer whine (the big turbo is deeper still) that rises gently with boost.
+      const spool = (big ? 420 : 560) + boost * (big ? 900 : 1100) + rpm * 0.04;
+      this.whistle.frequency.setTargetAtTime(spool, t, 0.06);
+      this.whistleBand.frequency.setTargetAtTime(spool, t, 0.06);
+      this.whistleGain.gain.setTargetAtTime(boost * (big ? 0.13 : 0.09) * (1 + inCar * 0.5), t, 0.06);
+      if (this.prevBoost > 0.3 && vehicle.throttlePedal < 0.2 && this.prevThrottle > 0.5) this.#flutter(Math.min(1, this.prevBoost * 1.2), big);
     } else this.whistleGain.gain.setTargetAtTime(0, t, 0.05);
     this.prevBoost = boost;
 
