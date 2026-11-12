@@ -25,7 +25,6 @@ export const CAR = {
   suspensionRest: 0.3, // free length of the strut travel used by the raycast
   suspensionTravel: 0.18, // bump travel before the bump stop
   maxSteer: (36 * Math.PI) / 180,
-  frontCamberGrip: 1.04, // extra front cornering grip from negative camber
 
   engine: {
     idleRpm: 850,
@@ -119,7 +118,73 @@ export const TUNABLE_DEFAULTS = {
   steerSpeedFalloff: 0.55, // fraction of lock removed at high speed
   lsdLock: 0.3, // limited-slip locking ratio (E30 factory LSD is about 25%)
   lsdPreload: 40, // N m
+  wheel: 'bbs', // rim style (looks only)
+  rim: 14, // rim diameter, inches
+  profile: 65, // tyre sidewall height as % of width
+  camberFront: 1.0, // degrees of negative camber
+  camberRear: 0.5,
+  strutFront: false, // strut tower braces
+  strutRear: false,
 };
+
+// Wheels (tuning shop). Looks only: size, sidewall and camber are separate settings.
+export const WHEELS = {
+  bbs: { name: 'BBS Mesh', blurb: 'The factory cross-spoke. Silver mesh, polished lip.', face: '#c7c9cf', lip: '#d8dadf', dish: '#26272b', spokes: 'mesh' },
+  gold: { name: 'Gold Mesh', blurb: 'Gold cross-spoke with a deep polished lip. Pure 80s.', face: '#d6b04a', lip: '#e4e6ea', dish: '#3a3020', spokes: 'mesh' },
+  six: { name: 'Bronze 6-Spoke', blurb: 'Light forged six-spoke in bronze, the Japanese touge classic.', face: '#8e6a3f', lip: '#8e6a3f', dish: '#231c15', spokes: 'six' },
+  steel: { name: 'Black Steelies', blurb: 'Plain black steel wheels. Cheap, tough, honest.', face: '#1d1e21', lip: '#26272b', dish: '#141517', spokes: 'steel' },
+};
+
+// Wheel and tyre sizes: tyre width grows with the rim, as you would fit on the real car.
+export const RIM_SIZES = [14, 15, 16, 17];
+const TYRE_WIDTH = { 14: 195, 15: 205, 16: 215, 17: 225 };
+
+// Anti-roll (sway) bar options, as front / rear bar rates in N/m.
+export const SWAY_FRONT = { soft: 7000, stock: 14000, sport: 22000, race: 32000 };
+export const SWAY_REAR = { off: 0, stock: 7000, sport: 14000, race: 22000 };
+
+// Lateral grip multiplier from negative camber: more cornering grip up to about 3 degrees, then
+// the tyre starts to ride on its inner edge.
+function camberLateral(deg) {
+  return deg <= 3 ? 1 + 0.04 * deg : 1.12 - 0.06 * (deg - 3);
+}
+
+// Everything the physics needs from the wheel, tyre and chassis setup.
+export function wheelSetup(t) {
+  const rim = RIM_SIZES.includes(t.rim) ? t.rim : 14;
+  const width = TYRE_WIDTH[rim];
+  const profile = clamp(t.profile ?? 65, 30, 75);
+  const sidewall = (width / 1000) * (profile / 100);
+  const radius = rim * 0.0127 + sidewall;
+  // Low, stiff sidewalls build grip sooner (smaller relaxation length and peak slip angle); tall
+  // ones are softer and more forgiving. Wider tyres grip a little more.
+  const p = profile / 65;
+  const brace = (on) => (on ? 1 : 0);
+  const cf = clamp(t.camberFront ?? 1, 0, 6);
+  const cr = clamp(t.camberRear ?? 0.5, 0, 6);
+  return {
+    rim,
+    width,
+    profile,
+    radius,
+    rimRadius: rim * 0.0127,
+    inertia: CAR.wheelInertia * (radius / CAR.wheelRadius) ** 2 * (1 + (rim - 14) * 0.07),
+    relaxation: 0.45 * (0.45 + 0.55 * p),
+    peakScale: 0.8 + 0.2 * p,
+    gripScale: 1 + ((width - 195) / 195) * 0.25,
+    // Strut braces stop the towers flexing: a touch more grip and a sharper turn-in on that axle.
+    latFront: camberLateral(cf) * (1 + 0.02 * brace(t.strutFront)),
+    latRear: (camberLateral(cr) / camberLateral(0.5)) * (1 + 0.02 * brace(t.strutRear)),
+    lonFront: 1 - 0.035 * Math.max(0, cf - 1),
+    lonRear: 1 - 0.035 * Math.max(0, cr - 1),
+    relaxFront: t.strutFront ? 0.85 : 1,
+    relaxRear: t.strutRear ? 0.85 : 1,
+  };
+}
+
+function clamp(v, lo, hi) {
+  return v < lo ? lo : v > hi ? hi : v;
+}
 
 export const TUNABLE_RANGES = {
   grip: [0.6, 1.5, 0.01],

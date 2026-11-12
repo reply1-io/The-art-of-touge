@@ -54,11 +54,13 @@
     <div id="toast"></div>
     <div id="vhs" aria-hidden="true"><span id="vhs-play">&#9654; PLAY</span></div>
 
-    <section id="title" class="screen">
-      <div class="panel">
+    <section id="title" class="screen side">
+      <div class="brand">
         <p class="kicker">THE ART OF</p>
         <h1>TOUGE</h1>
-        <p class="sub">BMW E30 318is &middot; Night</p>
+        <p class="sub" id="title-sub">BMW E30 318is</p>
+      </div>
+      <div class="panel">
         <div class="field">
           <span class="label">Road</span>
           <div class="choices" data-setting="map"></div>
@@ -79,9 +81,9 @@
       </div>
     </section>
 
-    <section id="pause" class="screen hidden">
+    <section id="pause" class="screen side hidden">
       <div class="panel">
-        <h2>MENU</h2>
+        <h2>PAUSED</h2>
         <div class="field">
           <span class="label">Time</span>
           <div class="choices" data-setting="time"></div>

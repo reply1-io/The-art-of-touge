@@ -81,3 +81,49 @@ test('brake bias moves braking between the axles', async () => {
   // Front braking is limited by front grip, so compare what the rear axle does.
   assert.ok((await rearForce(0.5)) > (await rearForce(0.8)) * 1.3);
 });
+
+async function corneringWith(setup) {
+  const { car, run } = await makeWorld('autoClutch');
+  Object.assign(car.tune, setup);
+  car.trans.requestGear(2, 0);
+  run(6, () => ({ throttle: car.forwardSpeed < 14 ? 1 : 0 }));
+  let maxG = 0;
+  run(4, (t) => {
+    if (Math.abs(car.slideAngle) < 0.25) maxG = Math.max(maxG, car.wheels.reduce((a, w) => a + Math.abs(w.fy), 0) / (1100 * 9.81));
+    return { throttle: car.forwardSpeed < 14 ? 1 : 0, steer: -Math.min(1, t / 3) };
+  });
+  return maxG;
+}
+
+test('camber: a few degrees adds cornering grip, far too much takes it away', async () => {
+  const zero = await corneringWith({ camberFront: 0, camberRear: 0 });
+  const three = await corneringWith({ camberFront: 3, camberRear: 2 });
+  const six = await corneringWith({ camberFront: 6, camberRear: 6 });
+  assert.ok(three > zero, `0: ${zero}, 3: ${three}`);
+  assert.ok(six < three, `3: ${three}, 6: ${six}`);
+});
+
+test('wheel and sidewall sizes change the rolling radius, so the car sits higher or lower', async () => {
+  const y = {};
+  for (const [rim, profile] of [[14, 65], [17, 35], [15, 75]]) {
+    const { car, run } = await makeWorld('manual');
+    Object.assign(car.tune, { rim, profile });
+    run(2);
+    y[`${rim}/${profile}`] = car.body.translation().y;
+  }
+  assert.ok(y['15/75'] > y['14/65'] + 0.02 && y['17/35'] < y['14/65'] - 0.005, JSON.stringify(y));
+});
+
+test('sway bars and strut braces: stiffer bars cut body roll', async () => {
+  const roll = {};
+  for (const [name, f, r] of [['soft', 7000, 0], ['race', 32000, 22000]]) {
+    const { car, run } = await makeWorld('autoClutch');
+    Object.assign(car.tune, { antiRollFront: f, antiRollRear: r, strutFront: name === 'race', strutRear: name === 'race' });
+    car.trans.requestGear(2, 0);
+    run(6, () => ({ throttle: car.forwardSpeed < 14 ? 1 : 0 }));
+    run(2.5, () => ({ throttle: car.forwardSpeed < 14 ? 1 : 0, steer: -0.5 }));
+    const q = car.body.rotation();
+    roll[name] = Math.abs(2 * (q.w * q.z + q.x * q.y));
+  }
+  assert.ok(roll.race < roll.soft * 0.8, JSON.stringify(roll));
+});

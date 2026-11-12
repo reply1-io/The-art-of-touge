@@ -2,12 +2,18 @@
 export const TIMES = {
   day: {
     name: 'Day',
-    fog: 0xb4cbe0,
+    fog: 0xbcd0e2,
     fogNear: 140,
     fogFar: 620,
+    fogDensity: 0.00034, // exponential haze: the far ranges fade blue into the sky
+    detailRange: 640, // trees, signs and rails are drawn out to here
+    groundRange: 1300, // road and detailed terrain out to here (the ranges mesh covers beyond)
+    cloudSea: 0xf4f7fb,
+    cloudSeaGlow: 0x30343a,
+    cloudSeaOpacity: 0.92,
     skyTop: 0x2f6fc4,
     skyMid: 0x76aee2,
-    skyHorizon: 0xd2e3f1,
+    skyHorizon: 0xc6d9ea,
     sunColor: 0xfff0d6,
     sunIntensity: 2.7,
     sunElevation: 7, // degrees: low enough to sit in the windscreen when you drive toward it
@@ -26,12 +32,18 @@ export const TIMES = {
   },
   sunset: {
     name: 'Sunset',
-    fog: 0xc98d78,
+    fog: 0xd9967a,
     fogNear: 110,
     fogFar: 520,
+    fogDensity: 0.00046,
+    detailRange: 560,
+    groundRange: 1100,
+    cloudSea: 0xffc3a0,
+    cloudSeaGlow: 0x3a1c22,
+    cloudSeaOpacity: 0.9,
     skyTop: 0x2b2f6e,
     skyMid: 0x9a5e8c,
-    skyHorizon: 0xffa65e,
+    skyHorizon: 0xf2a070,
     sunColor: 0xffa860,
     sunIntensity: 2.2,
     sunElevation: 3.5,
@@ -50,12 +62,18 @@ export const TIMES = {
   },
   night: {
     name: 'Night',
-    fog: 0x0b1430,
+    fog: 0x0e1834,
     fogNear: 70,
     fogFar: 340,
+    fogDensity: 0.0011,
+    detailRange: 420,
+    groundRange: 900,
+    cloudSea: 0x2a3658,
+    cloudSeaGlow: 0x050812,
+    cloudSeaOpacity: 0.75,
     skyTop: 0x02040c,
     skyMid: 0x0b1638,
-    skyHorizon: 0x1d2c55,
+    skyHorizon: 0x182649,
     sunColor: 0x9fb4ff, // moonlight
     sunIntensity: 0.85,
     sunElevation: 38,

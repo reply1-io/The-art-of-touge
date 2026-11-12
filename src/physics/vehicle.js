@@ -10,7 +10,7 @@
 
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Engine, RAD_TO_RPM } from './engine.js';
-import { TIRES } from '../config.js';
+import { TIRES, wheelSetup } from '../config.js';
 import { Transmission } from './transmission.js';
 
 const G = 9.81;
@@ -213,10 +213,12 @@ export class Vehicle {
 
     // ---- Suspension raycasts ----
     // Ride height moves the suspension mounts relative to the body: raise it and the body sits higher.
+    const ws = wheelSetup(t);
+    this.wheelSetup = ws;
     const rh = clamp((t.rideHeight || 0) / 1000, -0.08, 0.05);
     this.mountY = s.wheelMountY - rh;
     const travel = Math.max(0.07, s.suspensionTravel + rh);
-    const reach = s.suspensionRest + s.wheelRadius;
+    const reach = s.suspensionRest + ws.radius;
     const down = scale(axisY, -1);
     for (const w of this.wheels) {
       const mount = add(pos, rotate(q, [w.x, this.mountY, w.z]));
@@ -238,7 +240,7 @@ export class Vehicle {
         w.contact = add(mount, scale(down, toi));
         w.normal = v3(hit.normal);
         w.surface = this.surfaceOf ? this.surfaceOf(hit.collider.handle) : 'asphalt';
-        w.center = add(w.contact, scale(axisY, s.wheelRadius));
+        w.center = add(w.contact, scale(axisY, ws.radius));
       } else {
         w.grounded = false;
         w.compression = 0;
@@ -293,14 +295,16 @@ export class Vehicle {
       // Grip from the tyre compound and the surface under it. On grass some tyres get nervous:
       // their grip wanders from moment to moment.
       const tyre = TIRES[t.tire] || TIRES.street;
-      let mu = tyre.mu * (t.grip ?? 1);
+      let mu = tyre.mu * (t.grip ?? 1) * ws.gripScale;
       if (w.surface === 'gravel') mu *= tyre.gravel;
       if (w.surface === 'grass') {
         w.grassJitter = clamp((w.grassJitter ?? 0) * 0.9 + (Math.random() - 0.5) * 0.5, -1, 1);
         mu *= tyre.grass * (1 + tyre.grassNoise * w.grassJitter);
       }
-      // Front negative camber gives the fronts a little more cornering grip than the rears.
-      w.mu = w.front ? mu * (s.frontCamberGrip ?? 1) : mu;
+      // Negative camber: more cornering grip, a little less under braking and traction.
+      w.mu = mu;
+      w.latGrip = w.front ? ws.latFront : ws.latRear;
+      w.lonGrip = w.front ? ws.lonFront : ws.lonRear;
     }
 
     // ---- Drivetrain: wheels, engine, clutch, gearbox and LSD, sub-stepped ----
@@ -310,8 +314,8 @@ export class Vehicle {
     tr.update(dt, input, { engineRpm: this.engine.rpm, inputRpm: rearOmega * ratio * RAD_TO_RPM });
     this.engine.torqueScale = t.torque;
     const h = dt / SUBSTEPS;
-    const Iw = s.wheelInertia;
-    const r = s.wheelRadius;
+    const Iw = ws.inertia;
+    const r = ws.radius;
     const Ie = s.engine.inertia;
     // The engine can only stall when pulling away from (or coming to) a stop, never while driving.
     if (speed < 0.6) this.launching = true;
@@ -340,19 +344,19 @@ export class Vehicle {
         // Tyre relaxation: the carcass takes about half a metre of rolling to build up a new slip
         // angle, so grip arrives progressively instead of snapping on and off.
         const targetAngle = Math.atan2(w.vy, Math.max(Math.abs(w.vx), 3));
-        const relax = clamp(((Math.abs(w.vx) + 2) * h) / 0.45, 0, 1);
+        const relax = clamp(((Math.abs(w.vx) + 2) * h) / (ws.relaxation * (w.front ? ws.relaxFront : ws.relaxRear)), 0, 1);
         w.relaxedAngle = (w.relaxedAngle ?? 0) + (targetAngle - (w.relaxedAngle ?? 0)) * relax;
         const slipAngle = w.relaxedAngle;
         const sx = slipRatio / tyre.peakSlip;
-        const sy = Math.tan(slipAngle) / Math.tan(tyre.peakAngle);
+        const sy = Math.tan(slipAngle) / Math.tan(tyre.peakAngle * ws.peakScale);
         const sMag = Math.hypot(sx, sy);
         const loadSens = clamp(1 - 0.06 * (w.load / (cornerMass * G) - 1), 0.8, 1.1);
         let fx = 0;
         let fy = 0;
         if (sMag > 1e-6) {
           const f = w.mu * loadSens * w.load * tyreCurve(sMag, tyre.slide, tyre.falloff);
-          fx = (f * sx) / sMag;
-          fy = (-f * sy) / sMag;
+          fx = (f * sx * w.lonGrip) / sMag;
+          fy = (-f * sy * w.latGrip) / sMag;
         }
         // A tyre cannot push harder than it takes to remove its own slip in this step.
         const fxMax = (Math.abs(w.omega * r - w.vx) * Iw) / (r * r * h);

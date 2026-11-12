@@ -36,15 +36,16 @@ const scene = new THREE.Scene();
 // Night: dark blue fog, moonlight and a soft sky fill. The headlights are the main light.
 let FOG_FAR = 340;
 scene.background = new THREE.Color(0x0b1430);
-scene.fog = new THREE.Fog(0x0b1430, 70, FOG_FAR);
-const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1500);
+// Exponential haze: close things stay crisp, the far ranges fade into the sky.
+scene.fog = new THREE.FogExp2(0x0b1430, 0.0011);
+const camera = new THREE.PerspectiveCamera(60, 1, 0.15, 9000);
 const moon = new THREE.DirectionalLight(0x9fb4ff, 0.85);
 moon.position.set(-45, 55, -70);
 scene.add(moon);
 const hemi = new THREE.HemisphereLight(0x4a5e96, 0x14161c, 1.15);
 scene.add(hemi);
 // Headlights: one spot light that rides on the car and lights the road ahead.
-const headlight = new THREE.SpotLight(0xfff2d8, 1800, 170, 0.62, 0.5, 1.4);
+const headlight = new THREE.SpotLight(0xfff2d8, 1300, 150, 0.6, 0.6, 1.5);
 scene.add(headlight, headlight.target);
 const sky = new Sky(scene);
 const flare = new LensFlare($('flare'));
@@ -54,16 +55,19 @@ let timePreset = TIMES.night;
 // Sun (or moon) direction for this road: low over the road's general direction of travel, so you
 // drive toward it a good part of the time.
 function sunDirection(preset) {
-  const r = mountain.road;
-  let dx = 0;
-  let dz = 0;
-  for (let i = 0; i + 50 < r.count; i += 50) {
-    dx += r.x[i + 50] - r.x[i];
-    dz += r.z[i + 50] - r.z[i];
-  }
-  const az = Math.atan2(dx, dz) + 0.35;
+  const az = mountain.sunAz;
   const el = (preset.sunElevation * Math.PI) / 180;
   return new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).normalize();
+}
+
+// Does a peak of the far ranges stand between the camera and the sun?
+function behindRange(from) {
+  for (let d = 300; d < 9000; d *= 1.18) {
+    const x = from.x + sunDir.x * d;
+    const z = from.z + sunDir.z * d;
+    if (mountain.rangeHeightAt(x, z) > from.y + sunDir.y * d) return true;
+  }
+  return false;
 }
 
 function applyTime() {
@@ -72,9 +76,8 @@ function applyTime() {
   timePreset = p;
   scene.background.setHex(p.fog);
   scene.fog.color.setHex(p.fog);
-  scene.fog.near = p.fogNear;
-  scene.fog.far = p.fogFar;
-  FOG_FAR = p.fogFar;
+  scene.fog.density = p.fogDensity;
+  FOG_FAR = p.detailRange;
   sunDir.copy(sunDirection(p));
   moon.color.setHex(p.sunColor);
   moon.intensity = p.sunIntensity;
@@ -85,7 +88,6 @@ function applyTime() {
   headlight.visible = p.lights;
   sky.setTime(p, sunDir);
   mountain.setTime(p);
-  camera.far = 3600; // far enough for the distant ranges
   camera.updateProjectionMatrix();
 }
 
@@ -140,7 +142,9 @@ function resize() {
   camera.updateProjectionMatrix();
   hud.resize();
   flare.resize();
+  shopRef?.resize(w, h);
 }
+let shopRef = null;
 window.addEventListener('resize', resize);
 resize();
 
@@ -198,6 +202,7 @@ function renderChoices() {
 
 function applySettings() {
   applyTime();
+  updateTitleSub();
   rig.mode = settings.camera;
   audio.setMuted(!settings.sound);
   vhs.strength = settings.vhs ? 0.45 : 0;
@@ -249,6 +254,7 @@ function recoverCar() {
 function setPaused(p) {
   paused = p;
   $('pause').classList.toggle('hidden', !p);
+  document.body.classList.toggle('paused', p);
   if (p) {
     input.releaseAll();
     audio.suspend();
@@ -290,7 +296,12 @@ $('btn-cam').addEventListener('click', () => {
   renderChoices();
 });
 $('btn-tuning').addEventListener('click', () => tuning.toggle());
-const shop = new Shop($('shop'), tune, () => saveTuning(tune));
+const shop = new Shop($('shop'), tune, () => {
+  saveTuning(tune);
+  carModel?.applySetup(tune);
+});
+shopRef = shop;
+shop.resize(window.innerWidth, window.innerHeight);
 $('btn-shop').addEventListener('click', () => shop.open());
 $('btn-shop2').addEventListener('click', () => shop.open());
 window.addEventListener('keydown', (e) => {
@@ -359,6 +370,41 @@ function updateRun(dt) {
   }
 }
 
+// ---------- Title screen: a slow flight along the pass ----------
+let titleS = 0;
+const titleLook = new THREE.Vector3();
+function titleCamera(dt) {
+  const r = mountain.road;
+  titleS = (titleS + dt * 14) % ((r.count - 80) * 2);
+  const f = 20 + titleS / 2;
+  const i = Math.floor(f);
+  const k = f - i;
+  const lerp = (arr, j) => arr[j] + (arr[j + 1] - arr[j]) * k;
+  // Smooth the path by averaging a stretch of road, so the camera glides instead of following
+  // every corner.
+  const avg = (arr, j, span) => {
+    let sum = 0;
+    for (let n = -span; n <= span; n++) sum += arr[Math.max(0, Math.min(r.count - 1, j + n))];
+    return sum / (2 * span + 1);
+  };
+  const x = avg(r.x, i, 30);
+  const z = avg(r.z, i, 30);
+  const y = Math.max(lerp(r.y, i), avg(r.y, i, 30)) + 24;
+  const a = Math.min(r.count - 1, i + 70);
+  camera.position.set(x, y, z);
+  titleLook.set(avg(r.x, a, 20), avg(r.y, a, 20) + 4, avg(r.z, a, 20));
+  camera.lookAt(titleLook);
+}
+
+function updateTitleSub() {
+  const t = TRACKS[settings.map] || TRACKS.akina;
+  const time = TIMES[settings.time] || TIMES.night;
+  $('title-sub').innerHTML = '';
+  const b = document.createElement('b');
+  b.textContent = t.name;
+  $('title-sub').append(b, ` · ${t.blurb} · ${time.name}`);
+}
+
 // ---------- Main loop ----------
 function frame(now) {
   requestAnimationFrame(frame);
@@ -399,6 +445,15 @@ function frame(now) {
   $('start').classList.toggle('hidden', vehicle.engine.running);
   $('clutch').style.setProperty('--engaged', `${Math.round((1 - vehicle.trans.coupling) * 100)}%`);
 
+  // The tuning shop has the screen: draw the garage and the turntable instead of the road.
+  if (shop.isOpen) {
+    shop.update(dt);
+    vhs.render(shop.scene, shop.camera, now / 1000);
+    flare.draw(dt, camera, sunDir, 0, [0, 0, 0], false);
+    hud.draw(null);
+    return;
+  }
+
   // Interpolate the car between physics steps for smooth motion on any refresh rate.
   const alpha = active ? accumulator / DT : 1;
   carModel.root.position.lerpVectors(prevPos, curPos, alpha);
@@ -409,15 +464,16 @@ function frame(now) {
   headlight.position.copy(nose);
   headlight.target.position.copy(new THREE.Vector3(0, -1.6, 22).applyQuaternion(carModel.root.quaternion).add(carModel.root.position));
   if (window.__touge?.debugCam) window.__touge.debugCam(camera, carModel.root);
+  else if (!running) titleCamera(dt);
   else rig.update(dt, carModel.root, vehicle.body.linvel());
   sky.update(camera);
-  mountain.update(camera.position, FOG_FAR + 30);
+  mountain.update(camera.position, timePreset.detailRange, timePreset.groundRange, dt);
   vhs.render(scene, camera, now / 1000);
   // Lens flare when facing the sun, unless the mountain is in the way.
   let sunVisible = false;
   if (timePreset.flare > 0) {
     const ray = new RAPIER.Ray(camera.position, sunDir);
-    sunVisible = !world.castRay(ray, 900, true, undefined, undefined, undefined, vehicle.body);
+    sunVisible = !world.castRay(ray, 900, true, undefined, undefined, undefined, vehicle.body) && !behindRange(camera.position);
   }
   flare.draw(dt, camera, sunDir, timePreset.flare, timePreset.flareTint, sunVisible);
 
@@ -451,6 +507,7 @@ async function boot() {
   vehicle = new Vehicle(world, CAR, tune, settings.mode);
   vehicle.surfaceOf = mountain.layout.surfaceOf;
   carModel = new CarModel(CAR);
+  carModel.applySetup(tune);
   scene.add(carModel.root);
   // Blob shadow rides under the car, at ground level in the car's own frame.
   shadow = blobShadow();
@@ -466,7 +523,7 @@ async function boot() {
   $('loading').textContent = '';
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;

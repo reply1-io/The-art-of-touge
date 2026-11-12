@@ -2,6 +2,7 @@
 // Body space matches the physics body: +x left, +y up, +z forward; the origin is the physics body
 // origin, which rides about 0.62 m above the ground.
 import * as THREE from 'three';
+import { WHEELS, wheelSetup, TUNABLE_DEFAULTS } from '../config.js';
 
 const GROUND = -0.62; // ground level in body space at static ride height
 
@@ -338,59 +339,100 @@ function detailPolys() {
   return { trim, chrome, tail };
 }
 
-// ---------- BBS-style cross-spoke mesh wheel ----------
-function bbsTexture() {
+// ---------- Wheels: rim face textures per style ----------
+const faceCache = new Map();
+function rimTexture(styleId) {
+  if (faceCache.has(styleId)) return faceCache.get(styleId);
+  const st = WHEELS[styleId] || WHEELS.bbs;
   const c = document.createElement('canvas');
   c.width = c.height = 128;
   const g = c.getContext('2d');
-  g.fillStyle = '#1a1a1c';
-  g.fillRect(0, 0, 128, 128);
-  // Polished lip.
-  g.fillStyle = '#d8dadf';
-  g.beginPath();
-  g.arc(64, 64, 62, 0, Math.PI * 2);
-  g.fill();
-  g.fillStyle = '#26272b';
-  g.beginPath();
-  g.arc(64, 64, 52, 0, Math.PI * 2);
-  g.fill();
-  // Cross-spoke mesh: pairs of angled spokes that form diamonds.
-  g.strokeStyle = '#c7c9cf';
-  g.lineWidth = 4;
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * Math.PI * 2;
-    for (const d of [0.32, -0.32]) {
-      g.beginPath();
-      g.moveTo(64 + Math.cos(a) * 14, 64 + Math.sin(a) * 14);
-      g.lineTo(64 + Math.cos(a + d) * 52, 64 + Math.sin(a + d) * 52);
-      g.stroke();
+  const disc = (r, fill) => {
+    g.fillStyle = fill;
+    g.beginPath();
+    g.arc(64, 64, r, 0, Math.PI * 2);
+    g.fill();
+  };
+  disc(64, st.lip); // polished lip
+  disc(54, st.dish);
+  if (st.spokes === 'mesh') {
+    // Cross-spoke mesh: pairs of angled spokes that form diamonds.
+    g.strokeStyle = st.face;
+    g.lineWidth = 4;
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      for (const d of [0.32, -0.32]) {
+        g.beginPath();
+        g.moveTo(64 + Math.cos(a) * 14, 64 + Math.sin(a) * 14);
+        g.lineTo(64 + Math.cos(a + d) * 54, 64 + Math.sin(a + d) * 54);
+        g.stroke();
+      }
     }
+    disc(15, st.face);
+  } else if (st.spokes === 'six') {
+    // Six straight, wide spokes.
+    g.fillStyle = st.face;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      g.save();
+      g.translate(64, 64);
+      g.rotate(a);
+      g.beginPath();
+      g.moveTo(-6, 0);
+      g.lineTo(-9, 54);
+      g.lineTo(9, 54);
+      g.lineTo(6, 0);
+      g.fill();
+      g.restore();
+    }
+    disc(18, st.face);
+  } else {
+    // Steel wheel: plain dish with a ring of vent holes and a small cap.
+    disc(54, st.face);
+    g.fillStyle = '#060607';
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      g.beginPath();
+      g.ellipse(64 + Math.cos(a) * 36, 64 + Math.sin(a) * 36, 7, 5, a, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.strokeStyle = '#2e2f33';
+    g.lineWidth = 3;
+    g.beginPath();
+    g.arc(64, 64, 24, 0, Math.PI * 2);
+    g.stroke();
+    disc(12, '#3a3b40');
   }
-  g.fillStyle = '#b9bbc1';
-  g.beginPath();
-  g.arc(64, 64, 15, 0, Math.PI * 2);
-  g.fill();
-  g.fillStyle = '#2b2c30';
-  g.beginPath();
-  g.arc(64, 64, 6, 0, Math.PI * 2);
-  g.fill();
+  disc(6, '#2b2c30');
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
+  faceCache.set(styleId, t);
   return t;
 }
 
-function makeWheel(material, faceMaterial) {
+// One wheel: tyre tread, sidewalls between the rim and the tread, the rim face and the inner side.
+// Built facing +x (outward for a left wheel).
+function makeWheel(ws, styleId, tyreMat, wallMat) {
   const group = new THREE.Group();
-  const tyre = new THREE.CylinderGeometry(WHEEL_R, WHEEL_R, 0.195, 16, 1, true);
-  tyre.rotateZ(Math.PI / 2);
-  group.add(new THREE.Mesh(tyre, material));
-  const face = new THREE.CircleGeometry(WHEEL_R * 0.98, 16);
+  const R = ws.radius;
+  const r = ws.rimRadius + 0.012;
+  const half = ws.width / 2000;
+  const tread = new THREE.CylinderGeometry(R, R, half * 2, 20, 1, true);
+  tread.rotateZ(Math.PI / 2);
+  group.add(new THREE.Mesh(tread, tyreMat));
+  // Sidewall: a slightly bulged ring from the rim out to the tread.
+  const wall = new THREE.RingGeometry(r, R, 20, 1);
+  wall.rotateY(Math.PI / 2);
+  const outerWall = new THREE.Mesh(wall, wallMat);
+  outerWall.position.x = half;
+  group.add(outerWall);
+  const face = new THREE.CircleGeometry(r, 20);
   face.rotateY(Math.PI / 2);
-  const outer = new THREE.Mesh(face, faceMaterial);
-  outer.position.x = 0.1;
-  group.add(outer);
-  const back = new THREE.Mesh(face.clone().rotateY(Math.PI), material);
-  back.position.x = -0.1;
+  const rim = new THREE.Mesh(face, new THREE.MeshLambertMaterial({ map: rimTexture(styleId) }));
+  rim.position.x = half - 0.02; // rims sit a little inside the sidewall
+  group.add(rim);
+  const back = new THREE.Mesh(new THREE.CircleGeometry(R, 20).rotateY(-Math.PI / 2), tyreMat);
+  back.position.x = -half;
   group.add(back);
   return group;
 }
@@ -424,17 +466,39 @@ export class CarModel {
       body.add(ring, lamp);
     }
 
-    const tyreMat = new THREE.MeshLambertMaterial({ color: 0x151517 });
-    const faceMat = new THREE.MeshLambertMaterial({ map: bbsTexture() });
+    this.tyreMat = new THREE.MeshLambertMaterial({ color: 0x151517 });
+    this.wallMat = new THREE.MeshLambertMaterial({ color: 0x1f1f22, side: THREE.DoubleSide });
     this.wheels = [];
     for (let i = 0; i < 4; i++) {
       const steer = new THREE.Group();
-      const spin = makeWheel(tyreMat, faceMat);
-      if (i % 2 === 1) spin.scale.x = -1; // right-hand wheels: rim faces outward
-      steer.add(spin);
+      const camber = new THREE.Group();
+      steer.add(camber);
       this.root.add(steer);
-      this.wheels.push({ steer, spin });
+      this.wheels.push({ steer, camber, spin: null, side: i % 2 === 0 ? 1 : -1, front: i < 2 });
     }
+    this.applySetup(TUNABLE_DEFAULTS);
+  }
+
+  // Rebuild the wheels for a tuning setup: rim style and size, tyre sidewall and camber.
+  applySetup(tune) {
+    const ws = wheelSetup(tune);
+    const key = `${tune.wheel}|${ws.rim}|${ws.profile}`;
+    for (const w of this.wheels) {
+      if (this.wheelKey !== key) {
+        if (w.spin) {
+          w.camber.remove(w.spin);
+          w.spin.traverse((o) => o.geometry?.dispose());
+        }
+        w.spin = makeWheel(ws, tune.wheel, this.tyreMat, this.wallMat);
+        if (w.side < 0) w.spin.scale.x = -1; // right-hand wheels: rim faces outward
+        w.camber.add(w.spin);
+      }
+      // Wider tyres stick out a little; negative camber tilts the tops in.
+      w.spin.position.x = w.side * ((ws.width - 195) / 2000);
+      const deg = w.front ? tune.camberFront ?? 1 : tune.camberRear ?? 0.5;
+      w.camber.rotation.z = (w.side * deg * Math.PI) / 180;
+    }
+    this.wheelKey = key;
   }
 
   setLights(on, braking) {

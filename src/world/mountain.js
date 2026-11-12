@@ -5,7 +5,9 @@ import { crossSection, HALF, RAIL, STEP } from './road.js';
 import { TRACKS } from './tracks.js';
 import { Terrain, noise2 } from './terrain.js';
 import { buildMountainPhysics } from './mountainPhysics.js';
+import { Ranges, CloudSea, buildWaterfalls, sunAzimuth } from './wilds.js';
 
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const ROAD_CHUNK = 60; // samples per road chunk (120 m)
 const TILE = 24; // terrain cells per tile
 
@@ -84,7 +86,7 @@ export class Mountain {
     this.scene = scene;
     this.track = TRACKS[trackId] || TRACKS.akina;
     this.road = this.track.road();
-    this.terrain = new Terrain(this.road, { margin: this.road.length > 6000 ? 180 : 260 });
+    this.terrain = new Terrain(this.road, { margin: this.road.length > 6000 ? 180 : 260, relief: this.track.relief ?? 110 });
     this.layout = buildMountainPhysics(world, this.road, this.terrain);
     this.chunks = []; // { group, x, z, r }
     this.#buildRoad();
@@ -94,10 +96,46 @@ export class Mountain {
     this.#buildTrees();
     this.#buildRoadside();
     this.#buildLandmarks();
-    this.#buildRanges();
     this.#buildLake();
     this.#buildTown();
     this.#buildLines();
+    // The wild country beyond: ranges to the horizon, cloud in the valleys, waterfalls.
+    this.sunAz = sunAzimuth(this.road);
+    this.ranges = new Ranges(scene, this.terrain, { height: this.track.peaks ?? 800, sunAz: this.sunAz });
+    let lowest = Infinity;
+    for (let i = 0; i < this.road.count; i++) lowest = Math.min(lowest, this.road.y[i]);
+    this.cloudSea = new CloudSea(scene, [this.ranges.cx, this.ranges.cz], this.ranges.half * 2, lowest - 22);
+    this.waterfalls = buildWaterfalls(this.road, this.terrain, this.#waterfallSpots(), (g, x, z, r) => this.#addChunk(g, x, z, r));
+  }
+
+  // Hillsides that rise steeply beside the road with no retaining wall: room for a cascade.
+  #waterfallSpots() {
+    const road = this.road;
+    const t = this.terrain;
+    const spots = [];
+    let last = -1e9;
+    const want = this.track.waterfalls ?? 3;
+    const gap = Math.floor(road.count / (want + 1));
+    for (let i = 60; i < road.count - 60 && spots.length < want; i += 3) {
+      if (i - last < gap * 0.7) continue;
+      for (const side of [1, -1]) {
+        if (this.#wallAt(i, side) || this.#wallAt(i - 4, side) || this.#wallAt(i + 4, side)) continue;
+        if (road.clearance(i, side, 50) < 50 || this.layout.rail[side][i]) continue;
+        if (Math.abs(road.kappa[i]) > 1 / 60) continue;
+        const [x, , z] = road.pointAt(i, side * 40);
+        if (t.heightAt(x, z) - road.y[i] < 16) continue;
+        spots.push([i, side]);
+        last = i;
+        break;
+      }
+    }
+    return spots;
+  }
+
+  // Retaining wall (or a rock cut on the wilder roads) on this side of sample j.
+  #wallAt(j, side) {
+    const k = Math.max(0, Math.min(this.road.count - 1, j));
+    return this.terrain.sideProfile(k, side) > 0 && noise2(k / 40, side * 5) > 0.4 && this.road.clearance(k, side, 16) >= 16;
   }
 
   // Where the car starts: just before the start line, in the downhill (left) lane, facing down.
@@ -116,9 +154,10 @@ export class Mountain {
     return { pos: [p[0], p[1] + 0.8, p[2]], yaw: r.heading[k], index: k };
   }
 
-  #addChunk(group, x, z, r) {
+  // kind 'ground' (road, terrain) stays visible much further than 'detail' (trees, signs, rails).
+  #addChunk(group, x, z, r, kind = 'detail') {
     this.scene.add(group);
-    this.chunks.push({ group, x, z, r });
+    this.chunks.push({ group, x, z, r, ground: kind === 'ground' });
   }
 
   #buildRoad() {
@@ -176,7 +215,7 @@ export class Mountain {
       const group = new THREE.Group();
       group.add(new THREE.Mesh(ag, asphaltMat), new THREE.Mesh(eg, edgeMat));
       const mid = Math.floor((i0 + i1) / 2);
-      this.#addChunk(group, road.x[mid], road.z[mid], ROAD_CHUNK * STEP * 0.6);
+      this.#addChunk(group, road.x[mid], road.z[mid], ROAD_CHUNK * STEP * 0.6, 'ground');
     }
   }
 
@@ -187,39 +226,42 @@ export class Mountain {
       for (let tx = 0; tx < t.nx - 1; tx += TILE) {
         const ex = Math.min(t.nx - 1, tx + TILE);
         const ez = Math.min(t.nz - 1, tz + TILE);
-        // Skip tiles far from the road (hidden in fog and darkness anyway).
+        // Tiles away from the road are built at half resolution: wooded slopes seen from afar.
         let near = Infinity;
         for (let iz = tz; iz <= ez; iz += 4) for (let ix = tx; ix <= ex; ix += 4) near = Math.min(near, t.roadDist[iz * t.nx + ix]);
-        if (near > 59) {
-          const cx = t.x0 + ((tx + ex) / 2) * t.cell;
-          const cz = t.z0 + ((tz + ez) / 2) * t.cell;
-          const dl = Math.hypot(cx - t.lake.x, cz - t.lake.z);
-          const dt = Math.hypot(cx - t.town.x, cz - t.town.z);
-          if (dl > t.lake.r + 120 && dt > t.town.r + 120) continue;
-        }
-        const w = ex - tx + 1;
+        const stride = near > 59 ? 2 : 1;
+        const w = Math.floor((ex - tx) / stride) + 1;
+        const rows = Math.floor((ez - tz) / stride) + 1;
         const pos = [];
         const col = [];
         const idx = [];
-        for (let iz = tz; iz <= ez; iz++) {
-          for (let ix = tx; ix <= ex; ix++) {
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < w; c++) {
+            const iz = tz + r * stride;
+            const ix = tx + c * stride;
             const k = iz * t.nx + ix;
             const x = t.x0 + ix * t.cell;
             const z = t.z0 + iz * t.cell;
             const h = t.heights[k];
             pos.push(x, h, z);
-            // Colour by steepness: dark forest floor, grass, and rock on the road cuts.
+            // Colour by steepness and distance from the road: forest floor by the road, rock on
+            // the cuts, and dark mottled canopy further out where the forest closes in.
             const hx = t.heights[iz * t.nx + Math.min(t.nx - 1, ix + 1)] - h;
             const hz = t.heights[Math.min(t.nz - 1, iz + 1) * t.nx + ix] - h;
             const slope = Math.hypot(hx, hz) / t.cell;
             const n = noise2(x / 9, z / 9);
-            let c = [0.13 + n * 0.05, 0.19 + n * 0.06, 0.1];
-            if (slope > 0.75) c = [0.33 + n * 0.06, 0.32 + n * 0.06, 0.3 + n * 0.05];
-            else if (slope > 0.45) c = [0.24, 0.23, 0.17];
-            col.push(...c);
+            let cc;
+            if (t.roadDist[k] > 48) {
+              const m = noise2(x / 26, z / 26);
+              cc = [0.075 + m * 0.05, 0.14 + m * 0.07, 0.085 + m * 0.03];
+              if (noise2(x / 520 + 7, z / 520) > 0.72) cc = [cc[0] * 2.2, cc[1] * 1.1, cc[2] * 0.8];
+            } else cc = [0.13 + n * 0.05, 0.19 + n * 0.06, 0.1];
+            if (slope > 0.75) cc = [0.33 + n * 0.06, 0.32 + n * 0.06, 0.3 + n * 0.05];
+            else if (slope > 0.45 && t.roadDist[k] <= 48) cc = [0.24, 0.23, 0.17];
+            col.push(...cc);
           }
         }
-        for (let r = 0; r < ez - tz; r++) {
+        for (let r = 0; r < rows - 1; r++) {
           for (let c = 0; c < w - 1; c++) {
             const a = r * w + c;
             idx.push(a, a + w, a + 1, a + 1, a + w, a + w + 1);
@@ -233,7 +275,7 @@ export class Mountain {
         const mesh = new THREE.Mesh(g, mat);
         const cx = t.x0 + ((tx + ex) / 2) * t.cell;
         const cz = t.z0 + ((tz + ez) / 2) * t.cell;
-        this.#addChunk(mesh, cx, cz, TILE * t.cell * 0.75);
+        this.#addChunk(mesh, cx, cz, TILE * t.cell * 0.75, 'ground');
       }
     }
   }
@@ -348,12 +390,17 @@ export class Mountain {
         const jz = z + (noise2(x * 0.3, z * 0.7) - 0.5) * 6;
         const near = t.nearestRoad(jx, jz, 60);
         if (near.d < 9.5 || near.d > 58) continue;
+        // Here and there the trees open up on the downhill side: a view out over the valley.
+        if (near.d < 46 && t.natural(jx, jz) < road.y[near.i] - 4 && noise2(near.i / 70, 3.3) > 0.55) {
+          if (noise2(jx * 0.8, jz * 0.8) > 0.7) bucket(near.i).bushes.push([jx, t.heightAt(jx, jz) - 0.3, jz, 0.8 + noise2(jx, jz)]);
+          continue;
+        }
         if (Math.hypot(jx - t.lake.x, jz - t.lake.z) < t.lake.r + 10) continue;
         if (Math.hypot(jx - t.town.x, jz - t.town.z) < t.town.r) continue;
         const y = t.heightAt(jx, jz) - 0.3;
         const dense = noise2(jx / 30, jz / 30);
         // Patches of autumn maples break up the cedars with red, orange and gold.
-        const maple = noise2(jx / 45 + 9, jz / 45) > 0.62 || (near.d < 20 && noise2(jx * 0.5, jz * 0.5) > 0.82);
+        const maple = noise2(jx / 45 + 9, jz / 45) > 0.7 || (near.d < 20 && noise2(jx * 0.5, jz * 0.5) > 0.9);
         if (dense > 0.22 && maple) bucket(near.i).maples.push([jx, y, jz, 6 + noise2(jx, jz) * 6]);
         else if (dense > 0.22) bucket(near.i).trees.push([jx, y, jz, 10 + noise2(jx, jz) * 10]);
         else bucket(near.i).bushes.push([jx, y, jz, 1 + noise2(jz, jx) * 1.4]);
@@ -361,6 +408,25 @@ export class Mountain {
         if (near.d < 22 && noise2(jx * 1.3, jz * 1.3) > 0.45) bucket(near.i).bushes.push([jx + 2.2, t.heightAt(jx + 2.2, jz - 1.5), jz - 1.5, 0.8 + noise2(jx, 3) * 1.2]);
       }
     }
+    // The deep forest beyond: a ring of simpler trees out to about 160 m, bucketed by area.
+    const far = new Map();
+    const fstep = 8.5;
+    const FT = 200;
+    for (let z = t.z0 + 8; z < t.z0 + (t.nz - 1) * t.cell - 8; z += fstep) {
+      for (let x = t.x0 + 8; x < t.x0 + (t.nx - 1) * t.cell - 8; x += fstep) {
+        const jx = x + (noise2(x * 0.5, z * 0.4) - 0.5) * 7;
+        const jz = z + (noise2(x * 0.4, z * 0.5) - 0.5) * 7;
+        const d = t.roadDistance(jx, jz);
+        if (d < 62 || d > 165) continue;
+        if (Math.hypot(jx - t.lake.x, jz - t.lake.z) < t.lake.r + 10 || Math.hypot(jx - t.town.x, jz - t.town.z) < t.town.r) continue;
+        if (t.nearestRoad(jx, jz, 56).d < 56) continue;
+        if (noise2(jx / 30, jz / 30) < 0.16) continue;
+        const key = `${Math.floor(jx / FT)},${Math.floor(jz / FT)}`;
+        if (!far.has(key)) far.set(key, []);
+        far.get(key).push([jx, t.heightAt(jx, jz) - 0.4, jz, 11 + noise2(jx, jz) * 12]);
+      }
+    }
+
     const trunk = new THREE.CylinderGeometry(0.18, 0.28, 1, 5);
     trunk.translate(0, 0.5, 0);
     const crown = new THREE.ConeGeometry(1, 1, 6);
@@ -392,14 +458,14 @@ export class Mountain {
         const trunks = new THREE.InstancedMesh(trunk, trunkMat, g.maples.length);
         const crowns = new THREE.InstancedMesh(bush, crownMat, g.maples.length);
         const autumn = [
-          [0.75, 0.16, 0.08],
-          [0.86, 0.36, 0.08],
-          [0.9, 0.6, 0.12],
-          [0.62, 0.12, 0.1],
+          [0.62, 0.16, 0.08],
+          [0.72, 0.32, 0.08],
+          [0.74, 0.5, 0.12],
+          [0.5, 0.13, 0.1],
         ];
         g.maples.forEach(([x, y, z, h], n) => {
           trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(0.9, h * 0.45, 0.9)));
-          crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.62, z), q.setFromAxisAngle(v.set(0, 1, 0).clone(), x * 1.7), sc.set(h * 0.42, h * 0.36, h * 0.42)));
+          crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.62, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h * 0.33, h * 0.3, h * 0.33)));
           q.identity();
           const [r, gg, b] = autumn[Math.floor(noise2(x * 0.9, z * 0.9) * 4) % 4];
           const k2 = 0.8 + noise2(x * 3, z * 2) * 0.35;
@@ -410,7 +476,7 @@ export class Mountain {
       if (g.bushes.length) {
         const bushes = new THREE.InstancedMesh(bush, bushMat, g.bushes.length);
         g.bushes.forEach(([x, y, z, r], n) => {
-          bushes.setMatrixAt(n, m.compose(v.set(x, y + r * 0.4, z), q.setFromAxisAngle(v.set(0, 1, 0).clone(), x), sc.set(r, r * 0.75, r)));
+          bushes.setMatrixAt(n, m.compose(v.set(x, y + r * 0.4, z), q.setFromAxisAngle(Y_AXIS, x), sc.set(r, r * 0.75, r)));
           const b = 0.7 + noise2(z * 2, x * 2) * 0.6;
           bushes.setColorAt(n, col.setRGB(0.13 * b, 0.25 * b, 0.11 * b));
         });
@@ -420,6 +486,23 @@ export class Mountain {
       const mid = Math.min(road.count - 1, k * ROAD_CHUNK + ROAD_CHUNK / 2);
       this.#addChunk(group, road.x[mid], road.z[mid], ROAD_CHUNK * STEP * 0.6 + 60);
       total += g.trees.length + g.maples.length;
+    }
+    const farCrown = new THREE.ConeGeometry(1, 1, 5);
+    farCrown.translate(0, 0.5, 0);
+    for (const [key, list] of far) {
+      const crowns = new THREE.InstancedMesh(farCrown, crownMat, list.length);
+      let cx = 0;
+      let cz = 0;
+      list.forEach(([x, y, z, h], n) => {
+        crowns.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(h * 0.21, h, h * 0.21)));
+        const b = 0.7 + noise2(x * 3, z * 3) * 0.5;
+        crowns.setColorAt(n, col.setRGB(0.09 * b, 0.19 * b, 0.12 * b));
+        cx += x;
+        cz += z;
+      });
+      void key;
+      this.#addChunk(crowns, cx / list.length, cz / list.length, FT * 0.75);
+      total += list.length;
     }
     this.treeCount = total;
   }
@@ -532,36 +615,78 @@ export class Mountain {
     const rockMesh = inst(rockGeo, new THREE.MeshLambertMaterial({ color: 0x5a5852, flatShading: true }), rocks, ([x, y, z, r]) => m.compose(v.set(x, y + r * 0.3, z), q.setFromAxisAngle(up, x * 3), sc.set(r * 1.3, r, r)));
     void rockMesh;
 
-    // Concrete retaining walls on the uphill cuts: a raked grid wall from the verge up the slope.
+    // Uphill cuts: concrete retaining walls on Akina; bare, mossy rock faces on the wilder roads.
+    const rocky = !!this.track.rockCuts;
     const wallTex = (() => {
       const cv = document.createElement('canvas');
-      cv.width = cv.height = 32;
       const gg = cv.getContext('2d');
-      gg.fillStyle = '#7d7c76';
-      gg.fillRect(0, 0, 32, 32);
-      gg.fillStyle = '#5d5c57';
-      gg.fillRect(0, 0, 32, 3);
-      gg.fillRect(0, 0, 3, 32);
+      if (!rocky) {
+        cv.width = cv.height = 32;
+        gg.fillStyle = '#7d7c76';
+        gg.fillRect(0, 0, 32, 32);
+        gg.fillStyle = '#5d5c57';
+        gg.fillRect(0, 0, 32, 3);
+        gg.fillRect(0, 0, 3, 32);
+      } else {
+        // Layered grey-brown rock with dark cracks, and moss creeping down from the top.
+        cv.width = cv.height = 64;
+        gg.fillStyle = '#5b5750';
+        gg.fillRect(0, 0, 64, 64);
+        for (let y = 0; y < 64; y += 2) {
+          const k = 70 + Math.round(noise2(0.5, y / 6) * 40);
+          gg.fillStyle = `rgb(${k},${k - 4},${k - 10})`;
+          gg.fillRect(0, y, 64, 2);
+        }
+        for (let n = 0; n < 380; n++) {
+          const k = 50 + Math.random() * 60;
+          gg.fillStyle = `rgb(${k},${k - 3},${k - 8})`;
+          gg.fillRect(Math.random() * 64, Math.random() * 64, 2, 1);
+        }
+        gg.strokeStyle = '#2b2925';
+        gg.lineWidth = 1;
+        for (let n = 0; n < 9; n++) {
+          let x = Math.random() * 64;
+          gg.beginPath();
+          gg.moveTo(x, 0);
+          for (let y = 8; y <= 64; y += 8) gg.lineTo((x += (Math.random() - 0.5) * 10), y);
+          gg.stroke();
+        }
+        for (let n = 0; n < 260; n++) {
+          const y = Math.random() ** 2.2 * 64;
+          gg.fillStyle = Math.random() < 0.5 ? '#3c5a2a' : '#4f6e33';
+          gg.fillRect(Math.random() * 64, 63 - y, 2 + Math.random() * 3, 2);
+        }
+      }
       const tx = new THREE.CanvasTexture(cv);
       tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
       tx.colorSpace = THREE.SRGBColorSpace;
       return tx;
     })();
-    const wallMat = new THREE.MeshLambertMaterial({ map: wallTex, side: THREE.DoubleSide });
+    const wallMat = new THREE.MeshLambertMaterial({ map: wallTex, side: THREE.DoubleSide, flatShading: rocky });
+    // A rock face gets a bulging middle row so it reads as rough stone rather than a flat panel.
+    const rows = rocky ? [[8.6, -0.6, 0], [9.9 + 0, 1.8, 1], [11.4, 5.2, 0]] : [[8.6, -0.6, 0], [11, 4.2, 0]];
     for (const side of [1, -1]) {
       for (let i0 = 0; i0 < road.count - 1; i0 += ROAD_CHUNK) {
         const i1 = Math.min(road.count - 1, i0 + ROAD_CHUNK);
         const pos = [];
         const uv = [];
+        const at = (i, [d, up, bulge]) => {
+          const j = bulge ? (noise2(i * 0.45, side * 3) - 0.5) * 1.6 : 0;
+          const k = bulge ? (noise2(i * 0.3 + 5, side) - 0.5) * 1.2 : 0;
+          return road.pointAt(i, side * (d + j), up + k);
+        };
         for (let i = i0; i < i1; i++) {
-          const on = (j) => t.sideProfile(j, side) > 0 && noise2(j / 40, side * 5) > 0.4 && road.clearance(j, side, 16) >= 16;
-          if (!on(i) || !on(i + 1)) continue;
-          const quad = [road.pointAt(i, side * 8.6, -0.6), road.pointAt(i + 1, side * 8.6, -0.6), road.pointAt(i + 1, side * 11, 4.2), road.pointAt(i, side * 11, 4.2)];
+          if (!this.#wallAt(i, side) || !this.#wallAt(i + 1, side)) continue;
           const u0 = (i * STEP) / 3;
           const u1 = ((i + 1) * STEP) / 3;
-          for (const [vv, uu] of [[quad[0], [u0, 0]], [quad[1], [u1, 0]], [quad[2], [u1, 1.7]], [quad[0], [u0, 0]], [quad[2], [u1, 1.7]], [quad[3], [u0, 1.7]]]) {
-            pos.push(...vv);
-            uv.push(...uu);
+          for (let r = 0; r < rows.length - 1; r++) {
+            const v0 = (r / (rows.length - 1)) * 1.7;
+            const v1 = ((r + 1) / (rows.length - 1)) * 1.7;
+            const quad = [at(i, rows[r]), at(i + 1, rows[r]), at(i + 1, rows[r + 1]), at(i, rows[r + 1])];
+            for (const [vv, uu] of [[quad[0], [u0, v0]], [quad[1], [u1, v0]], [quad[2], [u1, v1]], [quad[0], [u0, v0]], [quad[2], [u1, v1]], [quad[3], [u0, v1]]]) {
+              pos.push(...vv);
+              uv.push(...uu);
+            }
           }
         }
         if (!pos.length) continue;
@@ -831,64 +956,26 @@ export class Mountain {
     }
   }
 
-  // Ridges on the horizon, so the mountain sits in a range rather than in the fog.
-  #buildRanges() {
-    const road = this.road;
-    let cx = 0;
-    let cz = 0;
-    for (let i = 0; i < road.count; i += 10) {
-      cx += road.x[i];
-      cz += road.z[i];
-    }
-    const n = Math.ceil(road.count / 10);
-    cx /= n;
-    cz /= n;
-    // Backdrop only: drawn before the sky's sun and moon and writes no depth, so the sun is never
-    // hidden behind a painted ridge (the real mountain still blocks it, and the flare follows that).
-    const backdrop = { fog: false, side: THREE.DoubleSide, depthWrite: false };
-    this.rangeMat = new THREE.MeshBasicMaterial({ color: 0x8aa0b8, ...backdrop });
-    this.rangeMatFar = new THREE.MeshBasicMaterial({ color: 0xa8bad0, ...backdrop });
-    const ring = (radius, height, mat, seed) => {
-      const segs = 90;
-      const pos = [];
-      for (let k = 0; k < segs; k++) {
-        const a0 = (k / segs) * Math.PI * 2;
-        const a1 = ((k + 1) / segs) * Math.PI * 2;
-        const h = (a) => (noise2(a * 3 + seed, seed) * 0.7 + noise2(a * 11, seed * 3) * 0.3) * height;
-        const p = (a, y) => [cx + Math.cos(a) * radius, y, cz + Math.sin(a) * radius];
-        const b0 = p(a0, road.top - 250);
-        const b1 = p(a1, road.top - 250);
-        const t0 = p(a0, road.top + 40 + h(a0));
-        const t1 = p(a1, road.top + 40 + h(a1));
-        pos.push(...b0, ...b1, ...t1, ...b0, ...t1, ...t0);
-      }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      const m = new THREE.Mesh(g, mat);
-      m.renderOrder = seed === 2 ? -8.6 : -8.5; // after the dome and stars, before the sun; far ring first
-      this.scene.add(m);
-      return m;
-    };
-    const r = Math.max(1400, road.length * 0.3);
-    this.ranges = [ring(r + 900, 520, this.rangeMatFar, 2), ring(r, 360, this.rangeMat, 1)];
-  }
-
   // Recolour for the time of day and switch the streetlight glow on after dark.
   setTime(preset) {
-    const sky = new THREE.Color(preset.skyHorizon);
-    this.rangeMat.color.setHex(preset.ranges);
-    this.rangeMatFar.color.setHex(preset.ranges).lerp(sky, 0.45);
-    for (const m of this.ranges) m.visible = preset.stars < 0.9;
+    this.cloudSea.setTime(preset);
     for (const o of this.lampGlows) o.visible = preset.lights;
   }
 
-  // Show only what is within reach of the fog.
-  update(camPos, range) {
+  // Show only what is within reach: detail (trees, signs) closer in, ground (road, terrain) further.
+  update(camPos, detailRange, groundRange = detailRange, dt = 0) {
     for (const c of this.chunks) {
       const dx = c.x - camPos.x;
       const dz = c.z - camPos.z;
-      const lim = range + c.r;
+      const lim = (c.ground ? groundRange : detailRange) + c.r;
       c.group.visible = dx * dx + dz * dz < lim * lim;
     }
+    this.cloudSea.update(dt);
+    this.waterfalls.update(dt);
+  }
+
+  // Height of the far ranges (for checking whether a peak hides the sun).
+  rangeHeightAt(x, z) {
+    return this.ranges.heightAt(x, z);
   }
 }

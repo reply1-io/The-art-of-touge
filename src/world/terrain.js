@@ -37,8 +37,22 @@ export function fbm(x, z) {
   return noise2(x / 90, z / 90) * 0.55 + noise2(x / 33, z / 33) * 0.3 + noise2(x / 11, z / 11) * 0.15 - 0.5;
 }
 
+// Ridged noise in 0..1: sharp crests and soft valleys, like eroded mountains.
+export function ridged(x, z, scales, seed = 0) {
+  let sum = 0;
+  let norm = 0;
+  let amp = 1;
+  for (const sc of scales) {
+    const n = 1 - Math.abs(2 * noise2(x / sc + seed, z / sc - seed) - 1);
+    sum += n * n * amp;
+    norm += amp;
+    amp *= 0.5;
+  }
+  return sum / norm;
+}
+
 export class Terrain {
-  constructor(road, { cell = 4, margin = 260 } = {}) {
+  constructor(road, { cell = 4, margin = 260, relief = 110 } = {}) {
     this.road = road;
     this.cell = cell;
     let minX = Infinity;
@@ -98,6 +112,11 @@ export class Terrain {
     const f = road.count - 1;
     this.town = { x: road.x[f], z: road.z[f], r: 140, level: road.y[f] - 0.3 };
 
+    // Coarse distance to the road (chamfer transform on a 16 m grid). Far from the road the land
+    // rises into wooded ridges and falls into valleys; near it, nothing changes.
+    this.relief = relief;
+    this.#buildFarDistance();
+
     this.heights = new Float32Array(this.nx * this.nz);
     this.roadDist = new Float32Array(this.nx * this.nz);
     for (let iz = 0; iz < this.nz; iz++) {
@@ -110,6 +129,73 @@ export class Terrain {
         this.heights[k] = this.#height(x, z, near);
       }
     }
+  }
+
+  #buildFarDistance() {
+    const road = this.road;
+    const c = 16;
+    const fx = Math.ceil(((this.nx - 1) * this.cell) / c) + 2;
+    const fz = Math.ceil(((this.nz - 1) * this.cell) / c) + 2;
+    const D = new Float32Array(fx * fz).fill(1e9);
+    for (let i = 0; i < road.count; i += 2) {
+      const ix = Math.round((road.x[i] - this.x0) / c);
+      const iz = Math.round((road.z[i] - this.z0) / c);
+      if (ix >= 0 && iz >= 0 && ix < fx && iz < fz) D[iz * fx + ix] = 0;
+    }
+    const d1 = c;
+    const d2 = c * Math.SQRT2;
+    for (let iz = 0; iz < fz; iz++) {
+      for (let ix = 0; ix < fx; ix++) {
+        const k = iz * fx + ix;
+        let v = D[k];
+        if (ix > 0) v = Math.min(v, D[k - 1] + d1);
+        if (iz > 0) {
+          v = Math.min(v, D[k - fx] + d1);
+          if (ix > 0) v = Math.min(v, D[k - fx - 1] + d2);
+          if (ix < fx - 1) v = Math.min(v, D[k - fx + 1] + d2);
+        }
+        D[k] = v;
+      }
+    }
+    for (let iz = fz - 1; iz >= 0; iz--) {
+      for (let ix = fx - 1; ix >= 0; ix--) {
+        const k = iz * fx + ix;
+        let v = D[k];
+        if (ix < fx - 1) v = Math.min(v, D[k + 1] + d1);
+        if (iz < fz - 1) {
+          v = Math.min(v, D[k + fx] + d1);
+          if (ix < fx - 1) v = Math.min(v, D[k + fx + 1] + d2);
+          if (ix > 0) v = Math.min(v, D[k + fx - 1] + d2);
+        }
+        D[k] = v;
+      }
+    }
+    this.far = { D, fx, fz, c };
+  }
+
+  // Approximate distance (m) from (x, z) to the road centreline, good to about 16 m.
+  roadDistance(x, z) {
+    const { D, fx, fz, c } = this.far;
+    const gx = clamp((x - this.x0) / c, 0, fx - 1.001);
+    const gz = clamp((z - this.z0) / c, 0, fz - 1.001);
+    const ix = Math.floor(gx);
+    const iz = Math.floor(gz);
+    const tx = gx - ix;
+    const tz = gz - iz;
+    const a = D[iz * fx + ix];
+    const b = D[iz * fx + ix + 1];
+    const cc = D[(iz + 1) * fx + ix];
+    const d = D[(iz + 1) * fx + ix + 1];
+    // Outside the grid, keep counting the distance past its edge.
+    const out = Math.hypot(Math.max(0, this.x0 - x, x - (this.x0 + (fx - 1) * c)), Math.max(0, this.z0 - z, z - (this.z0 + (fz - 1) * c)));
+    return a + (b - a) * tx + (cc - a) * tz + (a - b - cc + d) * tx * tz + out;
+  }
+
+  // Ridges and valleys away from the road.
+  reliefAt(x, z, dRoad = this.roadDistance(x, z)) {
+    const w = smoothstep(70, 420, dRoad);
+    if (w <= 0) return 0;
+    return (ridged(x, z, [520, 230, 95], 3.7) - 0.3) * this.relief * w;
   }
 
   planeAt(x, z) {
@@ -157,7 +243,7 @@ export class Terrain {
   }
 
   #height(x, z, near) {
-    let h = this.natural(x, z);
+    let h = this.natural(x, z) + this.reliefAt(x, z);
     // Lake basin and the flat town.
     const lk = this.lake;
     const dl = Math.hypot(x - lk.x, z - lk.z);
