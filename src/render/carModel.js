@@ -481,25 +481,30 @@ export class CarModel {
       lamp.position.set(x, y, shape.nose + 0.014);
       body.add(ring, lamp);
     }
+    // Pop-up headlamps: closed, the pod sits flush in the bonnet; open, it rises a short way, a low
+    // black box with the lamp in its front face.
     this.popups = (shape.popups || []).map(([x0, x1, z0, z1]) => {
-      // Hinged at the back edge; closed, the lid lies flush with the bonnet; raised, the pod
-      // stands up and its lamp (on the underside when closed) faces forward.
       const L = z0 - z1;
       const w = Math.abs(x1 - x0);
       const yFront = shape.section(z0).belt;
       const yBack = shape.section(z1).belt;
+      const tilt = Math.atan2(yBack - yFront, L); // the bonnet slope
       const pivot = new THREE.Group();
-      pivot.position.set((x0 + x1) / 2, yBack, z1);
-      const lid = new THREE.Mesh(new THREE.BoxGeometry(w, 0.03, L), this.lidMat);
-      lid.position.set(0, -0.012, L / 2);
-      // A black pod with a big square lamp, like a pair of open eyes when raised.
-      const pod = new THREE.Mesh(new THREE.BoxGeometry(w * 0.98, 0.13, L * 0.92), new THREE.MeshLambertMaterial({ color: 0x0c0c0e }));
-      pod.position.set(0, -0.095, L / 2);
-      const lamp = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.66, L * 0.58).rotateX(Math.PI / 2), this.headMat);
-      lamp.position.set(0, -0.162, L / 2);
-      pivot.add(lid, pod, lamp);
+      pivot.position.set((x0 + x1) / 2, (yFront + yBack) / 2, (z0 + z1) / 2);
+      pivot.rotation.x = tilt;
+      const H = 0.14;
+      const black = new THREE.MeshLambertMaterial({ color: 0x0b0b0d });
+      const pod = new THREE.Mesh(new THREE.BoxGeometry(w * 0.92, H, L * 0.86), black);
+      pod.position.y = -H / 2;
+      const lid = new THREE.Mesh(new THREE.BoxGeometry(w, 0.025, L), this.lidMat);
+      lid.position.y = 0.003;
+      const lamp = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.7, H * 0.68), this.headMat);
+      lamp.position.set(0, -H / 2, (L * 0.86) / 2 + 0.002);
+      const box = new THREE.Group();
+      box.add(pod, lid, lamp);
+      pivot.add(box);
       body.add(pivot);
-      return { pivot, closed: Math.asin(Math.max(-1, Math.min(1, (yBack - yFront) / L))) };
+      return { box, H };
     });
     this.pop = 0;
     this.popTarget = 0;
@@ -544,7 +549,7 @@ export class CarModel {
     if (this.popups.length) {
       this.pop += Math.max(-dt * 2.2, Math.min(dt * 2.2, this.popTarget - this.pop));
       const e = this.pop * this.pop * (3 - 2 * this.pop);
-      for (const p of this.popups) p.pivot.rotation.x = p.closed + (-1.38 - p.closed) * e;
+      for (const p of this.popups) p.box.position.y = (p.H - 0.01) * e;
     }
     if (this.flameLife <= 0) {
       this.flameGroup.visible = false;
