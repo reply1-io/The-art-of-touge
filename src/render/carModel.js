@@ -492,10 +492,11 @@ export class CarModel {
       pivot.position.set((x0 + x1) / 2, yBack, z1);
       const lid = new THREE.Mesh(new THREE.BoxGeometry(w, 0.03, L), this.lidMat);
       lid.position.set(0, -0.012, L / 2);
-      const pod = new THREE.Mesh(new THREE.BoxGeometry(w * 0.96, 0.12, L * 0.9), new THREE.MeshLambertMaterial({ color: 0x141416 }));
-      pod.position.set(0, -0.09, L / 2);
-      const lamp = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.8, 0.09).rotateX(Math.PI / 2), this.headMat);
-      lamp.position.set(0, -0.152, L / 2);
+      // A black pod with a big square lamp, like a pair of open eyes when raised.
+      const pod = new THREE.Mesh(new THREE.BoxGeometry(w * 0.98, 0.13, L * 0.92), new THREE.MeshLambertMaterial({ color: 0x0c0c0e }));
+      pod.position.set(0, -0.095, L / 2);
+      const lamp = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.66, L * 0.58).rotateX(Math.PI / 2), this.headMat);
+      lamp.position.set(0, -0.162, L / 2);
       pivot.add(lid, pod, lamp);
       body.add(pivot);
       return { pivot, closed: Math.asin(Math.max(-1, Math.min(1, (yBack - yFront) / L))) };

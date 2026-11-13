@@ -13,6 +13,7 @@ export const NOSE = 2.05;
 export const TAIL = -2.24;
 const RED = [0.85, 0.08, 0.08];
 const CLEAR = [0.82, 0.83, 0.8];
+const INK = [0.012, 0.012, 0.014]; // deep black for openings, so bright light can't wash them out
 const DARK_GLASS = [0.05, 0.065, 0.085]; // tinted; the big hatch would otherwise read as a pale roof
 
 // Half width of the body: narrow wedge nose, swelling over the front and rear arches.
@@ -217,16 +218,38 @@ function detailPolys() {
   const paint = [];
   const zn = NOSE + 0.006;
   const front = (x0, x1, y0, y1, color, z = zn) => trim.push({ pts: [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], color, out: [0, 0, 1] });
-  // No grille: a slim black slot in the nose, a wide intake low in the bumper, and amber
-  // indicators with clear fog lamps in the bumper corners.
-  front(0.32, -0.32, 0.47, 0.5, BLACK);
-  front(0.6, -0.6, 0.27, 0.36, BLACK, NOSE - 0.02);
-  for (const side of [1, -1]) {
-    front(side * 0.5, side * 0.68, 0.39, 0.44, AMBER, NOSE - 0.012);
-    front(side * 0.36, side * 0.5, 0.39, 0.44, CLEAR, NOSE - 0.012);
+  // No grille: a slim slot in the nose; a grey strip across the bumper with amber indicators at
+  // its ends; below it a big black intake with two rows of slats.
+  front(0.3, -0.3, 0.49, 0.515, TRIM);
+  front(0.78, -0.78, 0.43, 0.46, TRIM, NOSE - 0.004);
+  for (const side of [1, -1]) front(side * 0.6, side * 0.77, 0.43, 0.462, AMBER, NOSE - 0.002);
+  front(0.56, -0.56, 0.23, 0.39, INK, NOSE - 0.006);
+  for (const y of [0.275, 0.335]) front(0.53, -0.53, y, y + 0.022, [0.17, 0.17, 0.19], NOSE - 0.002);
+  for (const side of [1, -1]) front(side * 0.66, side * 0.76, 0.27, 0.33, INK, NOSE - 0.008); // corner ducts
+  // Bonnet vent: a black louvred scoop just ahead of the screen, a little to the left.
+  const vy = (z) => section(z).top + 0.025;
+  trim.push({ pts: [[0.36, vy(1.22), 1.22], [0.04, vy(1.22), 1.22], [0.04, vy(0.98), 0.98], [0.36, vy(0.98), 0.98]], color: INK, out: [0, 1, 0.1] });
+  for (let k = 1; k < 4; k++) {
+    const z = 1.22 - k * 0.06;
+    trim.push({ pts: [[0.34, vy(z) + 0.004, z], [0.06, vy(z) + 0.004, z], [0.06, vy(z - 0.015) + 0.004, z - 0.015], [0.34, vy(z - 0.015) + 0.004, z - 0.015]], color: [0.16, 0.16, 0.18], out: [0, 1, 0.1] });
   }
-  // Black rubbing strip across the front and rear bumpers.
-  front(0.76, -0.76, 0.445, 0.465, TRIM, NOSE - 0.004);
+  // Rear wing on two stands above the hatch.
+  const wy = 0.99;
+  const wz0 = -1.98;
+  const wz1 = -2.18;
+  const wingBox = (x0, x1, y0, y1, z0, z1) => {
+    const f = [
+      [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]],
+      [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]],
+      [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]],
+      [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]],
+      [[x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1]],
+      [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]],
+    ];
+    for (const pts of f) paint.push({ pts, color: WHITE });
+  };
+  wingBox(0.74, -0.74, wy, wy + 0.04, wz0, wz1);
+  for (const x of [0.5, -0.5]) wingBox(x + 0.03, x - 0.03, section(-2.08).top - 0.01, wy, -2.04, -2.12);
   const zt = TAIL - 0.006;
   const rear = (x0, x1, y0, y1, color, list = trim, z = zt) => list.push({ pts: [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], color, out: [0, 0, -1] });
   // Full-width tail lamps: red over amber and clear, in a black band across the whole tail, with
