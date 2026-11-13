@@ -6,7 +6,7 @@ const GROUND = -0.62; // body space: the car model's body group sits this far be
 
 const tmp = new THREE.Vector3();
 // Field of view at a standstill for each camera.
-const BASE_FOV = { chase: 60, cockpit: 74, bumper: 70 };
+const BASE_FOV = { chase: 60, cockpit: 68, bumper: 70 };
 
 export class CameraRig {
   constructor(camera) {
@@ -22,6 +22,7 @@ export class CameraRig {
     this.acc = new THREE.Vector3();
     this.fov = 60;
     this.t = 0;
+    this.react = new THREE.Vector2(); // x: pitch, y: height
   }
 
   snap() {
@@ -46,6 +47,16 @@ export class CameraRig {
     if (Math.abs(cam.fov - this.fov) > 0.01) {
       cam.fov = this.fov;
       cam.updateProjectionMatrix();
+    }
+    // The camera reacts to the car, barely: it settles back a hair under acceleration, dips
+    // forward under braking, and gives over crests and dips. (Not with the locked bucket view.)
+    const locked = this.mode === 'chase' && this.headSway < 0.5;
+    if (!locked) {
+      const clampAbs = (v, m) => Math.max(-m, Math.min(m, v));
+      this.react.x += (clampAbs(-this.acc.z * 0.0009, 0.008) - this.react.x) * (1 - Math.exp(-dt * 4));
+      this.react.y += (clampAbs(-this.acc.y * 0.0025, 0.03) - this.react.y) * (1 - Math.exp(-dt * 5));
+      cam.position.y += this.react.y;
+      cam.rotateX(this.react.x);
     }
     // Shake: off below 50 mph, then grows with speed. Several mixed frequencies so it feels like
     // the car buzzing over the road, not a regular wobble.

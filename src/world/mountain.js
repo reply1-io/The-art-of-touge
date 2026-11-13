@@ -928,8 +928,8 @@ export class Mountain {
     const rocks = [];
     for (let i = 4; i < road.count - 4; i++) {
       for (const side of [1, -1]) {
-        // Reflector posts every 20 m where there is no guardrail.
-        if (i % 10 === 0 && !this.layout.rail[side][i] && !this.inZone(i, side)) {
+        // Reflector posts every 10 m where there is no guardrail (close detail sells the speed).
+        if (i % 5 === 0 && !this.layout.rail[side][i] && !this.inZone(i, side)) {
           const p = road.pointAt(i, side * (road.w.RAIL + 0.3));
           posts.push([p, road.heading[i]]);
           reflectors.push([[p[0], p[1] + 0.95, p[2]], road.heading[i]]);
