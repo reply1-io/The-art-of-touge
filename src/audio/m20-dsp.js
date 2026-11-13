@@ -1,11 +1,13 @@
-// DSP core that synthesizes a BMW M20 2.5 straight-six (E30 325i) from first principles.
+// DSP core that synthesizes piston engines from first principles: the BMW M20 2.5
+// straight-six (E30 325i) and the GM LS3 6.2 V8. Each engine is a profile in ENGINES.
 // Runs inside an AudioWorklet when the browser allows it, otherwise on the main thread
 // (see M20EngineSound.js). It has no imports so it can be shipped into a worklet as text.
 //
 // Signal path, per sample:
-//   crank angle -> 6 exhaust pressure pulses (firing order 1-5-3-6-2-4, one every 120 deg)
-//   -> two 3-into-1 manifolds (cyl 1-3 front, 4-6 rear; banks alternate on every firing)
-//   -> collector -> exhaust pipe (delay line with inverted reflection = pipe resonances)
+//   crank angle -> one exhaust pressure pulse per cylinder per cycle, in firing order
+//   -> two manifolds / banks (header delay with partial reflection)
+//   -> M20: collector into one pipe; LS3: true dual pipes, one per bank
+//   -> exhaust pipe (delay line with inverted reflection = pipe resonances)
 //   -> muffler (lowpass + body resonance) + turbulent "rasp" noise riding on each pulse
 //   + intake roar (throttle) + valve-train tick + starter motor when cranking
 //   -> soft clip.
@@ -16,17 +18,53 @@
 // pumped air: weaker and duller. A proper lift-off from high revs can give a
 // couple of pops (more with the sport exhaust); limiter and shift cuts never do.
 
-export const FIRING = [1, 5, 3, 6, 2, 4];
 export const TAU = Math.PI * 2;
-export const IDLE_RPM = 800;
 export const CRANK_SECONDS = 2.6;
 
+// Engine profiles. angles: crank degrees (0..720) at which each cylinder's exhaust valve
+// opens, in firing order; bank: which manifold/pipe that cylinder feeds.
+export const ENGINES = {
+  m20: {
+    label: 'BMW M20B25 2.5 straight-six',
+    firing: [1, 5, 3, 6, 2, 4],
+    angles: [0, 120, 240, 360, 480, 600],
+    bank: [0, 1, 0, 1, 0, 1],                 // cyl 1-3 front manifold, 4-6 rear
+    cylGain: [1.0, 0.9, 1.07, 0.95, 1.04, 0.88],
+    cylTiming: [0, 1.5, -1, 2, -0.5, 1],
+    idleRpm: 800, redline: 6500, crankFlare: 1450, starterRatio: 11,
+    dual: false,                               // both manifolds into one pipe
+    header: [0.0016, 0.0023], pipe: [3.1, 3.1], pipeRefl: 0.5,
+    width: [36, 10], pump: 0.11, jitter: 0.07, idleJitter: 0.08, lope: [0.007, 0.004],
+    muff: [420, 700, 0.09, 1500, 1200], body: [115, 4], drone: [240, 1],
+    rasp: [1200, 0.15, 1.0], rumble: [260, 0.06, 1.0], intake: [420, 0.08, 0.10],
+    level: 1.0,
+  },
+  ls3: {
+    label: 'GM LS3 6.2 V8',
+    firing: [1, 8, 7, 2, 6, 5, 4, 3],
+    angles: [0, 90, 180, 270, 360, 450, 540, 630],
+    bank: [0, 1, 0, 1, 1, 0, 1, 0],            // odd cylinders left bank, even right
+    cylGain: [1.0, 0.94, 1.06, 0.96, 1.05, 0.9, 1.02, 0.95],
+    cylTiming: [0, 1.2, -1.4, 0.8, -0.6, 1.6, -1, 0.5],
+    idleRpm: 650, redline: 6600, crankFlare: 1300, starterRatio: 10,
+    dual: true,                                // true duals: each bank keeps its own uneven beat
+    header: [0.0014, 0.0014], pipe: [3.5, 3.8], pipeRefl: 0.45,
+    listen: [1, 0.7],                          // heard from behind, nearer the left tailpipe
+    width: [46, 12], pump: 0.13, jitter: 0.08, idleJitter: 0.12, lope: [0.013, 0.008],
+    muff: [300, 620, 0.08, 1200, 1100], body: [80, 6], drone: [165, 2],
+    rasp: [900, 0.12, 0.75], rumble: [180, 0.05, 1.35], intake: [300, 0.06, 0.14],
+    level: 1.4,
+  },
+};
+
+export const IDLE_RPM = ENGINES.m20.idleRpm;
+
 /** rpm during the start-up: starter turning it over, catch, flare, settle. t = seconds since key turned. */
-export function crankRpm(t) {
+export function crankRpm(t, idle = IDLE_RPM, flare = 1450) {
   if (t < 0.15) return 260 * (t / 0.15);
   if (t < 1.0) return 250;
-  if (t < 1.25) return 250 + (1450 - 250) * ((t - 1.0) / 0.25);
-  return IDLE_RPM + (1450 - IDLE_RPM) * Math.exp(-(t - 1.25) / 0.45);
+  if (t < 1.25) return 250 + (flare - 250) * ((t - 1.0) / 0.25);
+  return idle + (flare - idle) * Math.exp(-(t - 1.25) / 0.45);
 }
 
 export class Biquad {
@@ -77,16 +115,10 @@ export class M20Dsp {
     this.fs = fs;
     this.phase = 0;            // engine cycle, 0..1 = 720 crank degrees
     this.t = 0;
-    // fixed per-cylinder character (in firing order): a real engine is never perfectly even
-    this.cylGain = [1.0, 0.9, 1.07, 0.95, 1.04, 0.88];
-    this.cylTiming = [0, 1.5, -1, 2, -0.5, 1]; // crank degrees
-    this.jit = new Float32Array(6).fill(1);
-    this.tjit = new Float32Array(6); // per-cycle timing scatter, crank degrees
-    this.pop = new Float32Array(6);
-    this.lastX = new Float32Array(6).fill(1);
     this.hdrA = new Delay(512); this.hdrB = new Delay(512);
-    this.pipe = new Delay(4096);
-    this.pipeLp = 0;
+    this.pipe = new Delay(4096); this.pipe2 = new Delay(4096);
+    this.pipeLp = 0; this.pipeLp2 = 0;
+    this.useEngine('m20');
     this.thrS = 0; this.rpmS = 800;
     this.muffLp = new Biquad(); this.muffLp2 = new Biquad();
     this.body = new Biquad(); this.drone = new Biquad();
@@ -108,16 +140,35 @@ export class M20Dsp {
     this.cyc = new Float32Array(Math.ceil(fs * 0.4)); this.cycN = 0; this.sincePost = 0;
   }
 
-  /** Values from the game: { rpm, throttle (0..1), exhaust (0 stock .. 1 sport), idleRpm },
+  /** Switch engine profile ('m20' | 'ls3'). Keeps running at the current rpm. */
+  useEngine(name) {
+    const E = ENGINES[name];
+    if (!E) return;
+    this.engine = name;
+    this.E = E;
+    const n = E.firing.length;
+    // per-cylinder character (in firing order): a real engine is never perfectly even
+    this.jit = new Float32Array(n).fill(1);
+    this.tjit = new Float32Array(n);   // per-cycle timing scatter, crank degrees
+    this.pop = new Float32Array(n);
+    this.lastX = new Float32Array(n).fill(1);
+    this.coef = 0;                      // refresh filters on the next block
+  }
+
+  /** Values from the game: { rpm, throttle (0..1), exhaust (0 stock .. 1 sport), idleRpm, engine },
    *  and in 'direct' mode also { ignition (0/1), starter (0/1) }. */
-  set(v) { Object.assign(this.target, v); }
+  set(v) {
+    if (v.engine && v.engine !== this.engine) this.useEngine(v.engine);
+    Object.assign(this.target, v);
+  }
 
   /** 'crank' (key start), 'start' (straight to idle), 'stop' (key off),
    *  'direct' (the game's engine model drives rpm, ignition and starter itself). */
   command(cmd) {
     this.modeT0 = this.clock;
-    if (cmd === 'crank') { this.mode = 'crank'; this.target.rpm = IDLE_RPM; this.target.throttle = 0; }
-    else if (cmd === 'start') { this.mode = 'run'; this.target.rpm = IDLE_RPM; this.rpmS = IDLE_RPM; }
+    const idle = this.target.idleRpm;
+    if (cmd === 'crank') { this.mode = 'crank'; this.target.rpm = idle; this.target.throttle = 0; }
+    else if (cmd === 'start') { this.mode = 'run'; this.target.rpm = idle; this.rpmS = idle; }
     else if (cmd === 'stop') { this.mode = 'stopping'; this.stopFrom = this.rpmS; }
     else if (cmd === 'direct') { this.mode = 'direct'; this.rpmS = this.target.rpm; }
   }
@@ -138,7 +189,7 @@ export class M20Dsp {
     c.exhaust += (t.exhaust - c.exhaust) * 0.05;
     c.idleRpm = t.idleRpm;
     if (this.mode === 'crank') {
-      c.rpm = crankRpm(dt); c.throttle = 0;
+      c.rpm = crankRpm(dt, t.idleRpm, this.E.crankFlare); c.throttle = 0;
       c.starter = dt < 1.05 ? 1 : 0; c.ignition = dt >= 0.95 ? 1 : 0;
       if (dt >= CRANK_SECONDS) { this.mode = 'run'; t.rpm = c.rpm; }
     } else if (this.mode === 'run') {
@@ -170,16 +221,17 @@ export class M20Dsp {
     // block-rate coefficient updates
     const thr0 = C.throttle, rpm0 = C.rpm, exh = C.exhaust;
     if (this.coef++ % 4 === 0) {
-      const open = 1 + exh * 0.9;
-      this.muffLp.set('lp', (420 + 700 * thr0 + rpm0 * 0.09) * open, 0.6, 0, fs);
-      this.muffLp2.set('lp', (1500 + 1200 * thr0) * open, 0.5, 0, fs);
-      this.body.set('pk', 115, 1.1, 4 + exh * 2, fs);
-      this.drone.set('pk', 240 + exh * 40, 1.6, 1 + exh * 2.5, fs);
-      this.raspBp.set('bp', 1200 + rpm0 * 0.15, 0.6, 0, fs);
-      this.rumbleBp.set('bp', 260 + rpm0 * 0.06, 0.45, 0, fs);
-      this.intakeBp.set('bp', 420 + rpm0 * 0.08, 1.4, 0, fs);
+      const E = this.E, m = E.muff, open = 1 + exh * 0.9;
+      this.muffLp.set('lp', (m[0] + m[1] * thr0 + rpm0 * m[2]) * open, 0.6, 0, fs);
+      this.muffLp2.set('lp', (m[3] + m[4] * thr0) * open, 0.5, 0, fs);
+      this.body.set('pk', E.body[0], 1.1, E.body[1] + exh * 2, fs);
+      this.drone.set('pk', E.drone[0] * (1 + exh * 0.17), 1.6, E.drone[1] + exh * 2.5, fs);
+      this.raspBp.set('bp', E.rasp[0] + rpm0 * E.rasp[1], 0.6, 0, fs);
+      this.rumbleBp.set('bp', E.rumble[0] + rpm0 * E.rumble[1], 0.45, 0, fs);
+      this.intakeBp.set('bp', E.intake[0] + rpm0 * E.intake[1], 1.4, 0, fs);
     }
 
+    const E = this.E, ncyl = E.firing.length;
     for (let i = 0; i < N; i++) {
       const rpmIn = C.rpm, thrIn = C.throttle, ign = C.ignition;
       const st = C.starter, idle = C.idleRpm;
@@ -190,8 +242,8 @@ export class M20Dsp {
 
       // idle lope + compression drag while cranking
       const nearIdle = Math.max(0, 1 - Math.abs(rpm - idle) / 400) * (1 - thr);
-      rpm *= 1 + nearIdle * (0.007 * Math.sin(TAU * 1.13 * this.t) + 0.004 * Math.sin(TAU * 0.41 * this.t));
-      if (st > 0) rpm *= 1 - 0.35 * st * Math.max(0, Math.cos(TAU * this.phase * 6));
+      rpm *= 1 + nearIdle * (E.lope[0] * Math.sin(TAU * 1.13 * this.t) + E.lope[1] * Math.sin(TAU * 0.41 * this.t));
+      if (st > 0) rpm *= 1 - 0.35 * st * Math.max(0, Math.cos(TAU * this.phase * ncyl));
       rpm = Math.max(0, rpm);
       this.phase += rpm / 120 / fs;          // 2 revolutions per cycle
       if (this.phase >= 1) this.phase -= 1;
@@ -201,16 +253,16 @@ export class M20Dsp {
       const overrun = thr < 0.06 && rpm > idle * 1.35; // fuel cut
       const fuel = overrun ? 0 : 1;
       const load = ign * fuel * (0.32 + 0.68 * thr);
-      const pump = 0.11;                       // air being pushed out with no combustion
-      const width = 36 - 10 * thr;             // crank degrees; harder hit under load
+      const pump = E.pump;                     // air being pushed out with no combustion
+      const width = E.width[0] - E.width[1] * thr; // crank degrees; harder hit under load
 
       let a = 0, b = 0, env = 0, inEnv = 0;
-      for (let k = 0; k < 6; k++) {
-        let x = (this.phase - k / 6) * 720 - this.cylTiming[k] - this.tjit[k];
+      for (let k = 0; k < ncyl; k++) {
+        let x = this.phase * 720 - E.angles[k] - E.cylTiming[k] - this.tjit[k];
         x = ((x % 720) + 720) % 720;
         if (x < this.lastX[k]) { // this cylinder's exhaust valve just opened: new cycle for it
           // no two combustions are the same; this scatter is what turns buzz into rumble
-          const j = 0.07 + 0.08 * nearIdle + 0.03 * (1 - ign);
+          const j = E.jitter + E.idleJitter * nearIdle + 0.03 * (1 - ign);
           this.jit[k] = Math.max(0.5, 1 + j * randn());
           this.tjit[k] = 3.5 * randn();
           // afterfire: only well into a real lift-off (not limiter or shift cuts), a few at most
@@ -225,9 +277,9 @@ export class M20Dsp {
         }
         this.lastX[k] = x;
         const p = this.pulse(x, width);
-        const amp = this.cylGain[k] * this.jit[k] * (load + pump + this.pop[k] * 0.9);
+        const amp = E.cylGain[k] * this.jit[k] * (load + pump + this.pop[k] * 0.9);
         const v = p * amp;
-        if (FIRING[k] <= 3) a += v; else b += v;
+        if (E.bank[k] === 0) a += v; else b += v;
         env += v;
         // intake valve opens ~360 deg later on the same cylinder
         const xi = x - 360;
@@ -235,7 +287,7 @@ export class M20Dsp {
       }
 
       // manifolds: slightly different runner lengths, partial reflection at the collector
-      const dA = fs * 0.0016, dB = fs * 0.0023;
+      const dA = fs * E.header[0], dB = fs * E.header[1];
       const hA = this.hdrA.read(dA), hB = this.hdrB.read(dB);
       this.hdrA.write(a - 0.32 * hA);
       this.hdrB.write(b - 0.32 * hB);
@@ -243,30 +295,43 @@ export class M20Dsp {
       // muffler shapes it into a thud-crack rather than a digital click
       this.popEnv *= 0.9965;
       this.popLp += ((this.popEnv > 0.005 ? randn() * this.popEnv : 0) - this.popLp) * 0.25;
-      const coll = hA + hB + this.popLp * 1.4;
-
-      // exhaust pipe ~3.1 m: inverted, lossy reflection from the open end
-      const dP = fs * (3.1 / 343) * 2;
-      const back = this.pipe.read(dP);
-      this.pipeLp += (back - this.pipeLp) * 0.35;
-      const pipeOut = coll - (0.5 - exh * 0.1) * this.pipeLp;
-      this.pipe.write(pipeOut);
+      const refl = E.pipeRefl - exh * 0.1;
+      let pipeOut;
+      if (!E.dual) {
+        // one collector into one pipe (~3 m): inverted, lossy reflection from the open end
+        const coll = hA + hB + this.popLp * 1.4;
+        const back = this.pipe.read(fs * (E.pipe[0] / 343) * 2);
+        this.pipeLp += (back - this.pipeLp) * 0.35;
+        pipeOut = coll - refl * this.pipeLp;
+        this.pipe.write(pipeOut);
+      } else {
+        // true duals: each bank down its own pipe, so its uneven 90/180/270 beat survives
+        const inA = hA + this.popLp * 0.7, inB = hB + this.popLp * 0.7;
+        const backA = this.pipe.read(fs * (E.pipe[0] / 343) * 2);
+        const backB = this.pipe2.read(fs * (E.pipe[1] / 343) * 2);
+        this.pipeLp += (backA - this.pipeLp) * 0.35;
+        this.pipeLp2 += (backB - this.pipeLp2) * 0.35;
+        const oA = inA - refl * this.pipeLp, oB = inB - refl * this.pipeLp2;
+        this.pipe.write(oA); this.pipe2.write(oB);
+        // the listener is nearer one tailpipe, so the two banks don't cancel into an even eight
+        pipeOut = oA * E.listen[0] + oB * E.listen[1];
+      }
 
       let y = this.muffLp2.run(this.muffLp.run(pipeOut));
       y = this.drone.run(this.body.run(y));
 
       // rumble: gas turbulence in the pipe, fills the gaps between the harmonics
-      y += this.rumbleLp.run(this.rumbleBp.run(randn() * env)) * (0.3 + 1.5 * thr) * (0.8 + exh * 0.4);
+      y += this.rumbleLp.run(this.rumbleBp.run(randn() * env)) * (0.3 + 1.5 * thr) * (0.8 + exh * 0.4) * E.rumble[2];
 
       // rasp: turbulence that rides on each pulse, grows with rpm and load
-      const raspAmt = (0.05 + 0.22 * thr) * Math.min(1.3, rpm / 4500) * (0.7 + exh * 0.8);
+      const raspAmt = (0.05 + 0.22 * thr) * Math.min(1.3, rpm / 4500) * (0.7 + exh * 0.8) * E.rasp[2];
       // the crack on top of an afterfire: short (popEnv^3 decays fast), band-limited by the
       // rasp filter, and quieter through the stock muffler
       const crack = this.popEnv > 0.02 ? randn() * this.popEnv ** 3 * (0.35 + 0.65 * exh) : 0;
       y += this.raspHp.run(this.raspBp.run(randn() * env * raspAmt + crack * 0.9));
 
       // intake roar (heard more than you'd think with the throttle open)
-      y += this.intakeBp.run(randn() * inEnv) * 0.10 * thr * (0.3 + rpm / 6500);
+      y += this.intakeBp.run(randn() * inEnv) * E.intake[2] * thr * (0.3 + rpm / 6500);
 
       // valve-train tick
       this.tickEnv *= 0.9;
@@ -275,14 +340,17 @@ export class M20Dsp {
 
       // starter motor whine (pinion ~ 11x crank speed) with gear grind
       if (st > 0.001) {
-        this.starterPh += (rpm / 60) * 11 / fs;
+        this.starterPh += (rpm / 60) * E.starterRatio / fs;
         this.starterPh -= Math.floor(this.starterPh);
         const saw = 2 * this.starterPh - 1;
         y += this.starterBp.run(saw + 0.4 * randn()) * 0.35 * st;
       }
 
       y = this.dcHp.run(y);
-      const o = Math.tanh(y * 0.38) * 1.35; // gentle: mostly linear, only peaks round off
+      let o = Math.tanh(y * 0.38 * E.level) * 1.35; // gentle: mostly linear, only peaks round off
+      // soft knee above 0.9 so loud engines never clip the output
+      if (o > 0.9) o = 0.9 + 0.1 * Math.tanh((o - 0.9) / 0.1);
+      else if (o < -0.9) o = -0.9 - 0.1 * Math.tanh((-o - 0.9) / 0.1);
       out[i] = o;
 
       this.cyc[this.cycN] = o;
