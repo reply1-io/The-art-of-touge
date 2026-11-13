@@ -159,7 +159,7 @@ function cabinTop(z) {
   if (z >= SCREEN_TOP_Z) {
     const t = (SCREEN_BASE_Z - z) / (SCREEN_BASE_Z - SCREEN_TOP_Z);
     const base = section(SCREEN_BASE_Z).belt;
-    return { y: base + (ROOF_Y - 0.02 - base) * Math.sin((t * Math.PI) / 2) ** 0.9, hw: 0.72 + (ROOF_HW - 0.72) * t };
+    return { y: base + (ROOF_Y - 0.02 - base) * t, hw: 0.72 + (ROOF_HW - 0.72) * t }; // a flat screen: straight from base to roof
   }
   if (z >= ROOF_REAR_Z) return { y: ROOF_Y - 0.02 + 0.02 * ((SCREEN_TOP_Z - z) / (SCREEN_TOP_Z - ROOF_REAR_Z)), hw: ROOF_HW };
   // The fastback: a long, gently curved fall to the spoiler.
