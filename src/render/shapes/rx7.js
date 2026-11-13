@@ -223,9 +223,10 @@ function detailPolys() {
   front(0.28, -0.28, 0.52, 0.54, TRIM); // slot in the nose tip
   front(0.74, -0.74, 0.44, 0.47, TRIM); // bumper strip
   for (const side of [1, -1]) front(side * 0.56, side * 0.73, 0.44, 0.475, AMBER, zn + 0.002);
-  front(0.6, -0.6, 0.22, 0.4, INK); // big intake
-  for (const y of [0.27, 0.335]) front(0.57, -0.57, y, y + 0.025, [0.17, 0.17, 0.19], zn + 0.002);
-  for (const side of [1, -1]) front(side * 0.64, side * 0.72, 0.25, 0.37, INK); // corner ducts
+  // The intake: two rows of black slots cut into the body-colour bumper, and a small duct at each
+  // corner, like the real car.
+  for (const y of [0.33, 0.255]) front(0.5, -0.5, y, y + 0.045, INK);
+  for (const side of [1, -1]) front(side * 0.6, side * 0.72, 0.25, 0.3, INK);
   // Bonnet vent: a black louvred scoop just ahead of the screen, a little to the left.
   const vy = (z) => section(z).top + 0.025;
   trim.push({ pts: [[0.32, vy(1.62), 1.62], [0.02, vy(1.62), 1.62], [0.02, vy(1.36), 1.36], [0.32, vy(1.36), 1.36]], color: INK, out: [0, 1, 0.1] });
