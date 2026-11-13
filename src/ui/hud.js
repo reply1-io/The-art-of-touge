@@ -46,9 +46,12 @@ export class Hud {
     const ORANGE = '#ff8c1a';
     const GLOW = 'rgba(255,140,26,0.95)';
     const RED = '#ff3a24';
+    // Above 100 mph the backlight throbs a little brighter.
+    const fast = Math.max(0, Math.min(1, (state.speedMph - 100) / 25));
+    const pulse = 1 + fast * (0.6 + 0.4 * Math.sin(performance.now() / 90));
     const glow = (color, blur) => {
       g.shadowColor = color;
-      g.shadowBlur = blur * u;
+      g.shadowBlur = blur * u * pulse;
     };
     // Dial face.
     g.shadowBlur = 0;

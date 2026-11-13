@@ -294,6 +294,18 @@ export class CarAudio {
     this.squeak.start();
     this.squeak2.start();
 
+    // Road roar.
+    const road = ctx.createBufferSource();
+    road.buffer = this.noise;
+    road.loop = true;
+    this.roadFilter = ctx.createBiquadFilter();
+    this.roadFilter.type = 'lowpass';
+    this.roadFilter.frequency.value = 120;
+    this.roadGain = ctx.createGain();
+    this.roadGain.gain.value = 0;
+    road.connect(this.roadFilter).connect(this.roadGain).connect(this.master);
+    road.start(0, 0.7);
+
     // ---- Tyres, wind, grind ----
     const squeal = ctx.createBufferSource();
     squeal.buffer = this.noise;
@@ -393,6 +405,29 @@ export class CarAudio {
   }
 
   // In-car: the intake is right in front of you and the exhaust is behind the bulkhead.
+  // Passing a post, a sign or a rail post at speed: a short rush of air on that side.
+  whoosh(strength, pan) {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(1300, t);
+    bp.frequency.exponentialRampToValueAtTime(500, t + 0.16);
+    bp.Q.value = 1.2;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.12 * Math.min(1, strength), t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    const p = ctx.createStereoPanner();
+    p.pan.value = pan;
+    src.connect(bp).connect(g).connect(p).connect(this.master);
+    src.start(t, Math.random());
+    src.stop(t + 0.2);
+  }
+
   setBigBrakes(on) {
     this.bigBrakes = on;
   }
@@ -715,7 +750,10 @@ export class CarAudio {
     this.squeak.frequency.setTargetAtTime(3400 + Math.sin(t * 3.1) * 120 + speed * 30, t, 0.05);
     this.squeak2.frequency.setTargetAtTime(3405 * 1.5 + Math.sin(t * 2.3) * 90, t, 0.05);
     this.squeakGain.gain.setTargetAtTime(sq * 0.09, t, squealing ? 0.08 : 0.04);
-    this.windGain.gain.setTargetAtTime(clamp((speed / 50) ** 2, 0, 1) * 0.22, t, 0.2);
+    this.windGain.gain.setTargetAtTime(clamp((speed / 45) ** 2, 0, 1.2) * 0.32, t, 0.2);
+    // Road roar: the tyres on the tarmac, a low rumble that builds with speed.
+    this.roadGain.gain.setTargetAtTime(clamp(speed / 40, 0, 1.2) ** 1.5 * 0.1, t, 0.15);
+    this.roadFilter.frequency.setTargetAtTime(90 + speed * 4, t, 0.2);
     this.windFilter.frequency.setTargetAtTime(300 + speed * 18, t, 0.2);
     this.grindGain.gain.setTargetAtTime(tr.grindTimer > 0 ? 0.35 : 0, t, 0.01);
   }

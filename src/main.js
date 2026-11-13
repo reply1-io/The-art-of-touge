@@ -26,6 +26,7 @@ import { Wallet, money } from './game/wallet.js';
 import { Sparks } from './render/sparks.js';
 import { Glints } from './render/glints.js';
 import { TyreSmoke } from './render/smoke.js';
+import { SpeedLines } from './render/speedLines.js';
 import { Ambience } from './audio/ambience.js';
 import { Deer } from './world/deer.js';
 import { Online } from './net/online.js';
@@ -148,6 +149,8 @@ const drift = new DriftScore();
 let sparks;
 let glints;
 let smoke;
+let speedLines;
+let passIndex = -1;
 const ambience = new Ambience(audio);
 const glintTint = new THREE.Color();
 let deer;
@@ -201,7 +204,7 @@ function toast(text, seconds = 1.4) {
   const el = $('toast');
   el.textContent = text;
   // The race countdown is shown big.
-  el.classList.toggle('count', /^([123]|GO!)$/.test(text));
+  el.classList.toggle('count', !!race?.active && /^([123]|GO!)$/.test(text));
   el.classList.add('show');
   toastTimer = seconds;
 }
@@ -222,6 +225,8 @@ function renderChoices() {
           ? [[true, 'On'], [false, 'Off']]
           : key === 'steering'
             ? [['buttons', 'Buttons'], ['slider', 'Slider']]
+            : key === 'blur'
+            ? [[true, 'On'], [false, 'Off']]
             : key === 'money'
             ? [['career', 'Earn it'], ['unlimited', 'Unlimited']]
             : key === 'shifter'
@@ -534,6 +539,25 @@ function updateRun(dt) {
   }
 }
 
+// ---------- Pass-by whooshes: rail posts and roadside posts rushing past ----------
+function passBy() {
+  const i = run.hint;
+  const speed = vehicle.speed;
+  if (passIndex < 0 || Math.abs(i - passIndex) > 6) passIndex = i;
+  const rail = mountain.layout.rail;
+  while (passIndex < i) {
+    passIndex++;
+    if (speed < 15) continue;
+    for (const side of [1, -1]) {
+      const post = rail[side][passIndex] ? passIndex % 3 === 0 : passIndex % 5 === 0 && !mountain.inZone(passIndex, side);
+      if (!post) continue;
+      // Louder for the near side of the road (you drive on the left).
+      const near = side > 0 ? 1 : 0.55;
+      audio.whoosh(((speed - 15) / 30) * near, -side * 0.7);
+    }
+  }
+}
+
 // ---------- Sparks: rails, walls and bottoming out ----------
 function throwSparks() {
   const v = vehicle.body.linvel();
@@ -786,6 +810,7 @@ function frame(now) {
       run.hint = roadQ.index;
     } else updateRun(dt);
     throwSparks();
+    passBy();
     deer.update(dt, run.hint, Math.max(0, vehicle.forwardSpeed));
     drift.update(dt, vehicle, barrier.touching && barrier.impact > 9000);
     const tr = vehicle.trans;
@@ -855,6 +880,10 @@ function frame(now) {
   else rig.update(dt, carModel.root, vehicle.body.linvel());
   sky.update(camera);
   mountain.update(camera.position, timePreset.detailRange, timePreset.groundRange, dt);
+  // Speed blur at the edges of the picture, and dust streaks in the air, from about 60-70 mph.
+  const carSpeed = vehicle.speed;
+  vhs.blur = running && settings.blur !== false ? Math.max(0, Math.min(1, (carSpeed - 26) / 26)) : 0;
+  speedLines.update(camera, vehicle.body.linvel(), glintTint.setRGB(...timePreset.flareTint.map((c) => c / 255)));
   vhs.render(scene, camera, now / 1000);
   // Lens flare when facing the sun, unless the mountain is in the way.
   let sunVisible = false;
@@ -925,6 +954,7 @@ async function boot() {
   sparks = new Sparks(scene);
   glints = new Glints(carModel.root);
   smoke = new TyreSmoke(scene);
+  speedLines = new SpeedLines(scene);
   carModel.root.traverse((o) => {
     if (o.isMesh) o.castShadow = true;
   });

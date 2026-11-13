@@ -14,6 +14,7 @@ const DEFAULTS = {
   picture: 'sharp', // 'sharp' | 'retro'
   map: 'akina', // 'akina' | 'dragon'
   time: 'night', // 'day' | 'sunset' | 'night'
+  blur: true, // edge blur at speed
   money: 'unlimited', // 'career' | 'unlimited'
   netName: '',
   netServer: '',

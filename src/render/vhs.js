@@ -19,6 +19,8 @@ const fragmentShader = /* glsl */ `
   uniform vec2 res;       // size of the low-resolution buffer in pixels
   uniform float time;
   uniform float strength; // 0 = clean pixels only, 1 = full VHS
+  uniform float blur;     // speed blur at the edges of the picture, 0..1
+  uniform vec2 center;    // where the road vanishes: the blur streaks away from here
   varying vec2 vUv;
 
   float rand(vec2 c) {
@@ -27,6 +29,16 @@ const fragmentShader = /* glsl */ `
 
   vec3 sampleSRGB(vec2 uv) {
     return linearToOutputTexel(texture2D(tDiffuse, uv)).rgb;
+  }
+
+  // Edges of the picture streak outward at speed; the middle stays sharp.
+  vec3 speedBlur(vec2 p) {
+    vec2 d = p - center;
+    float k = smoothstep(0.2, 0.62, length(d * vec2(1.5, 1.0))) * blur;
+    if (k < 0.002) return sampleSRGB(p);
+    vec3 acc = vec3(0.0);
+    for (int i = 0; i < 6; i++) acc += sampleSRGB(p - d * (float(i) / 5.0) * 0.07 * k);
+    return acc / 6.0;
   }
 
   void main() {
@@ -47,7 +59,7 @@ const fragmentShader = /* glsl */ `
     vec2 one = vec2(1.0 / res.x, 0.0);
 
     // Red and blue pulled apart, colour smeared to the right like a tape chroma signal.
-    vec3 c = sampleSRGB(px);
+    vec3 c = speedBlur(px);
     float r = sampleSRGB(px + one * 1.5 * strength).r;
     float b = sampleSRGB(px - one * 1.5 * strength).b;
     vec3 shifted = vec3(r, c.g, b);
@@ -75,6 +87,7 @@ export class VhsRenderer {
     this.renderer = renderer;
     this.pixelSize = pixelSize;
     this.strength = 1;
+    this.blur = 0;
     this.target = new THREE.WebGLRenderTarget(4, 4, {
       minFilter: THREE.NearestFilter,
       magFilter: THREE.NearestFilter,
@@ -89,6 +102,8 @@ export class VhsRenderer {
         res: { value: new THREE.Vector2(4, 4) },
         time: { value: 0 },
         strength: { value: 1 },
+        blur: { value: 0 },
+        center: { value: new THREE.Vector2(0.5, 0.62) },
       },
       depthTest: false,
       depthWrite: false,
@@ -112,6 +127,7 @@ export class VhsRenderer {
     const r = this.renderer;
     this.material.uniforms.time.value = time;
     this.material.uniforms.strength.value = this.strength;
+    this.material.uniforms.blur.value = this.blur;
     r.setRenderTarget(this.target);
     r.render(scene, camera);
     r.setRenderTarget(null);
