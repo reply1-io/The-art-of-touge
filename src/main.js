@@ -217,6 +217,8 @@ function renderChoices() {
           ? [[true, 'On'], [false, 'Off']]
           : key === 'steering'
             ? [['buttons', 'Buttons'], ['slider', 'Slider']]
+            : key === 'money'
+            ? [['career', 'Earn it'], ['unlimited', 'Unlimited']]
             : key === 'shifter'
               ? [['drag', 'Drag knob'], ['tap', 'Tap gears']]
               : [['chase', 'Chase'], ['cockpit', 'In car'], ['bumper', 'Bumper']];
@@ -251,6 +253,7 @@ function renderChoices() {
         if (key === 'time' && online?.hosting) online.setRoom({ time: value });
         settings[key] = value;
         saveSettings(settings);
+        if (key === 'money') wallet.setUnlimited(value === 'unlimited');
         applySettings();
         renderChoices();
       });
@@ -452,9 +455,9 @@ const shop = new Shop($('shop'), tune, () => {
   headlight.color.setHex((HEADLIGHTS[tune.headlights] || HEADLIGHTS.white)[1]);
 }, wallet);
 wallet.onChange = () => {
-  for (const el of document.querySelectorAll('.title-money')) el.textContent = money(wallet.money);
+  for (const el of document.querySelectorAll('.title-money')) el.textContent = money(wallet.balance);
 };
-wallet.onChange();
+wallet.setUnlimited(settings.money === 'unlimited');
 shopRef = shop;
 shop.resize(window.innerWidth, window.innerHeight);
 $('btn-shop').addEventListener('click', () => shop.open());

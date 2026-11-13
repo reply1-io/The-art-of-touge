@@ -34,7 +34,7 @@ export const PRICES = {
   numbers: { false: 0, true: 40 },
 };
 
-export const money = (n) => '$' + Math.round(n).toLocaleString('en-US');
+export const money = (n) => (n === Infinity ? '$∞' : '$' + Math.round(n).toLocaleString('en-US'));
 
 export class Wallet {
   constructor(tune) {
@@ -55,6 +55,16 @@ export class Wallet {
       this.save();
     }
     this.onChange = () => {};
+  }
+
+  // Unlimited money: everything is affordable and buying costs nothing (your real balance is kept).
+  setUnlimited(on) {
+    this.unlimited = !!on;
+    this.onChange?.();
+  }
+
+  get balance() {
+    return this.unlimited ? Infinity : this.money;
   }
 
   save() {
@@ -80,6 +90,11 @@ export class Wallet {
   buy(key, value) {
     if (this.owns(key, value)) return true;
     const p = this.price(key, value);
+    if (this.unlimited) {
+      this.owned.add(key + ':' + value);
+      this.save();
+      return true;
+    }
     if (this.money < p) return false;
     this.money -= p;
     this.owned.add(key + ':' + value);

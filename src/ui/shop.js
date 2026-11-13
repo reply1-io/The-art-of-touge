@@ -294,7 +294,7 @@ export class Shop {
         this.render();
         return;
       }
-      this.flashMsg = `Bought for ${money(w.price(key, value))}`;
+      this.flashMsg = w.unlimited ? 'Fitted' : `Bought for ${money(w.price(key, value))}`;
       rerender = true;
     }
     this.tune[key] = value;
@@ -339,7 +339,7 @@ export class Shop {
       return;
     }
     el.textContent = money(w.price(key, value));
-    el.className = w.price(key, value) > w.money ? 'price pricey' : 'price';
+    el.className = w.price(key, value) > w.balance ? 'price pricey' : 'price';
   }
 
   // A row of small toggle buttons: [[value, label], ...].
@@ -358,7 +358,7 @@ export class Shop {
         const tag = document.createElement('small');
         tag.textContent = money(price);
         b.append(tag);
-        if (price > this.wallet.money) b.classList.add('pricey');
+        if (price > this.wallet.balance) b.classList.add('pricey');
       }
       if (current === value) b.classList.add('sel');
       b.addEventListener('click', () => this.#change(key, value, true));
@@ -838,7 +838,7 @@ export class Shop {
     const head = document.createElement('div');
     head.className = 'shop-head';
     head.innerHTML = '<h2>TUNING SHOP</h2><span class="shop-money"></span>';
-    if (this.wallet) head.querySelector('.shop-money').textContent = money(this.wallet.money);
+    if (this.wallet) head.querySelector('.shop-money').textContent = money(this.wallet.balance);
     const done = document.createElement('button');
     done.type = 'button';
     done.className = 'big';
