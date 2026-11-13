@@ -1,5 +1,6 @@
-// M20EngineSound - procedural E30 325i (BMW M20B25 straight-six) engine audio.
-// No samples: the sound is synthesized by M20Dsp (m20-dsp.js).
+// M20EngineSound - procedural engine audio: the E30 325i's BMW M20B25 straight-six, and a
+// GM LS3 6.2 V8 (engine.setEngine('ls3')). No samples: the sound is synthesized by M20Dsp
+// (m20-dsp.js). The class keeps its M20 name so existing code keeps working.
 //
 //   const engine = await M20EngineSound.create(audioCtx);
 //   engine.connect(audioCtx.destination);
@@ -7,7 +8,7 @@
 //   // every frame from your car sim:
 //   engine.setRpm(car.rpm);
 //   engine.setThrottle(car.throttle);  // 0..1; 0 above idle = overrun (fuel cut)
-//   engine.setExhaust(0);              // 0 stock, 1 sport
+//   engine.setExhaust('street');       // 'stock' | 'street' | 'race'
 //   engine.stop();
 //
 // Where it runs: an AudioWorklet built from the DSP code in memory (no extra file
@@ -17,8 +18,8 @@
 // Browser rule: create/resume the AudioContext inside the click/tap handler,
 // before any await, or phones keep it silent.
 
-import { M20Dsp, Biquad, Delay, randn, crankRpm, CRANK_SECONDS, IDLE_RPM, FIRING, TAU } from './m20-dsp.js';
-export { crankRpm, CRANK_SECONDS, IDLE_RPM };
+import { M20Dsp, Biquad, Delay, randn, crankRpm, exhaustName, CRANK_SECONDS, IDLE_RPM, ENGINES, EXHAUSTS, TAU } from './m20-dsp.js';
+export { crankRpm, CRANK_SECONDS, IDLE_RPM, ENGINES, EXHAUSTS };
 
 function workletSource(dspSource) {
   // Best: the original m20-dsp.js text (bundlers rename things when minifying, which breaks
@@ -27,10 +28,11 @@ function workletSource(dspSource) {
     ? dspSource.replace(/^export /gm, '')
     : [
         `const TAU = ${TAU};`,
-        `const FIRING = ${JSON.stringify(FIRING)};`,
+        `const ENGINES = ${JSON.stringify(ENGINES)};`,
+        `const EXHAUSTS = ${JSON.stringify(EXHAUSTS)};`,
         `const IDLE_RPM = ${IDLE_RPM};`,
         `const CRANK_SECONDS = ${CRANK_SECONDS};`,
-        randn, crankRpm, Biquad, Delay, M20Dsp,
+        randn, crankRpm, exhaustName, Biquad, Delay, M20Dsp,
       ].map(String).join('\n');
   return [
     dsp,
@@ -56,10 +58,11 @@ const timeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout((
 export class M20EngineSound {
   /**
    * @param {AudioContext} ctx
-   * @param {{ dspSource?: string }} [opts] dspSource: the text of m20-dsp.js. Pass it when the
-   *   code is minified by a bundler (with Vite: import dspSource from './m20-dsp.js?raw').
+   * @param {{ dspSource?: string, engine?: 'm20' | 'ls3' }} [opts] dspSource: the text of
+   *   m20-dsp.js. Pass it when the code is minified by a bundler (with Vite:
+   *   import dspSource from './m20-dsp.js?raw'). engine: which engine to start with.
    */
-  static async create(ctx, { dspSource } = {}) {
+  static async create(ctx, { dspSource, engine = 'm20' } = {}) {
     const e = new M20EngineSound(ctx);
     if (ctx.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
       try {
@@ -86,6 +89,7 @@ export class M20EngineSound {
       e.backend = 'main-thread';
     }
     e.node.connect(e.output);
+    e.setEngine(engine);
     return e;
   }
 
@@ -103,7 +107,15 @@ export class M20EngineSound {
 
   setRpm(rpm) { if (!this.cranking) this._send({ set: { rpm } }); }
   setThrottle(t) { this._send({ set: { throttle: Math.min(1, Math.max(0, t)) } }); }
-  setExhaust(x) { this._send({ set: { exhaust: x } }); }
+  /** 'stock' | 'street' | 'race'. Street and race are rowdier and lope at idle. */
+  setExhaust(x) { this._send({ set: { exhaust: exhaustName(x) } }); }
+
+  /** 'm20' (BMW straight-six) or 'ls3' (GM V8). Switches instantly, even while running. */
+  setEngine(name) {
+    if (!ENGINES[name]) throw new Error(`unknown engine ${name}`);
+    this.engine = name;
+    this._send({ set: { engine: name, idleRpm: ENGINES[name].idleRpm } });
+  }
 
   start() {
     this.running = true;
@@ -125,7 +137,7 @@ export class M20EngineSound {
    * engine.setState({ rpm, throttle, ignition: running ? 1 : 0, starter: cranking ? 1 : 0 }).
    * Stalls, run-downs and restarts then sound right without the built-in scripts.
    */
-  direct({ idleRpm = IDLE_RPM } = {}) {
+  direct({ idleRpm = ENGINES[this.engine]?.idleRpm ?? IDLE_RPM } = {}) {
     this.running = true;
     this._send({ set: { idleRpm } });
     this._send({ cmd: 'direct' });
