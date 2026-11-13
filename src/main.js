@@ -225,8 +225,6 @@ function renderChoices() {
           ? [[true, 'On'], [false, 'Off']]
           : key === 'steering'
             ? [['buttons', 'Buttons'], ['slider', 'Slider']]
-            : key === 'blur'
-            ? [[true, 'On'], [false, 'Off']]
             : key === 'money'
             ? [['career', 'Earn it'], ['unlimited', 'Unlimited']]
             : key === 'shifter'
@@ -880,9 +878,7 @@ function frame(now) {
   else rig.update(dt, carModel.root, vehicle.body.linvel());
   sky.update(camera);
   mountain.update(camera.position, timePreset.detailRange, timePreset.groundRange, dt);
-  // Speed blur at the edges of the picture, and dust streaks in the air, from about 60-70 mph.
-  const carSpeed = vehicle.speed;
-  vhs.blur = running && settings.blur !== false ? Math.max(0, Math.min(1, (carSpeed - 26) / 26)) : 0;
+  // Dust streaks in the air from 50 mph.
   speedLines.update(camera, vehicle.body.linvel(), glintTint.setRGB(...timePreset.flareTint.map((c) => c / 255)));
   vhs.render(scene, camera, now / 1000);
   // Lens flare when facing the sun, unless the mountain is in the way.
