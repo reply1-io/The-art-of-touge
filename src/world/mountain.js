@@ -316,6 +316,9 @@ export class Mountain {
         }
         this.#cabin(lay.cabin, at, lambert, z.side);
       }
+      group.traverse((o) => {
+        if (o.isMesh) o.receiveShadow = o.castShadow = true;
+      });
       const mid = zonePoint(road, z, 0.5, z.inner + z.width / 2);
       this.#addChunk(group, mid.x, mid.z, (z.i1 - z.i0) * STEP * 0.6 + z.width);
     }
@@ -612,6 +615,7 @@ export class Mountain {
       const group = new THREE.Group();
       group.add(new THREE.Mesh(ag, asphaltMat), new THREE.Mesh(eg, edgeMat));
       const mid = Math.floor((i0 + i1) / 2);
+      group.traverse((o) => (o.receiveShadow = true));
       this.#addChunk(group, road.x[mid], road.z[mid], ROAD_CHUNK * STEP * 0.6, 'ground');
     }
   }
@@ -672,6 +676,7 @@ export class Mountain {
         const mesh = new THREE.Mesh(g, mat);
         const cx = t.x0 + ((tx + ex) / 2) * t.cell;
         const cz = t.z0 + ((tz + ez) / 2) * t.cell;
+        mesh.receiveShadow = true;
         this.#addChunk(mesh, cx, cz, TILE * t.cell * 0.75, 'ground');
       }
     }

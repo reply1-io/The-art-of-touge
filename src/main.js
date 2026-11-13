@@ -24,6 +24,7 @@ import { Race } from './game/race.js';
 import { lookOf } from './net/online.js';
 import { Wallet, money } from './game/wallet.js';
 import { Sparks } from './render/sparks.js';
+import { Glints } from './render/glints.js';
 import { Deer } from './world/deer.js';
 import { Online } from './net/online.js';
 import { HEADLIGHTS } from './config.js';
@@ -44,6 +45,9 @@ const tune = loadTuning();
 // ---------- Rendering ----------
 const renderer = new THREE.WebGLRenderer({ canvas: $('view'), antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+// Real shadows from the sun (or moon), in a small area that follows the car.
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const vhs = new VhsRenderer(renderer, 1);
 const scene = new THREE.Scene();
 // Night: dark blue fog, moonlight and a soft sky fill. The headlights are the main light.
@@ -54,7 +58,17 @@ scene.fog = new THREE.FogExp2(0x0b1430, 0.0011);
 const camera = new THREE.PerspectiveCamera(60, 1, 0.15, 9000);
 const moon = new THREE.DirectionalLight(0x9fb4ff, 0.85);
 moon.position.set(-45, 55, -70);
-scene.add(moon);
+moon.castShadow = true;
+moon.shadow.mapSize.set(1024, 1024);
+moon.shadow.camera.left = -16;
+moon.shadow.camera.right = 16;
+moon.shadow.camera.top = 16;
+moon.shadow.camera.bottom = -16;
+moon.shadow.camera.near = 1;
+moon.shadow.camera.far = 140;
+moon.shadow.bias = -0.0006;
+moon.shadow.normalBias = 0.04;
+scene.add(moon, moon.target);
 const hemi = new THREE.HemisphereLight(0x4a5e96, 0x14161c, 1.15);
 scene.add(hemi);
 // Headlights: one spot light that rides on the car and lights the road ahead.
@@ -95,6 +109,8 @@ function applyTime() {
   moon.color.setHex(p.sunColor);
   moon.intensity = p.sunIntensity;
   moon.position.copy(sunDir).multiplyScalar(100);
+  // Night shadows from the moon are faint; the lamps carry the light.
+  moon.shadow.intensity = p.stars >= 0.9 ? 0.45 : 0.85;
   hemi.color.setHex(p.hemiSky);
   hemi.groundColor.setHex(p.hemiGround);
   hemi.intensity = p.hemiIntensity;
@@ -126,6 +142,8 @@ const audio = new CarAudio();
 const exhaustEvents = new ExhaustEvents();
 const drift = new DriftScore();
 let sparks;
+let glints;
+const glintTint = new THREE.Color();
 let deer;
 let race;
 let online;
@@ -721,6 +739,9 @@ function frame(now) {
   carModel.root.quaternion.slerpQuaternions(prevQuat, curQuat, alpha);
   carModel.syncWheels(vehicle);
   race.render(dt, alpha, timePreset.lights);
+  // The sun's shadow box follows the car.
+  moon.target.position.copy(carModel.root.position);
+  moon.position.copy(carModel.root.position).addScaledVector(sunDir, 80);
   carModel.setLights(timePreset.lights, controls.brake > 0);
   const nose = new THREE.Vector3(0, -0.05, 2.1).applyQuaternion(carModel.root.quaternion).add(carModel.root.position);
   headlight.position.copy(nose);
@@ -738,6 +759,14 @@ function frame(now) {
     sunVisible = !world.castRay(ray, 900, true, undefined, undefined, undefined, vehicle.body) && !behindRange(camera.position);
   }
   flare.draw(dt, camera, sunDir, timePreset.flare, timePreset.flareTint, sunVisible);
+  // The sun glinting off the paint (needs the sun in the sky and not hidden by the mountain).
+  glintTint.setRGB(...timePreset.flareTint.map((c) => c / 255));
+  let sunOnCar = false;
+  if (timePreset.flare > 0) {
+    const from = carModel.root.position;
+    sunOnCar = !world.castRay(new RAPIER.Ray({ x: from.x, y: from.y + 1.2, z: from.z }, sunDir), 900, true, undefined, undefined, undefined, vehicle.body) && !behindRange(from);
+  }
+  glints.update(camera, sunDir, sunOnCar ? timePreset.flare : 0, glintTint);
 
   const tr = vehicle.trans;
   hud.draw(
@@ -790,6 +819,10 @@ async function boot() {
   headlight.color.setHex((HEADLIGHTS[tune.headlights] || HEADLIGHTS.white)[1]);
   scene.add(carModel.root);
   sparks = new Sparks(scene);
+  glints = new Glints(carModel.root);
+  carModel.root.traverse((o) => {
+    if (o.isMesh) o.castShadow = true;
+  });
   deer = new Deer(scene, mountain.road, mountain.terrain);
   online = new Online(scene, world, RAPIER);
   race = new Race({ scene, world, mountain, roadId: settings.map, wallet, toast, look: () => lookOf(tune) });

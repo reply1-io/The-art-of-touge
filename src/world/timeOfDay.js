@@ -15,8 +15,8 @@ export const TIMES = {
     skyMid: 0x76aee2,
     skyHorizon: 0xadc9e4,
     sunColor: 0xfff0d6,
-    sunIntensity: 3.3,
-    sunElevation: 7, // degrees: low enough to sit in the windscreen when you drive toward it
+    sunIntensity: 3.6,
+    sunElevation: 20, // degrees: high enough to cast clear shadows, low enough to sit in view
     disc: 0xffffff,
     discSize: 46,
     glow: 0.95,
@@ -24,7 +24,7 @@ export const TIMES = {
     glowColor: 0xfff1cf,
     hemiSky: 0xc2d8ff,
     hemiGround: 0x4f5e3e,
-    hemiIntensity: 1.35,
+    hemiIntensity: 0.95,
     stars: 0,
     lights: false,
     clouds: 0xffffff,
@@ -57,7 +57,7 @@ export const TIMES = {
     glowColor: 0xffa860,
     hemiSky: 0xa47ca8,
     hemiGround: 0x3c2c2c,
-    hemiIntensity: 1.05,
+    hemiIntensity: 0.85,
     stars: 0.18,
     lights: true,
     clouds: 0xffa982,
