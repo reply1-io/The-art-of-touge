@@ -14,8 +14,6 @@ import m20DspSource from './m20-dsp.js?raw';
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
-// Exhaust option -> how open the M20 synth's muffler is (0 stock .. 1 straight-through).
-const M20_EXHAUST = { stock: 0, street: 0.6, race: 1 };
 
 function makeNoise(ctx, seconds = 2) {
   const buf = ctx.createBuffer(1, ctx.sampleRate * seconds, ctx.sampleRate);
@@ -663,7 +661,7 @@ export class CarAudio {
         throttle: cranking ? 0 : load,
         ignition: running && !cranking ? 1 : 0,
         starter: cranking ? 1 : 0,
-        exhaust: M20_EXHAUST[this.exhaust] ?? 0,
+        exhaust: this.exhaust || 'stock', // street/race: rowdier voice and a lopey idle
         idleRpm: e.spec?.idleRpm ?? 760,
       });
     } else {

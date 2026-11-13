@@ -132,7 +132,8 @@ input[type=range] { width: 100%; accent-color: var(--needle); }
         <div class="row"><span class="seglabel">Exhaust</span>
           <div class="seg" role="group" aria-label="Exhaust">
             <button id="eStock" aria-pressed="true">Stock</button>
-            <button id="eSport" aria-pressed="false">Sport</button>
+            <button id="eStreet" aria-pressed="false">Street</button>
+            <button id="eRace" aria-pressed="false">Race</button>
           </div>
         </div>
         <div id="pedalBox" class="pedals">
@@ -165,7 +166,7 @@ input[type=range] { width: 100%; accent-color: var(--needle); }
   <section class="notes">
     <div><h3 id="noteH">Why it sounds like a six</h3><p id="noteP">Each cylinder fires every 120° of crank, so the main pitch is rpm ÷ 20 (40 Hz at idle, 325 Hz at the limiter). Small differences between cylinders add the half-order rumble a perfectly even buzz would lack.</p></div>
     <div><h3>On and off the gas</h3><p>Under load the pulses hit harder and the rasp opens up. Lift above idle and the fuel is cut on overrun, so the exhaust goes soft and the odd pop comes through.</p></div>
-    <div><h3>Tuning it</h3><p>Each engine is a profile in <code>m20-dsp.js</code>: firing order, crank angles, banks, pipe lengths, muffler voicing and cylinder imbalance. The Sport setting opens the muffler and adds rasp.</p></div>
+    <div><h3>Tuning it</h3><p>Each engine is a profile in <code>m20-dsp.js</code>: firing order, crank angles, banks, pipe lengths, muffler voicing and cylinder imbalance. Street and Race open the muffler, add rasp and rumble, and give the idle a heavy lope.</p></div>
   </section>
 </div>
 
@@ -223,7 +224,7 @@ async function ensureEngine() {
   engine = await M20EngineSound.create(ctx, { engine: eng });
   engine.connect(out);
   engine.onCycle = (c) => { lastCycle = c; };
-  engine.setExhaust($('eSport').getAttribute('aria-pressed') === 'true' ? 1 : 0);
+  engine.setExhaust(exhaust);
 }
 
 $('btnStart').onclick = async () => {
@@ -268,12 +269,15 @@ function setMode(m) {
 $('mFree').onclick = () => setMode('free');
 $('mDrive').onclick = () => setMode('drive');
 $('mManual').onclick = () => setMode('manual');
-function setExhaust(sport) {
-  $('eStock').setAttribute('aria-pressed', String(!sport)); $('eSport').setAttribute('aria-pressed', String(sport));
-  engine?.setExhaust(sport ? 1 : 0);
+let exhaust = 'stock';
+function setExhaust(name) {
+  exhaust = name;
+  for (const [id, k] of [['eStock', 'stock'], ['eStreet', 'street'], ['eRace', 'race']]) $(id).setAttribute('aria-pressed', String(k === name));
+  engine?.setExhaust(name);
 }
-$('eStock').onclick = () => setExhaust(false);
-$('eSport').onclick = () => setExhaust(true);
+$('eStock').onclick = () => setExhaust('stock');
+$('eStreet').onclick = () => setExhaust('street');
+$('eRace').onclick = () => setExhaust('race');
 
 function setEngineChoice(name) {
   eng = name;

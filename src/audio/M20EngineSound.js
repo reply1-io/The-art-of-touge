@@ -8,7 +8,7 @@
 //   // every frame from your car sim:
 //   engine.setRpm(car.rpm);
 //   engine.setThrottle(car.throttle);  // 0..1; 0 above idle = overrun (fuel cut)
-//   engine.setExhaust(0);              // 0 stock, 1 sport
+//   engine.setExhaust('street');       // 'stock' | 'street' | 'race'
 //   engine.stop();
 //
 // Where it runs: an AudioWorklet built from the DSP code in memory (no extra file
@@ -18,8 +18,8 @@
 // Browser rule: create/resume the AudioContext inside the click/tap handler,
 // before any await, or phones keep it silent.
 
-import { M20Dsp, Biquad, Delay, randn, crankRpm, CRANK_SECONDS, IDLE_RPM, ENGINES, TAU } from './m20-dsp.js';
-export { crankRpm, CRANK_SECONDS, IDLE_RPM, ENGINES };
+import { M20Dsp, Biquad, Delay, randn, crankRpm, exhaustName, CRANK_SECONDS, IDLE_RPM, ENGINES, EXHAUSTS, TAU } from './m20-dsp.js';
+export { crankRpm, CRANK_SECONDS, IDLE_RPM, ENGINES, EXHAUSTS };
 
 function workletSource(dspSource) {
   // Best: the original m20-dsp.js text (bundlers rename things when minifying, which breaks
@@ -29,9 +29,10 @@ function workletSource(dspSource) {
     : [
         `const TAU = ${TAU};`,
         `const ENGINES = ${JSON.stringify(ENGINES)};`,
+        `const EXHAUSTS = ${JSON.stringify(EXHAUSTS)};`,
         `const IDLE_RPM = ${IDLE_RPM};`,
         `const CRANK_SECONDS = ${CRANK_SECONDS};`,
-        randn, crankRpm, Biquad, Delay, M20Dsp,
+        randn, crankRpm, exhaustName, Biquad, Delay, M20Dsp,
       ].map(String).join('\n');
   return [
     dsp,
@@ -106,7 +107,8 @@ export class M20EngineSound {
 
   setRpm(rpm) { if (!this.cranking) this._send({ set: { rpm } }); }
   setThrottle(t) { this._send({ set: { throttle: Math.min(1, Math.max(0, t)) } }); }
-  setExhaust(x) { this._send({ set: { exhaust: x } }); }
+  /** 'stock' | 'street' | 'race'. Street and race are rowdier and lope at idle. */
+  setExhaust(x) { this._send({ set: { exhaust: exhaustName(x) } }); }
 
   /** 'm20' (BMW straight-six) or 'ls3' (GM V8). Switches instantly, even while running. */
   setEngine(name) {
