@@ -504,7 +504,7 @@ export class CarModel {
       box.add(pod, lid, lamp);
       pivot.add(box);
       body.add(pivot);
-      return { box, H, pivot, tilt };
+      return { box, H, pivot, tilt, side: Math.sign(x0 + x1) };
     });
     this.pop = 0;
     this.popTarget = 0;
@@ -551,8 +551,11 @@ export class CarModel {
       const e = this.pop * this.pop * (3 - 2 * this.pop);
       for (const p of this.popups) {
         // Rising, the pod also comes upright, so the lamps face straight ahead.
+        // Raised, the pod leans back about 20 degrees and slants down toward the outside,
+        // following the curve of the wing.
         p.box.position.y = (p.H - 0.01) * e;
-        p.pivot.rotation.x = p.tilt * (1 - e);
+        p.pivot.rotation.x = p.tilt + (-0.35 - p.tilt) * e;
+        p.pivot.rotation.z = -p.side * 0.16 * e;
       }
     }
     if (this.flameLife <= 0) {
