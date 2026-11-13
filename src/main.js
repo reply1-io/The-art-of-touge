@@ -25,6 +25,8 @@ import { lookOf } from './net/online.js';
 import { Wallet, money } from './game/wallet.js';
 import { Sparks } from './render/sparks.js';
 import { Glints } from './render/glints.js';
+import { TyreSmoke } from './render/smoke.js';
+import { Ambience } from './audio/ambience.js';
 import { Deer } from './world/deer.js';
 import { Online } from './net/online.js';
 import { makeCode, cleanCode } from './net/p2p.js';
@@ -48,7 +50,7 @@ const renderer = new THREE.WebGLRenderer({ canvas: $('view'), antialias: false, 
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 // Real shadows from the sun (or moon), in a small area that follows the car.
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap; // crisper edges than the soft variant
 const vhs = new VhsRenderer(renderer, 1);
 const scene = new THREE.Scene();
 // Night: dark blue fog, moonlight and a soft sky fill. The headlights are the main light.
@@ -60,11 +62,11 @@ const camera = new THREE.PerspectiveCamera(60, 1, 0.15, 9000);
 const moon = new THREE.DirectionalLight(0x9fb4ff, 0.85);
 moon.position.set(-45, 55, -70);
 moon.castShadow = true;
-moon.shadow.mapSize.set(1024, 1024);
-moon.shadow.camera.left = -16;
-moon.shadow.camera.right = 16;
-moon.shadow.camera.top = 16;
-moon.shadow.camera.bottom = -16;
+moon.shadow.mapSize.set(2048, 2048);
+moon.shadow.camera.left = -13;
+moon.shadow.camera.right = 13;
+moon.shadow.camera.top = 13;
+moon.shadow.camera.bottom = -13;
 moon.shadow.camera.near = 1;
 moon.shadow.camera.far = 140;
 moon.shadow.bias = -0.0006;
@@ -117,6 +119,7 @@ function applyTime() {
   hemi.intensity = p.hemiIntensity;
   headlight.visible = p.lights;
   sky.setTime(p, sunDir);
+  smoke?.setTint({ day: 0xeeeef0, sunset: 0xf3c9b0, night: 0x7d8496 }[settings.time] ?? 0xeeeef0);
   mountain.setTime(p);
   camera.updateProjectionMatrix();
 }
@@ -144,6 +147,8 @@ const exhaustEvents = new ExhaustEvents();
 const drift = new DriftScore();
 let sparks;
 let glints;
+let smoke;
+const ambience = new Ambience(audio);
 const glintTint = new THREE.Color();
 let deer;
 let race;
@@ -809,6 +814,8 @@ function frame(now) {
   carModel.updateFx(dt);
   online.update(dt, vehicle, controls, timePreset.lights);
   sparks.update(dt);
+  if (active || !running) smoke.update(active ? dt : 0, vehicle);
+  if (active) ambience.update(dt, settings.time);
   // In-car view: cockpit on, arms follow the wheel, the shifter and the handbrake.
   carModel.setInterior(running && rig.mode === 'cockpit' && !window.__touge?.debugCam);
   if (vehicle.trans.gear !== lastGear) {
@@ -917,6 +924,7 @@ async function boot() {
   scene.add(carModel.root);
   sparks = new Sparks(scene);
   glints = new Glints(carModel.root);
+  smoke = new TyreSmoke(scene);
   carModel.root.traverse((o) => {
     if (o.isMesh) o.castShadow = true;
   });
