@@ -1,6 +1,6 @@
 // Speed streaks: faint motes of dust and light hanging in the air around the road. They stay put
-// in the world, so at speed they rush past the camera as short streaks; below about 70 mph they
-// fade out completely.
+// in the world, so at speed they rush past the camera as short streaks; below 50 mph they
+// fade out completely. Below 50 mph there are none; above, more, longer and brighter with speed.
 import * as THREE from 'three';
 
 const N = 70;
@@ -35,9 +35,10 @@ export class SpeedLines {
   // camera: the view; velocity: the car's world velocity; tint: Color for the time of day.
   update(camera, velocity, tint) {
     const speed = Math.hypot(velocity.x, velocity.z);
-    const k = Math.max(0, Math.min(1, (speed - 31) / 22)); // fades in from 70 mph
-    this.mat.opacity = 0.35 * k;
-    this.lines.visible = k > 0.01;
+    const k = Math.max(0, Math.min(1, (speed - 22.35) / 27)); // from 50 mph, full by about 110
+    this.mat.opacity = 0.12 + 0.33 * k;
+    this.geo.setDrawRange(0, Math.max(2, Math.round(N * (0.25 + 0.75 * k))) * 2);
+    this.lines.visible = speed > 22.35;
     if (!this.lines.visible) {
       for (const p of this.pts) p.x = 1e9;
       return;
@@ -45,7 +46,7 @@ export class SpeedLines {
     this.mat.color.copy(tint);
     this.dir.set(velocity.x, 0, velocity.z).normalize();
     const cam = camera.position;
-    const len = speed * 0.035;
+    const len = speed * (0.02 + 0.025 * k);
     this.pts.forEach((p, i) => {
       // Behind the camera or far off: start again ahead.
       this.tmp.subVectors(p, cam);
