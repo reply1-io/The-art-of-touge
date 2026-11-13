@@ -98,7 +98,7 @@ const RX7 = {
   maxSteer: (36 * Math.PI) / 180,
 
   engine: {
-    idleRpm: 845, // settles about 45 rpm lower: an 800 rpm idle
+    idleRpm: 790, // settles about 40 rpm lower: a 750 rpm idle
     idleMaxThrottle: 0.25,
     redline: 7500,
     limiterRpm: 7600,
