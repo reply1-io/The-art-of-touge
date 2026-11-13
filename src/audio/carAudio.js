@@ -11,6 +11,10 @@
 
 import { M20EngineSound } from './M20EngineSound.js';
 import m20DspSource from './m20-dsp.js?raw';
+import { CAR } from '../config.js';
+
+// Which synth engine profile each car uses (see ENGINES in m20-dsp.js).
+const ENGINE_SOUND = { e30: 'm20', rx7: 'rotary13b' };
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
@@ -98,11 +102,12 @@ export class CarAudio {
     this.m20Bus.gain.value = 0.62;
     this.m20Cabin.connect(this.m20Bus).connect(this.master);
     this.crankT = 0;
-    M20EngineSound.create(ctx, { dspSource: m20DspSource })
+    M20EngineSound.create(ctx, { dspSource: m20DspSource, engine: ENGINE_SOUND[CAR.id] || 'm20' })
       .then((m20) => {
         m20.connect(this.m20Cabin);
-        m20.setState({ rpm: this.prevRpm || 760, throttle: 0, ignition: this.prevRunning ? 1 : 0, starter: 0 });
-        m20.direct({ idleRpm: 760 });
+        const idle = CAR.engine.idleRpm;
+        m20.setState({ rpm: this.prevRpm || idle, throttle: 0, ignition: this.prevRunning ? 1 : 0, starter: 0 });
+        m20.direct({ idleRpm: idle });
         this.m20 = m20;
       })
       .catch(() => {
