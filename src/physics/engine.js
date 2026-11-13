@@ -70,8 +70,9 @@ export class Engine {
     if (rpm > s.limiterRpm) this.limiterCut = true;
     else if (rpm < s.limiterResumeRpm) this.limiterCut = false;
     let thr = this.limiterCut ? 0 : throttle;
-    // Idle control holds about 850 rpm, but cannot save the engine from a heavy clutch load.
-    thr = Math.max(thr, Math.min(1, Math.max(0, (s.idleRpm - rpm) / 150)) * 0.5);
+    // Idle control holds the idle (900 rpm on the E30), but is capped so it cannot save the
+    // engine from a heavy clutch load: drop the clutch at idle and it still stalls.
+    thr = Math.max(thr, Math.min(s.idleMaxThrottle ?? 0.5, Math.min(1, Math.max(0, (s.idleRpm - rpm) / 150)) * 0.5));
     this.throttleApplied = thr;
     const full = this.fullTorque(rpm);
     this.lastTorque = thr * full - (1 - thr) * friction;
