@@ -1,5 +1,6 @@
-// DSP core that synthesizes piston engines from first principles: the BMW M20 2.5
-// straight-six (E30 325i) and the GM LS3 6.2 V8. Each engine is a profile in ENGINES.
+// DSP core that synthesizes engines from first principles: the BMW M20 2.5 straight-six
+// (E30 325i), the GM LS3 6.2 V8 and the Mazda 13B two-rotor Wankel (RX-7). Each engine is a
+// profile in ENGINES.
 // Runs inside an AudioWorklet when the browser allows it, otherwise on the main thread
 // (see M20EngineSound.js). It has no imports so it can be shipped into a worklet as text.
 //
@@ -26,8 +27,10 @@
 export const TAU = Math.PI * 2;
 export const CRANK_SECONDS = 2.6;
 
-// Engine profiles. angles: crank degrees (0..720) at which each cylinder's exhaust valve
-// opens, in firing order; bank: which manifold/pipe that cylinder feeds.
+// Engine profiles. angles: crank degrees (0..cycleDeg, 720 for a four-stroke) at which each
+// cylinder's exhaust valve opens, in firing order; bank: which manifold/pipe that cylinder
+// feeds. Optional: cycleDeg, pulseSharp (0 smooth .. 1 abrupt port opening), tick (valvetrain),
+// intakeLag, baseLope (built-in idle chop), popMul (overrun crackle).
 export const ENGINES = {
   m20: {
     label: 'BMW M20B25 2.5 straight-six',
@@ -66,6 +69,31 @@ export const ENGINES = {
     muff: [300, 620, 0.08, 1200, 1100], body: [80, 6], drone: [165, 1],
     rasp: [900, 0.12, 0.75], rumble: [180, 0.05, 1.35], intake: [300, 0.06, 0.14],
     level: 1.4,
+  },
+  rotary13b: {
+    label: 'Mazda 13B two-rotor Wankel',
+    // Each rotor has three faces and each face fires once every three turns of the eccentric
+    // shaft, so the rotors fire twice per shaft turn (pitch = rpm / 30, like a four-cylinder),
+    // but the full pattern only repeats every 1,080 deg: 6 "faces" here, rotors alternating.
+    cycleDeg: 1080,
+    firing: ['1A', '2A', '1B', '2B', '1C', '2C'],
+    angles: [0, 180, 360, 540, 720, 900],
+    bank: [0, 1, 0, 1, 0, 1],                 // front rotor, rear rotor
+    cylGain: [1.0, 0.93, 1.05, 0.96, 0.94, 1.04], // faces and apex seals never seal quite alike
+    cylTiming: [0, 1.5, -1, 2, -1.5, 0.5],
+    idleRpm: 800, redline: 7500, crankFlare: 1500, starterRatio: 11,
+    dual: false,                               // short manifold into one pipe
+    header: [0.0009, 0.0012], pipe: [3.0, 3.0], pipeRefl: 0.45,
+    width: [52, 12], pulseSharp: 0.75,         // the rotor uncovers the port all at once: brap
+    pump: 0.14, jitter: 0.07, idleJitter: 0.14, lope: [0.012, 0.006],
+    baseLope: 0.35,                            // even a stock 13B idles a bit choppy
+    chop: [1.15, 1, 0.4, 0.55, 1.45, 1.05, 1, 1.1, 0.9, 1, 1.05, 1.1],
+    sizzle: 0.5, idleNoise: 0.8, tick: 0, intakeLag: 360, popMul: 1.8,
+    subMin: 36,                                // 27 Hz firing at idle: trim the sub, keep the buzz
+    idleHitScale: 2.2,                         // pipes make a bigger difference at idle
+    muff: [750, 900, 0.1, 2400, 1600], body: [100, 4], drone: [300, 2],
+    rasp: [1500, 0.2, 1.6], rumble: [300, 0.06, 1.0], intake: [600, 0.12, 0.25],
+    level: 1.1,
   },
 };
 
@@ -146,7 +174,7 @@ export class M20Dsp {
     this.subHz = 28;
     this.onCycle = null;
     this.fs = fs;
-    this.phase = 0;            // engine cycle, 0..1 = 720 crank degrees
+    this.phase = 0;            // engine cycle, 0..1 = cycleDeg crank degrees
     this.t = 0;
     this.hdrA = new Delay(512); this.hdrB = new Delay(512);
     this.pipe = new Delay(4096); this.pipe2 = new Delay(4096);
@@ -212,7 +240,7 @@ export class M20Dsp {
     // lift-off tracking for afterfire pops
     if (c.throttle < 0.06) {
       if (this.offT === 0 && this.popArmed && this.rpmS > 3500) {
-        this.popBudget = Math.floor(Math.random() * this.X.pops); // stock 0-1, street 0-2, race 0-4
+        this.popBudget = Math.floor(Math.random() * this.X.pops * (this.E.popMul || 1)); // stock 0-1, street 0-2, race 0-4 (more on a rotary)
       }
       this.popArmed = false;
       this.offT += n / this.fs;
@@ -240,11 +268,13 @@ export class M20Dsp {
     this.clock += n / this.fs;
   }
 
-  pulse(xDeg, width) {
-    // exhaust blowdown: smooth rise and decay (a sharp edge here = buzz)
+  pulse(xDeg, width, sharp = 0) {
+    // exhaust blowdown: smooth rise and decay (a sharp edge here = buzz). A rotary's port
+    // opens all at once, so it blends towards a sharper start.
     if (xDeg <= 0 || xDeg > width * 7) return 0;
     const u = xDeg / width;
-    return u * u * Math.exp(2 * (1 - u));
+    const smooth = u * u * Math.exp(2 * (1 - u));
+    return sharp > 0 ? smooth * (1 - sharp) + u * Math.exp(1 - u) * sharp : smooth;
   }
 
   /** Fill `out` (Float32Array) with the next block of sound. */
@@ -267,6 +297,8 @@ export class M20Dsp {
     }
 
     const E = this.E, ncyl = E.firing.length;
+    const cyc = E.cycleDeg || 720, revs = cyc / 360, sharp = E.pulseSharp || 0;
+    const tickAmt = E.tick ?? 1, inLag = E.intakeLag ?? 360;
     for (let i = 0; i < N; i++) {
       const rpmIn = C.rpm, thrIn = C.throttle, ign = C.ignition;
       const st = C.starter, idle = C.idleRpm;
@@ -281,11 +313,11 @@ export class M20Dsp {
       const nearIdle = Math.max(0, 1 - Math.max(0, Math.abs(rpm - idle) - 100) / 400) * (1 - thr);
       // cammed idle (louder exhausts): the chop is per firing (below), so the stock engine's
       // slow idle wobble fades out; it would only add a vague drift under the rhythm
-      const lope = X.lope * nearIdle;
+      const lope = Math.max(X.lope, E.baseLope || 0) * nearIdle;
       rpm *= 1 + nearIdle * (1 - X.lope) * (E.lope[0] * Math.sin(TAU * 1.13 * this.t) + E.lope[1] * Math.sin(TAU * 0.41 * this.t));
       if (st > 0) rpm *= 1 - 0.35 * st * Math.max(0, Math.cos(TAU * this.phase * ncyl));
       rpm = Math.max(0, rpm);
-      this.phase += rpm / 120 / fs;          // 2 revolutions per cycle
+      this.phase += rpm / 60 / revs / fs;    // 2 revolutions per cycle (3 for the rotary)
       if (this.phase >= 1) this.phase -= 1;
       this.t += 1 / fs;
 
@@ -293,7 +325,7 @@ export class M20Dsp {
       const overrun = thr < 0.06 && rpm > idle * 1.35; // fuel cut
       const fuel = overrun ? 0 : 1;
       // idle firings hit harder with a free-flowing exhaust (louder, punchier idle)
-      const load = ign * fuel * (0.32 * (1 + (X.idleHit - 1) * (1 - thr)) + 0.68 * thr);
+      const load = ign * fuel * (0.32 * (1 + (X.idleHit - 1) * (E.idleHitScale || 1) * (1 - thr)) + 0.68 * thr);
       const pump = E.pump;                     // air being pushed out with no combustion
       const width = E.width[0] - E.width[1] * thr; // crank degrees; harder hit under load
 
@@ -301,8 +333,8 @@ export class M20Dsp {
       for (let k = 0; k < ncyl; k++) {
         // new cycle for this cylinder is detected from crank position alone; the random
         // timing scatter only moves where its pulse lands (otherwise one cycle can trigger twice)
-        let xc = this.phase * 720 - E.angles[k] - E.cylTiming[k];
-        xc = ((xc % 720) + 720) % 720;
+        let xc = this.phase * cyc - E.angles[k] - E.cylTiming[k];
+        xc = ((xc % cyc) + cyc) % cyc;
         if (xc < this.lastX[k]) { // this cylinder's exhaust valve just opened: new cycle for it
           // no two combustions are the same; this scatter is what turns buzz into rumble
           // a cammed idle is choppy but regular: less random scatter, more pattern
@@ -329,14 +361,14 @@ export class M20Dsp {
         }
         this.lastX[k] = xc;
         let x = xc - this.tjit[k];
-        if (x < 0) x += 720;
-        const p = this.pulse(x, width);
+        if (x < 0) x += cyc;
+        const p = this.pulse(x, width, sharp);
         const amp = E.cylGain[k] * this.jit[k] * (load + pump + this.pop[k] * 0.9);
         const v = p * amp;
         if (E.bank[k] === 0) a += v; else b += v;
         env += v;
         // intake valve opens ~360 deg later on the same cylinder
-        const xi = x - 360;
+        const xi = x - inLag;
         if (xi > 0 && xi < 180) inEnv += Math.sin(Math.PI * xi / 180);
       }
 
@@ -394,7 +426,7 @@ export class M20Dsp {
       if (X.sizzle > 0.01) y += this.sizzleBp.run(randn() * env * env * env) * 0.035 * X.sizzle * E.sizzle * (1 + 2 * thr);
 
       this.tickEnv *= 0.9;
-      y += this.tickHp.run(randn() * this.tickEnv) * 0.012 * Math.min(1, rpm / 3000);
+      y += this.tickHp.run(randn() * this.tickEnv) * 0.012 * tickAmt * Math.min(1, rpm / 3000); // none on a rotary
 
 
       // starter motor whine (pinion ~ 11x crank speed) with gear grind
@@ -406,7 +438,8 @@ export class M20Dsp {
       }
 
       // low cut follows the exhaust: louder pipes trade sub mud for punch
-      if (Math.abs(X.sub - this.subHz) > 0.5) { this.subHz = X.sub; this.dcHp.set('hp', X.sub, 0.7, 0, fs); }
+      const subT = Math.max(X.sub, E.subMin || 0);
+      if (Math.abs(subT - this.subHz) > 0.5) { this.subHz = subT; this.dcHp.set('hp', subT, 0.7, 0, fs); }
       y = this.dcHp.run(y);
       let o = Math.tanh(y * 0.38 * E.level * X.level) * 1.35; // gentle: mostly linear, only peaks round off
       // soft knee above 0.9 so loud engines never clip the output
@@ -417,7 +450,7 @@ export class M20Dsp {
       this.cyc[this.cycN] = o;
       if (this.cycN < this.cyc.length - 1) this.cycN++;
       this.sincePost++;
-      if (this.phase < rpm / 120 / fs) { // cycle wrapped (cylinder 1 exhaust opened)
+      if (this.phase < rpm / 60 / revs / fs) { // cycle wrapped (cylinder 1 exhaust opened)
         if (this.sincePost > fs / 12 && this.cycN > 16) {
           const pts = 360, s = new Float32Array(pts);
           for (let q = 0; q < pts; q++) s[q] = this.cyc[Math.floor(q / pts * this.cycN)];
