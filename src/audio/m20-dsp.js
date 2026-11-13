@@ -20,7 +20,8 @@
 //
 // Exhausts are their own sound presets (EXHAUSTS): stock, street and race change the
 // muffler, rasp, rumble, resonances and drive, and the aftermarket ones add a heavy
-// "potato-potato" idle lope: the idle hunts up and down, firings surge and stumble.
+// cammed, choppy idle: some cylinders burn weak every cycle, alternate cycles hit
+// harder, now and then one stumbles. Tuned against a recording of a cammed LS V8 idle.
 
 export const TAU = Math.PI * 2;
 export const CRANK_SECONDS = 2.6;
@@ -35,10 +36,14 @@ export const ENGINES = {
     bank: [0, 1, 0, 1, 0, 1],                 // cyl 1-3 front manifold, 4-6 rear
     cylGain: [1.0, 0.9, 1.07, 0.95, 1.04, 0.88],
     cylTiming: [0, 1.5, -1, 2, -0.5, 1],
-    idleRpm: 800, redline: 6500, crankFlare: 1450, starterRatio: 11,
+    idleRpm: 900, redline: 6500, crankFlare: 1450, starterRatio: 11, // the game's E30 idles at 900
     dual: false,                               // both manifolds into one pipe
     header: [0.0016, 0.0023], pipe: [3.1, 3.1], pipeRefl: 0.5,
     width: [36, 10], pump: 0.11, jitter: 0.07, idleJitter: 0.08, lope: [0.007, 0.004],
+    // cammed idle over two engine cycles (12 firings): mostly full hits, a short stumble of
+    // one or two weak firings, then one hard "bwop"
+    chop: [1.1, 1, 0.85, 0.3, 0.45, 1.5, 1.05, 1, 1.1, 1, 1, 1.05],
+    sizzle: 1.4, idleNoise: 1,
     muff: [420, 700, 0.09, 1500, 1200], body: [115, 4], drone: [240, 1],
     rasp: [1200, 0.15, 1.0], rumble: [260, 0.06, 1.0], intake: [420, 0.08, 0.10],
     level: 1.0,
@@ -55,7 +60,10 @@ export const ENGINES = {
     header: [0.0014, 0.0014], pipe: [3.5, 3.8], pipeRefl: 0.45,
     listen: [1, 0.7],                          // heard from behind, nearer the left tailpipe
     width: [46, 12], pump: 0.13, jitter: 0.08, idleJitter: 0.12, lope: [0.013, 0.008],
-    muff: [300, 620, 0.08, 1200, 1100], body: [80, 6], drone: [165, 2],
+    chop: [1.1, 1, 0.9, 1, 0.35, 0.45, 1.5, 1.15, 1.05, 1, 1.05, 1, 1.05, 1, 1.05, 1],
+    sizzle: 0.45,                              // eight overlapping pulses: less crackle per pulse
+    idleNoise: 0.4,                            // ...and less turbulence noise at idle, or it hisses
+    muff: [300, 620, 0.08, 1200, 1100], body: [80, 6], drone: [165, 1],
     rasp: [900, 0.12, 0.75], rumble: [180, 0.05, 1.35], intake: [300, 0.06, 0.14],
     level: 1.4,
   },
@@ -66,11 +74,13 @@ export const IDLE_RPM = ENGINES.m20.idleRpm;
 // Exhaust presets, applied on top of the engine profile. open: muffler cutoff multiplier;
 // bodyDb/droneDb: extra resonance; droneHz: resonance shift; refl: less pipe reflection
 // (straighter pipe); rumble/rasp/crack: turbulence and afterfire crack; pops: most pops per
-// lift-off; level: drive into the output stage; lope: idle lope (0 none .. 1 heavy).
+// lift-off; level: drive into the output stage; lope: choppy cammed idle (0 none .. 1 heavy);
+// idleHit: how hard idle firings hit (louder idle); sub: low cut in Hz (less mud, more punch);
+// sizzle: crackly top end riding on the pulses.
 export const EXHAUSTS = {
-  stock:  { open: 1.0, bodyDb: 0,   droneDb: 0,   droneHz: 1.0,  refl: 0,    rumble: 0.8, rasp: 0.7, crack: 0.35, pops: 1.6, level: 1.0,  lope: 0 },
-  street: { open: 2.0, bodyDb: 3,   droneDb: 3.5, droneHz: 1.15, refl: 0.1,  rumble: 1.4, rasp: 1.8, crack: 0.8,  pops: 3.0, level: 1.25, lope: 0.75 },
-  race:   { open: 2.8, bodyDb: 4.5, droneDb: 5,   droneHz: 1.22, refl: 0.16, rumble: 1.8, rasp: 2.6, crack: 1.0,  pops: 4.1, level: 1.5,  lope: 1.0 },
+  stock:  { open: 1.0, bodyDb: 0,   droneDb: 0,   droneHz: 1.0,  refl: 0,    rumble: 0.8, rasp: 0.7, crack: 0.35, pops: 1.6, level: 1.0,  lope: 0,    idleHit: 1.0, sub: 28, sizzle: 0 },
+  street: { open: 2.0, bodyDb: 4,   droneDb: 2,   droneHz: 1.15, refl: 0.1,  rumble: 1.4, rasp: 1.8, crack: 0.8,  pops: 3.0, level: 1.25, lope: 0.8,  idleHit: 1.8, sub: 38, sizzle: 0.5 },
+  race:   { open: 2.8, bodyDb: 5.5, droneDb: 3,   droneHz: 1.22, refl: 0.16, rumble: 2.0, rasp: 3.2, crack: 1.0,  pops: 4.1, level: 1.5,  lope: 1.0,  idleHit: 2.5, sub: 44, sizzle: 1.0 },
 };
 
 /** 'stock' | 'street' | 'race', or a number 0 (stock) .. 1 (race) for older callers. */
@@ -132,7 +142,8 @@ export class M20Dsp {
     this.target = { rpm: IDLE_RPM, throttle: 0, exhaust: 'stock', ignition: 1, starter: 0, idleRpm: IDLE_RPM };
     this.c = { rpm: 0, throttle: 0, ignition: 0, starter: 0, idleRpm: IDLE_RPM };
     this.X = { ...EXHAUSTS.stock };   // current exhaust voicing, glides to the chosen preset
-    this.lopeW = 0;
+    this.cycleN = 0;                  // engine cycles, for the every-other-cycle chop
+    this.subHz = 28;
     this.onCycle = null;
     this.fs = fs;
     this.phase = 0;            // engine cycle, 0..1 = 720 crank degrees
@@ -149,6 +160,7 @@ export class M20Dsp {
     this.rumbleBp = new Biquad(); this.rumbleLp = new Biquad().set('lp', 1200, 0.5, 0, fs);
     this.intakeBp = new Biquad();
     this.tickHp = new Biquad().set('hp', 3500, 0.7, 0, fs);
+    this.sizzleBp = new Biquad().set('bp', 2000, 0.9, 0, fs); // a band, not full-range hiss
     this.starterBp = new Biquad().set('bp', 1100, 0.9, 0, fs);
     this.starterPh = 0;
     this.tickEnv = 0;
@@ -264,15 +276,13 @@ export class M20Dsp {
       let rpm = this.rpmS;
 
       // idle lope + compression drag while cranking
-      const nearIdle = Math.max(0, 1 - Math.abs(rpm - idle) / 400) * (1 - thr);
-      rpm *= 1 + nearIdle * (E.lope[0] * Math.sin(TAU * 1.13 * this.t) + E.lope[1] * Math.sin(TAU * 0.41 * this.t));
-      // aftermarket idle lope: the idle hunts in a lopsided "potato-potato" rhythm
+      // full idle character within 100 rpm of the idle target (an idle control rarely sits
+      // exactly on it), fading out over the next 400 rpm
+      const nearIdle = Math.max(0, 1 - Math.max(0, Math.abs(rpm - idle) - 100) / 400) * (1 - thr);
+      // cammed idle (louder exhausts): the chop is per firing (below), so the stock engine's
+      // slow idle wobble fades out; it would only add a vague drift under the rhythm
       const lope = X.lope * nearIdle;
-      if (lope > 0.001) {
-        const lp = TAU * 1.45 * this.t;
-        this.lopeW = Math.sin(lp) + 0.4 * Math.sin(2 * lp + 1.1) + 0.35 * Math.sin(TAU * 0.53 * this.t);
-        rpm *= 1 + lope * 0.06 * this.lopeW;
-      } else this.lopeW = 0;
+      rpm *= 1 + nearIdle * (1 - X.lope) * (E.lope[0] * Math.sin(TAU * 1.13 * this.t) + E.lope[1] * Math.sin(TAU * 0.41 * this.t));
       if (st > 0) rpm *= 1 - 0.35 * st * Math.max(0, Math.cos(TAU * this.phase * ncyl));
       rpm = Math.max(0, rpm);
       this.phase += rpm / 120 / fs;          // 2 revolutions per cycle
@@ -282,23 +292,30 @@ export class M20Dsp {
       // combustion strength
       const overrun = thr < 0.06 && rpm > idle * 1.35; // fuel cut
       const fuel = overrun ? 0 : 1;
-      const load = ign * fuel * (0.32 + 0.68 * thr);
+      // idle firings hit harder with a free-flowing exhaust (louder, punchier idle)
+      const load = ign * fuel * (0.32 * (1 + (X.idleHit - 1) * (1 - thr)) + 0.68 * thr);
       const pump = E.pump;                     // air being pushed out with no combustion
       const width = E.width[0] - E.width[1] * thr; // crank degrees; harder hit under load
 
       let a = 0, b = 0, env = 0, inEnv = 0;
       for (let k = 0; k < ncyl; k++) {
-        let x = this.phase * 720 - E.angles[k] - E.cylTiming[k] - this.tjit[k];
-        x = ((x % 720) + 720) % 720;
-        if (x < this.lastX[k]) { // this cylinder's exhaust valve just opened: new cycle for it
+        // new cycle for this cylinder is detected from crank position alone; the random
+        // timing scatter only moves where its pulse lands (otherwise one cycle can trigger twice)
+        let xc = this.phase * 720 - E.angles[k] - E.cylTiming[k];
+        xc = ((xc % 720) + 720) % 720;
+        if (xc < this.lastX[k]) { // this cylinder's exhaust valve just opened: new cycle for it
           // no two combustions are the same; this scatter is what turns buzz into rumble
-          const j = E.jitter + E.idleJitter * nearIdle + 0.03 * (1 - ign) + 0.12 * lope;
+          // a cammed idle is choppy but regular: less random scatter, more pattern
+          const j = E.jitter + E.idleJitter * nearIdle * (1 - 0.6 * lope) + 0.03 * (1 - ign);
           this.jit[k] = Math.max(0.3, 1 + j * randn());
-          this.tjit[k] = (3.5 + 4 * lope) * randn();
-          // lope: firings surge on the up-swing, and now and then one barely burns
+          this.tjit[k] = (3.5 + 1.5 * lope) * randn();
+          // choppy idle: a pattern over two engine cycles (a stumble, then a hard hit),
+          // and now and then an extra weak firing so it never sounds like a loop
           if (lope > 0.001) {
-            this.jit[k] *= Math.max(0.3, 1 + 0.45 * lope * this.lopeW);
-            if (Math.random() < 0.2 * lope) this.jit[k] *= 0.35;
+            if (k === 0) this.cycleN++;
+            const step = (this.cycleN & 1) * ncyl + k;
+            this.jit[k] *= Math.max(0.15, 1 + lope * (E.chop[step] - 1));
+            if (Math.random() < 0.04 * lope) this.jit[k] *= 0.4;
           }
           // afterfire: only well into a real lift-off (not limiter or shift cuts), a few at most
           this.pop[k] = 0;
@@ -310,7 +327,9 @@ export class M20Dsp {
           }
           this.tickEnv = 1;
         }
-        this.lastX[k] = x;
+        this.lastX[k] = xc;
+        let x = xc - this.tjit[k];
+        if (x < 0) x += 720;
         const p = this.pulse(x, width);
         const amp = E.cylGain[k] * this.jit[k] * (load + pump + this.pop[k] * 0.9);
         const v = p * amp;
@@ -356,10 +375,11 @@ export class M20Dsp {
       y = this.drone.run(this.body.run(y));
 
       // rumble: gas turbulence in the pipe, fills the gaps between the harmonics
-      y += this.rumbleLp.run(this.rumbleBp.run(randn() * env)) * (0.3 + 1.5 * thr) * X.rumble * E.rumble[2];
+      y += this.rumbleLp.run(this.rumbleBp.run(randn() * env)) * (0.3 * (1 - 0.75 * lope) * E.idleNoise + 1.5 * thr) * X.rumble * E.rumble[2];
 
       // rasp: turbulence that rides on each pulse, grows with rpm and load
-      const raspAmt = (0.05 + 0.22 * thr) * Math.min(1.3, rpm / 4500) * X.rasp * E.rasp[2];
+      // at idle the loud pipes' rasp stays low (it reads as hiss); it opens up with load
+      const raspAmt = (0.05 * (1 - 0.7 * lope) * E.idleNoise + 0.22 * thr) * Math.min(1.3, rpm / 4500) * X.rasp * E.rasp[2];
       // the crack on top of an afterfire: short (popEnv^3 decays fast), band-limited by the
       // rasp filter, and quieter through the stock muffler
       const crack = this.popEnv > 0.02 ? randn() * this.popEnv ** 3 * X.crack : 0;
@@ -369,6 +389,10 @@ export class M20Dsp {
       y += this.intakeBp.run(randn() * inEnv) * E.intake[2] * thr * (0.3 + rpm / 6500);
 
       // valve-train tick
+      // sizzle: a little crackle on the loudest pulses of a loud exhaust (kept low and
+      // band-limited: any more and the idle sounds like static)
+      if (X.sizzle > 0.01) y += this.sizzleBp.run(randn() * env * env * env) * 0.035 * X.sizzle * E.sizzle * (1 + 2 * thr);
+
       this.tickEnv *= 0.9;
       y += this.tickHp.run(randn() * this.tickEnv) * 0.012 * Math.min(1, rpm / 3000);
 
@@ -381,6 +405,8 @@ export class M20Dsp {
         y += this.starterBp.run(saw + 0.4 * randn()) * 0.35 * st;
       }
 
+      // low cut follows the exhaust: louder pipes trade sub mud for punch
+      if (Math.abs(X.sub - this.subHz) > 0.5) { this.subHz = X.sub; this.dcHp.set('hp', X.sub, 0.7, 0, fs); }
       y = this.dcHp.run(y);
       let o = Math.tanh(y * 0.38 * E.level * X.level) * 1.35; // gentle: mostly linear, only peaks round off
       // soft knee above 0.9 so loud engines never clip the output

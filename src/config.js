@@ -30,7 +30,8 @@ const E30 = {
   maxSteer: (36 * Math.PI) / 180,
 
   engine: {
-    idleRpm: 760,
+    idleRpm: 945, // the idle control settles about 45 rpm below this, so it idles at 900
+    idleMaxThrottle: 0.25, // most the idle control will open the throttle (it needs about 0.15 to hold idle)
     redline: 6500,
     limiterRpm: 6600,
     limiterResumeRpm: 6350,
