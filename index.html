@@ -53,6 +53,7 @@
 
     <div id="toast"></div>
     <div id="chat" class="hidden">
+      <div id="chat-room"></div>
       <div id="chat-log"></div>
       <input type="text" id="chat-input" maxlength="80" placeholder="Say something" aria-label="Chat message" />
     </div>
@@ -82,12 +83,20 @@
           <span class="label">Online</span>
           <div class="online-row">
             <input type="text" class="net-name" maxlength="16" placeholder="Your name" aria-label="Driver name" />
-            <input type="text" class="net-server" placeholder="Server address" aria-label="Server address" />
+            <button type="button" class="net-host">HOST GAME</button>
           </div>
           <div class="online-row">
-            <button type="button" class="net-connect">CONNECT</button>
-            <span class="net-status">Offline</span>
+            <input type="text" class="net-code" maxlength="5" placeholder="CODE" aria-label="Room code" autocapitalize="characters" spellcheck="false" />
+            <button type="button" class="net-join">JOIN</button>
           </div>
+          <div class="online-row"><span class="net-status">Offline</span></div>
+          <details class="net-adv">
+            <summary>Own server</summary>
+            <div class="online-row">
+              <input type="text" class="net-server" placeholder="Server address" aria-label="Server address" />
+              <button type="button" class="net-connect">CONNECT</button>
+            </div>
+          </details>
         </div>
         <div class="row">
           <button type="button" id="btn-drive" class="big">FREE DRIVE</button>
@@ -117,12 +126,20 @@
           <span class="label">Online</span>
           <div class="online-row">
             <input type="text" class="net-name" maxlength="16" placeholder="Your name" aria-label="Driver name" />
-            <input type="text" class="net-server" placeholder="Server address" aria-label="Server address" />
+            <button type="button" class="net-host">HOST GAME</button>
           </div>
           <div class="online-row">
-            <button type="button" class="net-connect">CONNECT</button>
-            <span class="net-status">Offline</span>
+            <input type="text" class="net-code" maxlength="5" placeholder="CODE" aria-label="Room code" autocapitalize="characters" spellcheck="false" />
+            <button type="button" class="net-join">JOIN</button>
           </div>
+          <div class="online-row"><span class="net-status">Offline</span></div>
+          <details class="net-adv">
+            <summary>Own server</summary>
+            <div class="online-row">
+              <input type="text" class="net-server" placeholder="Server address" aria-label="Server address" />
+              <button type="button" class="net-connect">CONNECT</button>
+            </div>
+          </details>
         </div>
         <div class="field">
           <span class="label">Steering</span>

@@ -27,6 +27,7 @@ import { Sparks } from './render/sparks.js';
 import { Glints } from './render/glints.js';
 import { Deer } from './world/deer.js';
 import { Online } from './net/online.js';
+import { makeCode, cleanCode } from './net/p2p.js';
 import { HEADLIGHTS } from './config.js';
 import { TuningPanel } from './ui/tuning.js';
 import { Shop } from './ui/shop.js';
@@ -226,13 +227,28 @@ function renderChoices() {
       b.textContent = label;
       if (settings[key] === value) b.classList.add('sel');
       b.addEventListener('click', () => {
-        // Switching road rebuilds the whole world: save and reload.
+        // Joined to someone else's room: they choose the road and time.
+        if ((key === 'map' || key === 'time') && online?.status === 'online' && !online.room && online.roomInfo) {
+          toast('THE HOST PICKS THE ROAD AND TIME');
+          return;
+        }
+        // Switching road rebuilds the whole world: save and reload (taking your room with you).
         if (key === 'map' && settings.map !== value) {
           settings.map = value;
           saveSettings(settings);
+          if (online?.hosting) {
+            const code = online.room.code;
+            online.setRoom({ road: value });
+            setTimeout(() => {
+              online.disconnect();
+              reloadInto({ host: code });
+            }, 400);
+            return;
+          }
           location.reload();
           return;
         }
+        if (key === 'time' && online?.hosting) online.setRoom({ time: value });
         settings[key] = value;
         saveSettings(settings);
         applySettings();
@@ -554,46 +570,103 @@ function throwSparks() {
 }
 
 // ---------- Online play ----------
-const STATUS_TEXT = { offline: 'Offline', connecting: 'Connecting\u2026', error: 'Could not connect', full: 'Server is full' };
+// Host a room from this game (you pick the road and time; friends join with the code), join one by
+// code, or connect to your own server (server/server.js).
+const STATUS_TEXT = { offline: 'Offline', connecting: 'Connecting…' };
+const PENDING_KEY = 'touge.netPending';
+function driverName() {
+  return settings.netName || 'Driver';
+}
+function hostGame(code = makeCode()) {
+  online.host(code, driverName(), settings.map, settings.time, tune);
+}
+function joinGame(code) {
+  code = cleanCode(code);
+  if (code.length !== 5) {
+    toast('ENTER THE 5-CHARACTER CODE');
+    return;
+  }
+  online.join(code, driverName(), settings.map, tune);
+}
+// A road change needs a reload; remember to get back into the room afterwards.
+function reloadInto(pending) {
+  try {
+    sessionStorage.setItem(PENDING_KEY, JSON.stringify(pending));
+  } catch {
+    // Without storage you just reconnect by hand.
+  }
+  location.reload();
+}
 function setupOnline() {
-  const names = document.querySelectorAll('.net-name');
-  const servers = document.querySelectorAll('.net-server');
-  for (const el of names) {
+  const all = (sel) => document.querySelectorAll(sel);
+  for (const el of all('.net-name')) {
     el.value = settings.netName;
     el.addEventListener('change', () => {
       settings.netName = el.value.trim().slice(0, 16);
-      for (const o of names) o.value = settings.netName;
+      for (const o of all('.net-name')) o.value = settings.netName;
       saveSettings(settings);
     });
   }
-  for (const el of servers) {
+  for (const el of all('.net-code'))
+    el.addEventListener('input', () => {
+      const v = cleanCode(el.value);
+      if (el.value !== v) el.value = v;
+    });
+  for (const el of all('.net-server')) {
     el.value = settings.netServer;
     el.addEventListener('change', () => {
       settings.netServer = el.value.trim();
-      for (const o of servers) o.value = settings.netServer;
+      for (const o of all('.net-server')) o.value = settings.netServer;
       saveSettings(settings);
     });
   }
-  for (const b of document.querySelectorAll('.net-connect')) {
+  const busy = () => online.status === 'online' || online.status === 'connecting';
+  for (const b of all('.net-host'))
     b.addEventListener('click', () => {
-      if (online.status === 'online' || online.status === 'connecting') {
-        online.disconnect();
-        return;
-      }
-      if (!settings.netServer) {
-        toast('ENTER A SERVER ADDRESS');
-        return;
-      }
-      online.connect(settings.netServer, settings.netName || 'Driver', settings.map, tune);
+      if (busy()) online.disconnect();
+      else hostGame();
     });
-  }
+  for (const b of all('.net-join'))
+    b.addEventListener('click', () => {
+      if (busy()) online.disconnect();
+      else joinGame(b.parentElement.querySelector('.net-code').value);
+    });
+  for (const b of all('.net-connect'))
+    b.addEventListener('click', () => {
+      if (busy()) return online.disconnect();
+      if (!settings.netServer) return toast('ENTER A SERVER ADDRESS');
+      online.connect(settings.netServer, driverName(), settings.map, tune);
+    });
+  // The room decides the road and time for everyone in it.
+  online.onRoom = (room) => {
+    if (room.time && room.time !== settings.time && TIMES[room.time]) {
+      settings.time = room.time;
+      saveSettings(settings);
+      applySettings();
+      renderChoices();
+    }
+    if (room.road && room.road !== settings.map && TRACKS[room.road] && !online.room) {
+      settings.map = room.road;
+      saveSettings(settings);
+      toast(`MOVING TO ${TRACKS[room.road].name.toUpperCase()}`, 2);
+      setTimeout(() => reloadInto({ join: room.code || online.roomInfo?.code, server: room.code ? null : settings.netServer }), 900);
+    }
+  };
   online.onChange = () => {
     const on = online.status === 'online';
-    for (const el of document.querySelectorAll('.net-status')) {
-      el.textContent = on ? `${online.serverName} \u00b7 ${online.count + 1} on ${TRACKS[settings.map]?.name || ''}` : STATUS_TEXT[online.status] || '';
+    const code = online.roomInfo?.code;
+    let text = STATUS_TEXT[online.status] || online.error || '';
+    if (on) text = `${online.room ? 'Hosting' : 'In'} ${code ? `room ${code}` : online.serverName} · ${online.count + 1} driver${online.count ? 's' : ''} · ${TRACKS[settings.map]?.name || ''}`;
+    for (const el of all('.net-status')) {
+      el.textContent = text;
       el.classList.toggle('on', on);
+      el.classList.toggle('bad', online.status === 'error' || online.status === 'full');
     }
-    for (const b of document.querySelectorAll('.net-connect')) b.textContent = on || online.status === 'connecting' ? 'DISCONNECT' : 'CONNECT';
+    for (const b of all('.net-host')) b.textContent = busy() && online.kind === 'host' ? 'END GAME' : 'HOST GAME';
+    for (const b of all('.net-join')) b.textContent = busy() && online.kind === 'join' ? 'LEAVE' : 'JOIN';
+    for (const b of all('.net-connect')) b.textContent = busy() && online.kind === 'server' ? 'DISCONNECT' : 'CONNECT';
+    for (const el of all('.net-code')) if (on && code) el.value = code;
+    $('chat-room').textContent = on ? (code ? `ROOM ${code}` : online.serverName) : '';
     $('chat').classList.toggle('hidden', !on || !running);
   };
   const log = $('chat-log');
@@ -612,6 +685,27 @@ function setupOnline() {
     e.target.value = '';
     e.target.blur();
   });
+  online.onChange();
+  // Coming back from a road change: rejoin (or re-host) the room. The old connection takes a few
+  // seconds to clear, so keep trying for a while.
+  let pending = null;
+  try {
+    pending = JSON.parse(sessionStorage.getItem(PENDING_KEY));
+    sessionStorage.removeItem(PENDING_KEY);
+  } catch {
+    pending = null;
+  }
+  if (pending) {
+    let tries = 0;
+    const attempt = () => {
+      if (online.status === 'online' || tries++ > 12) return;
+      if (pending.host) hostGame(pending.host);
+      else if (pending.join) joinGame(pending.join);
+      else if (pending.server) online.connect(pending.server, driverName(), settings.map, tune);
+      setTimeout(() => online.status !== 'online' && attempt(), 3000);
+    };
+    attempt();
+  }
 }
 
 // ---------- Title screen: a slow flight along the pass ----------
