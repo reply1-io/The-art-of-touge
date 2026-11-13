@@ -467,6 +467,16 @@ wallet.onChange = () => {
 };
 wallet.setUnlimited(settings.money === 'unlimited');
 shopRef = shop;
+shop.onCar = (id) => {
+  settings.car = id;
+  saveSettings(settings);
+  try {
+    sessionStorage.setItem('touge.openShop', '1');
+  } catch {
+    // Without storage the shop just doesn't reopen by itself.
+  }
+  location.reload();
+};
 shop.resize(window.innerWidth, window.innerHeight);
 $('btn-shop').addEventListener('click', () => shop.open());
 $('btn-shop2').addEventListener('click', () => shop.open());
@@ -770,7 +780,7 @@ function updateTitleSub() {
   $('title-sub').innerHTML = '';
   const b = document.createElement('b');
   b.textContent = t.name;
-  $('title-sub').append(b, ` · ${t.blurb} · ${time.name}`);
+  $('title-sub').append(`${CAR.name} · `, b, ` · ${t.blurb} · ${time.name}`);
 }
 
 // ---------- Main loop ----------
@@ -972,6 +982,14 @@ async function boot() {
   applySettings();
   renderChoices();
   $('loading').textContent = '';
+  try {
+    if (sessionStorage.getItem('touge.openShop')) {
+      sessionStorage.removeItem('touge.openShop');
+      shop.open();
+    }
+  } catch {
+    // Fine: the title screen shows instead.
+  }
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
   window.__touge = { get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };

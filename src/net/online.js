@@ -2,14 +2,14 @@
 // other drivers on the same road. See server/server.js for the protocol.
 import * as THREE from 'three';
 import { CarModel } from '../render/carModel.js';
-import { CAR, TUNABLE_DEFAULTS } from '../config.js';
+import { CAR, CARS, TUNABLE_DEFAULTS } from '../config.js';
 import { HostRoom, joinLink, serverLink } from './p2p.js';
 
 // What other players need to draw your car.
 export const LOOK_KEYS = ['paint', 'wheel', 'rim', 'profile', 'stretch', 'offsetFront', 'offsetRear', 'camberFront', 'camberRear', 'headlights', 'taillights', 'exhaust', 'plateStyle', 'plateText', 'numbers', 'number', 'numberW', 'numberH', 'rideHeight', 'coilovers', 'seats'];
 
 export function lookOf(tune) {
-  const out = {};
+  const out = { car: CAR.id };
   for (const k of LOOK_KEYS) out[k] = tune[k];
   return out;
 }
@@ -180,7 +180,8 @@ export class Online {
 
   #add({ id, name, look }) {
     if (this.players.has(id)) return;
-    const model = new CarModel(CAR);
+    const spec = CARS[look?.car] || CAR; // they may be driving a different car
+    const model = new CarModel(spec);
     model.applySetup({ ...TUNABLE_DEFAULTS, ...look });
     model.root.add(nameTag(name));
     model.root.visible = false;
@@ -191,12 +192,12 @@ export class Online {
     const collider = this.world.createCollider(R.ColliderDesc.cuboid(0.8, 0.45, 2.1).setTranslation(0, 0.1, 0).setFriction(0.3), body);
     collider.setEnabled(false); // turned on once the cars are apart (see update)
     const wheels = [
-      [CAR.trackFront / 2, CAR.frontAxleZ, true],
-      [-CAR.trackFront / 2, CAR.frontAxleZ, true],
-      [CAR.trackRear / 2, CAR.rearAxleZ, false],
-      [-CAR.trackRear / 2, CAR.rearAxleZ, false],
+      [spec.trackFront / 2, spec.frontAxleZ, true],
+      [-spec.trackFront / 2, spec.frontAxleZ, true],
+      [spec.trackRear / 2, spec.rearAxleZ, false],
+      [-spec.trackRear / 2, spec.rearAxleZ, false],
     ].map(([x, z, front]) => ({ x, z, front, compression: 0.11, steer: 0, angle: 0 }));
-    this.players.set(id, { id, name, model, body, collider, buf: [], fake: { wheels, mountY: CAR.wheelMountY }, braking: false });
+    this.players.set(id, { id, name, model, body, collider, buf: [], fake: { wheels, mountY: spec.wheelMountY }, braking: false });
   }
 
   #remove(id) {

@@ -3,7 +3,7 @@
 // height are all visible), applies to the physics, and is saved on the device.
 import * as THREE from 'three';
 import {
-  CAR, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup,
+  CAR, CARS, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup,
   SEATS, RIM_WIDTH_IN, PLATES, cleanPlate, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, HEADLIGHTS, TAILLIGHTS,
 } from '../config.js';
 import { dynoRun } from '../physics/dyno.js';
@@ -41,6 +41,7 @@ function hexToHsl(hex) {
 const SHOP_KEYS = ['seats', 'offsetFront', 'offsetRear', 'plateStyle', 'plateText', 'stretch', 'intake', 'turbo', 'clutch', 'gearbox', 'finalDrive', 'coilovers', 'brakes', 'handbrake', 'angleKit', 'weight', 'paint', 'headlights', 'taillights', 'numbers', 'number', 'numberW', 'numberH', 'exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
 
 const TABS = [
+  ['car', 'Car'],
   ['body', 'Exterior'],
   ['interior', 'Interior'],
   ['wheels', 'Wheels'],
@@ -210,7 +211,7 @@ export class Shop {
     this.tune = tune;
     this.onChange = onChange;
     this.wallet = wallet;
-    this.tab = 'body';
+    this.tab = 'car';
     this.isOpen = false;
     this.scene = new THREE.Scene();
     this.table = buildGarage(this.scene);
@@ -434,6 +435,23 @@ export class Shop {
             : []),
         ),
       ];
+    }
+    if (this.tab === 'car') {
+      // Your garage: pick the car you drive. Your tuning comes with you.
+      const row = document.createElement('div');
+      row.className = 'shop-cards';
+      for (const c of Object.values(CARS)) {
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'shop-card' + (c.id === CAR.id ? ' sel' : '');
+        card.innerHTML = '<strong></strong><span></span><em class="owned"></em>';
+        card.querySelector('strong').textContent = c.name;
+        card.querySelector('span').textContent = c.blurb;
+        card.querySelector('em').textContent = c.id === CAR.id ? 'DRIVING' : '';
+        card.addEventListener('click', () => c.id !== CAR.id && this.onCar?.(c.id));
+        row.append(card);
+      }
+      return [this.#section('Your cars', row, this.#hint('Switching car reloads the game. Your parts and paint come with you.'))];
     }
     if (this.tab === 'interior') {
       return [this.#section('Seats', this.#cards(SEATS, 'seats')), this.#section('Weight reduction', this.#cards(WEIGHTS, 'weight'))];
@@ -827,7 +845,8 @@ export class Shop {
     stage.addEventListener('pointercancel', up);
     const title = document.createElement('div');
     title.className = 'shop-car';
-    title.innerHTML = '<b>BMW E30 325i</b><span>Drag to turn</span>';
+    title.innerHTML = '<b></b><span>Drag to turn</span>';
+    title.querySelector('b').textContent = CAR.name;
     this.readoutEl = document.createElement('div');
     this.readoutEl.className = 'shop-readout';
     stage.append(title, this.readoutEl);
