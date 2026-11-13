@@ -1,4 +1,19 @@
-# The Art of Touge — multiplayer server
+# The Art of Touge — multiplayer
+
+## The easy way: host from the game (no server needed)
+
+Open the menu, type your name under **Online** and tap **HOST GAME**. You get a five-character
+code. Your friends type it in the **CODE** box and tap **JOIN**.
+
+You are in charge of the room: the **Road** and **Time** you pick are used by everyone, and if
+you change them while hosting, everyone follows you. The room ends when you tap **END GAME** or
+close the game. Up to 8 drivers.
+
+This uses PeerJS's free public matchmaking service only to introduce the phones to each other;
+after that the game talks directly between them.
+
+## Your own server (optional)
+
 
 A small relay server. Players on the same road see each other's cars (with their paint, wheels,
 plates and so on), can bump into each other, and can chat. Each game runs its own physics; the
@@ -14,8 +29,8 @@ npm install
 npm start
 ```
 
-It listens on port 8080. In the game, open the menu, type your computer's address in **Online →
-Server address** (for example `192.168.1.20:8080` on your home Wi-Fi) and press **CONNECT**.
+It listens on port 8080. In the game, open the menu, type your computer's address in **Online → Own
+server** (for example `192.168.1.20:8080` on your home Wi-Fi) and press **CONNECT**.
 
 Settings (environment variables):
 
@@ -24,6 +39,8 @@ Settings (environment variables):
 | `PORT`        | `8080`         | Port to listen on                  |
 | `SERVER_NAME` | `Touge server` | Name shown to players              |
 | `MAX_PLAYERS` | `12`           | Players allowed on each road       |
+| `ROAD`        | (players pick) | `akina` or `dragon`: everyone on one road |
+| `TIME`        | (players pick) | `day`, `sunset` or `night` for everyone   |
 
 ## Playing from the GitHub Pages version
 

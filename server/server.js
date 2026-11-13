@@ -6,7 +6,8 @@
 //
 //   npm install && npm start            (listens on port 8080, or $PORT)
 //
-// Environment: PORT, SERVER_NAME (shown to players), MAX_PLAYERS (per room, default 12).
+// Environment: PORT, SERVER_NAME (shown to players), MAX_PLAYERS (per room, default 12),
+// ROAD and TIME (optional: put everyone on one road at one time of day).
 //
 // Messages are JSON. Client -> server:
 //   { t: 'hello', name, road, look }    join (or switch to) a road's room
@@ -24,6 +25,9 @@ import { WebSocketServer } from 'ws';
 const PORT = Number(process.env.PORT) || 8080;
 const SERVER_NAME = (process.env.SERVER_NAME || 'Touge server').slice(0, 40);
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS) || 12;
+// Optional: make everyone drive one road at one time of day ('akina' | 'dragon', 'day' | 'sunset' | 'night').
+const FIXED_ROAD = process.env.ROAD || '';
+const FIXED_TIME = process.env.TIME || '';
 const ROADS = new Set(['akina', 'dragon']);
 
 const rooms = new Map(); // road -> Set of clients
@@ -81,7 +85,7 @@ wss.on('connection', (ws) => {
       return;
     }
     if (msg.t === 'hello') {
-      const road = ROADS.has(msg.road) ? msg.road : 'akina';
+      const road = ROADS.has(FIXED_ROAD) ? FIXED_ROAD : ROADS.has(msg.road) ? msg.road : 'akina';
       leave(ws);
       if (!rooms.has(road)) rooms.set(road, new Set());
       const room = rooms.get(road);
@@ -92,7 +96,7 @@ wss.on('connection', (ws) => {
       ws.name = clean(msg.name, 16) || `Driver ${ws.id}`;
       ws.look = safeLook(msg.look);
       ws.road = road;
-      send(ws, { t: 'welcome', id: ws.id, server: SERVER_NAME, players: [...room].map((c) => ({ id: c.id, name: c.name, look: c.look })) });
+      send(ws, { t: 'welcome', id: ws.id, server: SERVER_NAME, room: { road, time: FIXED_TIME || null }, players: [...room].map((c) => ({ id: c.id, name: c.name, look: c.look })) });
       room.add(ws);
       broadcast(room, { t: 'join', id: ws.id, name: ws.name, look: ws.look }, ws);
     } else if (!ws.road) {

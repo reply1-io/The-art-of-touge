@@ -7,6 +7,7 @@ import {
   SEATS, RIM_WIDTH_IN, PLATES, cleanPlate, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, HEADLIGHTS, TAILLIGHTS,
 } from '../config.js';
 import { dynoRun } from '../physics/dyno.js';
+import { money } from '../game/wallet.js';
 import { loadBuilds, saveBuilds } from '../settings.js';
 import { CarModel } from '../render/carModel.js';
 
@@ -204,10 +205,11 @@ function buildGarage(scene) {
 }
 
 export class Shop {
-  constructor(el, tune, onChange) {
+  constructor(el, tune, onChange, wallet) {
     this.el = el;
     this.tune = tune;
     this.onChange = onChange;
+    this.wallet = wallet;
     this.tab = 'body';
     this.isOpen = false;
     this.scene = new THREE.Scene();
@@ -284,6 +286,17 @@ export class Shop {
   }
 
   #change(key, value, rerender = false) {
+    // Parts must be bought before they are fitted.
+    const w = this.wallet;
+    if (w && !w.owns(key, value)) {
+      if (!w.buy(key, value)) {
+        this.flashMsg = `Not enough money: ${money(w.price(key, value))} needed`;
+        this.render();
+        return;
+      }
+      this.flashMsg = w.unlimited ? 'Fitted' : `Bought for ${money(w.price(key, value))}`;
+      rerender = true;
+    }
     this.tune[key] = value;
     this.#applyCar();
     this.onChange();
@@ -307,13 +320,26 @@ export class Shop {
       const card = document.createElement('button');
       card.type = 'button';
       card.className = 'shop-card' + (this.tune[key] === valueOf(id) ? ' sel' : '');
-      card.innerHTML = '<strong></strong><span></span>';
+      card.innerHTML = '<strong></strong><span></span><em></em>';
       card.querySelector('strong').textContent = opt.name;
       card.querySelector('span').textContent = opt.blurb;
+      this.#tag(card.querySelector('em'), key, valueOf(id));
       card.addEventListener('click', () => this.#change(key, valueOf(id), true));
       row.append(card);
     }
     return row;
+  }
+
+  // Price tag on a card: OWNED, or the price (red when you cannot afford it).
+  #tag(el, key, value) {
+    const w = this.wallet;
+    if (!w || !w.price(key, value) || w.owns(key, value)) {
+      el.textContent = w && w.price(key, value) ? 'OWNED' : '';
+      el.className = 'owned';
+      return;
+    }
+    el.textContent = money(w.price(key, value));
+    el.className = w.price(key, value) > w.balance ? 'price pricey' : 'price';
   }
 
   // A row of small toggle buttons: [[value, label], ...].
@@ -327,6 +353,13 @@ export class Shop {
       const b = document.createElement('button');
       b.type = 'button';
       b.textContent = text;
+      const price = this.wallet && !this.wallet.owns(key, value) ? this.wallet.price(key, value) : 0;
+      if (price) {
+        const tag = document.createElement('small');
+        tag.textContent = money(price);
+        b.append(tag);
+        if (price > this.wallet.balance) b.classList.add('pricey');
+      }
       if (current === value) b.classList.add('sel');
       b.addEventListener('click', () => this.#change(key, value, true));
       row.append(b);
@@ -739,10 +772,16 @@ export class Shop {
       load.addEventListener('click', () => {
         const b = loadBuilds()[i];
         if (!b) return;
-        for (const k of SHOP_KEYS) this.tune[k] = b.tune?.[k] ?? TUNABLE_DEFAULTS[k];
+        let missing = 0;
+        for (const k of SHOP_KEYS) {
+          const v = b.tune?.[k] ?? TUNABLE_DEFAULTS[k];
+          // Parts you no longer own (or never bought) stay as they are.
+          if (this.wallet && !this.wallet.owns(k, v)) missing++;
+          else this.tune[k] = v;
+        }
         this.#applyCar();
         this.onChange();
-        this.flash = `Loaded "${b.name}"`;
+        this.flash = missing ? `Loaded "${b.name}" except ${missing} part(s) you don't own yet` : `Loaded "${b.name}"`;
         this.render();
       });
       const btns = document.createElement('div');
@@ -798,7 +837,8 @@ export class Shop {
     panel.className = 'shop-panel';
     const head = document.createElement('div');
     head.className = 'shop-head';
-    head.innerHTML = '<h2>TUNING SHOP</h2>';
+    head.innerHTML = '<h2>TUNING SHOP</h2><span class="shop-money"></span>';
+    if (this.wallet) head.querySelector('.shop-money').textContent = money(this.wallet.balance);
     const done = document.createElement('button');
     done.type = 'button';
     done.className = 'big';
@@ -820,11 +860,18 @@ export class Shop {
     }
     const body = document.createElement('div');
     body.className = 'shop-body';
+    if (this.flashMsg) {
+      const note = document.createElement('p');
+      note.className = 'shop-flash' + (this.flashMsg.startsWith('Not') ? ' bad' : '');
+      note.textContent = this.flashMsg;
+      body.append(note);
+      this.flashMsg = '';
+    }
     body.append(...this.#tabContent());
     const reset = document.createElement('button');
     reset.type = 'button';
     reset.className = 'big ghost';
-    reset.textContent = 'RESET TO STOCK';
+    reset.textContent = 'REFIT STOCK PARTS';
     reset.addEventListener('click', () => {
       for (const k of SHOP_KEYS) this.tune[k] = TUNABLE_DEFAULTS[k];
       this.#applyCar();

@@ -193,6 +193,35 @@ export class Hud {
       g.shadowBlur = 0;
     }
 
+    // ---- Race: position and gap to the rival, or time against your best run ----
+    if (state.race) {
+      const r = state.race;
+      g.textAlign = 'right';
+      g.shadowBlur = 0;
+      const y = (state.bestTime != null ? 20 : 16) * u;
+      g.lineWidth = 0.8 * u;
+      g.strokeStyle = 'rgba(0,0,0,0.75)';
+      if (r.position) {
+        g.font = `400 ${8 * u}px 'VT323', ui-monospace, monospace`;
+        g.strokeText(r.position, w - 4 * u, y + 4 * u);
+        glow(GLOW, 2.5);
+        g.fillStyle = r.position === '1ST' ? '#7fe08a' : ORANGE;
+        g.fillText(r.position, w - 4 * u, y + 4 * u);
+        g.shadowBlur = 0;
+        g.font = `400 ${3.8 * u}px 'VT323', ui-monospace, monospace`;
+        g.fillStyle = '#dfe6f2';
+        g.fillText(`${Math.round(r.gap)} m`, w - 4 * u, y + 8.5 * u);
+      }
+      if (r.delta != null) {
+        const ahead = r.delta < 0;
+        const txt = `${ahead ? '-' : '+'}${Math.abs(r.delta).toFixed(2)}`;
+        g.font = `400 ${6 * u}px 'VT323', ui-monospace, monospace`;
+        g.strokeText(txt, w - 4 * u, y + 3 * u);
+        g.fillStyle = ahead ? '#7fe08a' : '#ff6a5a';
+        g.fillText(txt, w - 4 * u, y + 3 * u);
+      }
+    }
+
     // ---- Engine state ----
     if (!state.running) {
       g.textAlign = 'center';

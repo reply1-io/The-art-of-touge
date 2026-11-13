@@ -20,9 +20,16 @@ import { Hud, formatTime } from './ui/hud.js';
 import { CarAudio } from './audio/carAudio.js';
 import { ExhaustEvents } from './audio/exhaust.js';
 import { DriftScore } from './game/drift.js';
+import { Race } from './game/race.js';
+import { lookOf } from './net/online.js';
+import { Wallet, money } from './game/wallet.js';
 import { Sparks } from './render/sparks.js';
+import { Glints } from './render/glints.js';
+import { TyreSmoke } from './render/smoke.js';
+import { Ambience } from './audio/ambience.js';
 import { Deer } from './world/deer.js';
 import { Online } from './net/online.js';
+import { makeCode, cleanCode } from './net/p2p.js';
 import { HEADLIGHTS } from './config.js';
 import { TuningPanel } from './ui/tuning.js';
 import { Shop } from './ui/shop.js';
@@ -41,6 +48,9 @@ const tune = loadTuning();
 // ---------- Rendering ----------
 const renderer = new THREE.WebGLRenderer({ canvas: $('view'), antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+// Real shadows from the sun (or moon), in a small area that follows the car.
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap; // crisper edges than the soft variant
 const vhs = new VhsRenderer(renderer, 1);
 const scene = new THREE.Scene();
 // Night: dark blue fog, moonlight and a soft sky fill. The headlights are the main light.
@@ -51,7 +61,17 @@ scene.fog = new THREE.FogExp2(0x0b1430, 0.0011);
 const camera = new THREE.PerspectiveCamera(60, 1, 0.15, 9000);
 const moon = new THREE.DirectionalLight(0x9fb4ff, 0.85);
 moon.position.set(-45, 55, -70);
-scene.add(moon);
+moon.castShadow = true;
+moon.shadow.mapSize.set(2048, 2048);
+moon.shadow.camera.left = -13;
+moon.shadow.camera.right = 13;
+moon.shadow.camera.top = 13;
+moon.shadow.camera.bottom = -13;
+moon.shadow.camera.near = 1;
+moon.shadow.camera.far = 140;
+moon.shadow.bias = -0.0006;
+moon.shadow.normalBias = 0.04;
+scene.add(moon, moon.target);
 const hemi = new THREE.HemisphereLight(0x4a5e96, 0x14161c, 1.15);
 scene.add(hemi);
 // Headlights: one spot light that rides on the car and lights the road ahead.
@@ -92,11 +112,14 @@ function applyTime() {
   moon.color.setHex(p.sunColor);
   moon.intensity = p.sunIntensity;
   moon.position.copy(sunDir).multiplyScalar(100);
+  // Night shadows from the moon are faint; the lamps carry the light.
+  moon.shadow.intensity = p.stars >= 0.9 ? 0.45 : 0.85;
   hemi.color.setHex(p.hemiSky);
   hemi.groundColor.setHex(p.hemiGround);
   hemi.intensity = p.hemiIntensity;
   headlight.visible = p.lights;
   sky.setTime(p, sunDir);
+  smoke?.setTint({ day: 0xeeeef0, sunset: 0xf3c9b0, night: 0x7d8496 }[settings.time] ?? 0xeeeef0);
   mountain.setTime(p);
   camera.updateProjectionMatrix();
 }
@@ -123,7 +146,12 @@ const audio = new CarAudio();
 const exhaustEvents = new ExhaustEvents();
 const drift = new DriftScore();
 let sparks;
+let glints;
+let smoke;
+const ambience = new Ambience(audio);
+const glintTint = new THREE.Color();
 let deer;
+let race;
 let online;
 const sparkP = new THREE.Vector3();
 const sparkPush = new THREE.Vector3();
@@ -172,12 +200,14 @@ let toastTimer = 0;
 function toast(text, seconds = 1.4) {
   const el = $('toast');
   el.textContent = text;
+  // The race countdown is shown big.
+  el.classList.toggle('count', /^([123]|GO!)$/.test(text));
   el.classList.add('show');
   toastTimer = seconds;
 }
 
 function renderChoices() {
-  for (const box of document.querySelectorAll('.choices')) {
+  for (const box of document.querySelectorAll('.choices[data-setting]')) {
     const key = box.dataset.setting;
     const options =
       key === 'mode'
@@ -192,6 +222,8 @@ function renderChoices() {
           ? [[true, 'On'], [false, 'Off']]
           : key === 'steering'
             ? [['buttons', 'Buttons'], ['slider', 'Slider']]
+            : key === 'money'
+            ? [['career', 'Earn it'], ['unlimited', 'Unlimited']]
             : key === 'shifter'
               ? [['drag', 'Drag knob'], ['tap', 'Tap gears']]
               : [['chase', 'Chase'], ['cockpit', 'In car'], ['bumper', 'Bumper']];
@@ -202,15 +234,31 @@ function renderChoices() {
       b.textContent = label;
       if (settings[key] === value) b.classList.add('sel');
       b.addEventListener('click', () => {
-        // Switching road rebuilds the whole world: save and reload.
+        // Joined to someone else's room: they choose the road and time.
+        if ((key === 'map' || key === 'time') && online?.status === 'online' && !online.room && online.roomInfo) {
+          toast('THE HOST PICKS THE ROAD AND TIME');
+          return;
+        }
+        // Switching road rebuilds the whole world: save and reload (taking your room with you).
         if (key === 'map' && settings.map !== value) {
           settings.map = value;
           saveSettings(settings);
+          if (online?.hosting) {
+            const code = online.room.code;
+            online.setRoom({ road: value });
+            setTimeout(() => {
+              online.disconnect();
+              reloadInto({ host: code });
+            }, 400);
+            return;
+          }
           location.reload();
           return;
         }
+        if (key === 'time' && online?.hosting) online.setRoom({ time: value });
         settings[key] = value;
         saveSettings(settings);
+        if (key === 'money') wallet.setUnlimited(value === 'unlimited');
         applySettings();
         renderChoices();
       });
@@ -265,6 +313,10 @@ function resetCar() {
 // Back on the road where you are (stuck, rolled or off the road). Cancels a timed run.
 function recoverCar() {
   placeCar(mountain.recoverAt(run.hint - 5));
+  if (race?.active) {
+    race.recovered();
+    return;
+  }
   if (run.phase === 'running') {
     run.phase = 'ready';
     run.time = 0;
@@ -285,7 +337,8 @@ function setPaused(p) {
   last = performance.now();
 }
 
-$('btn-drive').addEventListener('click', () => {
+// Leave the menus and put the car on the road.
+function enterGame() {
   $('title').classList.add('hidden');
   $('controls').classList.remove('hidden');
   $('topbar').classList.remove('hidden');
@@ -301,15 +354,93 @@ $('btn-drive').addEventListener('click', () => {
       .then(() => screen.orientation?.lock?.('landscape').catch(() => {}))
       .catch(() => {});
   }
-  resetCar();
   online?.onChange();
+}
+
+$('btn-drive').addEventListener('click', () => {
+  race?.abort();
+  enterGame();
+  resetCar();
 });
 $('btn-pause').addEventListener('click', () => setPaused(true));
 $('btn-resume').addEventListener('click', () => setPaused(false));
 $('btn-restart').addEventListener('click', () => {
+  race?.abort();
   resetCar();
   setPaused(false);
 });
+
+// ---------- Race menu and results ----------
+const raceChoice = { mode: 'attack', ghost: settings.ghost !== false };
+function renderRaceMenu() {
+  for (const b of document.querySelectorAll('#race-mode button')) b.classList.toggle('sel', b.dataset.mode === raceChoice.mode);
+  for (const b of document.querySelectorAll('#race-ghost button')) b.classList.toggle('sel', (b.dataset.ghost === 'on') === raceChoice.ghost);
+  $('race-ghost-field').classList.toggle('hidden', raceChoice.mode !== 'attack');
+  const rec = race?.record;
+  const pz = race?.prize;
+  const best = rec ? `Your best: ${formatTime(rec.best)}` : 'No time set yet';
+  $('race-info').textContent =
+    raceChoice.mode === 'attack'
+      ? `${best}. Pays up to ${money(Math.round(pz.base * 1.6))}, plus ${money(250)} for a new best.${rec ? '' : ' Your first run becomes the ghost.'}`
+      : `Race the black 325i to the bottom. Win ${money(pz.win)}, or take ${money(pz.lose)} for finishing.`;
+}
+function openRaceMenu() {
+  document.body.classList.add('in-menu');
+  $('title').classList.add('hidden');
+  setPaused(false);
+  renderRaceMenu();
+  $('race').classList.remove('hidden');
+}
+$('btn-race').addEventListener('click', openRaceMenu);
+$('btn-race2').addEventListener('click', openRaceMenu);
+for (const b of document.querySelectorAll('#race-mode button'))
+  b.addEventListener('click', () => {
+    raceChoice.mode = b.dataset.mode;
+    renderRaceMenu();
+  });
+for (const b of document.querySelectorAll('#race-ghost button'))
+  b.addEventListener('click', () => {
+    raceChoice.ghost = b.dataset.ghost === 'on';
+    settings.ghost = raceChoice.ghost;
+    saveSettings(settings);
+    renderRaceMenu();
+  });
+$('btn-race-back').addEventListener('click', () => {
+  document.body.classList.remove('in-menu');
+  $('race').classList.add('hidden');
+  if (!running) $('title').classList.remove('hidden');
+});
+function startRace() {
+  document.body.classList.remove('in-menu');
+  $('race').classList.add('hidden');
+  $('results').classList.add('hidden');
+  enterGame();
+  run.phase = 'race';
+  run.time = 0;
+  drift.reset();
+  race.start(raceChoice.mode, raceChoice.ghost, (pose) => placeCar(pose));
+}
+$('btn-race-go').addEventListener('click', startRace);
+$('btn-res-retry').addEventListener('click', startRace);
+$('btn-res-free').addEventListener('click', () => {
+  $('results').classList.add('hidden');
+  race.abort();
+  resetCar();
+});
+function showResults(r) {
+  $('res-title').textContent = r.mode === 'battle' ? (r.won ? 'YOU WIN' : 'YOU LOSE') : r.pb ? 'NEW BEST' : 'FINISH';
+  $('res-time').textContent = formatTime(r.time);
+  $('res-detail').textContent =
+    r.mode === 'battle'
+      ? r.botTime !== null
+        ? `Rival: ${formatTime(r.botTime)}`
+        : 'The rival was still on the mountain.'
+      : r.pb
+        ? 'Saved as your ghost.'
+        : `Best: ${formatTime(r.best)} (+${(r.time - r.best).toFixed(3)})`;
+  $('res-money').textContent = `+${money(r.earned)}`;
+  setTimeout(() => $('results').classList.remove('hidden'), 1200);
+}
 $('btn-recover').addEventListener('click', () => {
   recoverCar();
   setPaused(false);
@@ -321,12 +452,17 @@ $('btn-cam').addEventListener('click', () => {
   renderChoices();
 });
 $('btn-tuning').addEventListener('click', () => tuning.toggle());
+const wallet = new Wallet(tune);
 const shop = new Shop($('shop'), tune, () => {
   saveTuning(tune);
   carModel?.applySetup(tune);
   online?.sendLook(tune);
   headlight.color.setHex((HEADLIGHTS[tune.headlights] || HEADLIGHTS.white)[1]);
-});
+}, wallet);
+wallet.onChange = () => {
+  for (const el of document.querySelectorAll('.title-money')) el.textContent = money(wallet.balance);
+};
+wallet.setUnlimited(settings.money === 'unlimited');
 shopRef = shop;
 shop.resize(window.innerWidth, window.innerHeight);
 $('btn-shop').addEventListener('click', () => shop.open());
@@ -404,7 +540,7 @@ function throwSparks() {
   const speed = Math.hypot(v.x, v.z);
   let scrape = 0;
   if (speed < 2.5) {
-    audio.setScrape(0);
+    audio.setScrape(0, speed);
     return;
   }
   const n = Math.min(6, 1 + Math.floor(speed / 6));
@@ -438,50 +574,107 @@ function throwSparks() {
     sparks.emit(sparkP, v, sparkPush, Math.max(1, Math.round(n * Math.min(1, w.scrape * 30))));
     scrape = Math.max(scrape, 0.3 + w.scrape * 15);
   }
-  audio.setScrape(scrape);
+  audio.setScrape(scrape, speed);
 }
 
 // ---------- Online play ----------
-const STATUS_TEXT = { offline: 'Offline', connecting: 'Connecting\u2026', error: 'Could not connect', full: 'Server is full' };
+// Host a room from this game (you pick the road and time; friends join with the code), join one by
+// code, or connect to your own server (server/server.js).
+const STATUS_TEXT = { offline: 'Offline', connecting: 'Connecting…' };
+const PENDING_KEY = 'touge.netPending';
+function driverName() {
+  return settings.netName || 'Driver';
+}
+function hostGame(code = makeCode()) {
+  online.host(code, driverName(), settings.map, settings.time, tune);
+}
+function joinGame(code) {
+  code = cleanCode(code);
+  if (code.length !== 5) {
+    toast('ENTER THE 5-CHARACTER CODE');
+    return;
+  }
+  online.join(code, driverName(), settings.map, tune);
+}
+// A road change needs a reload; remember to get back into the room afterwards.
+function reloadInto(pending) {
+  try {
+    sessionStorage.setItem(PENDING_KEY, JSON.stringify(pending));
+  } catch {
+    // Without storage you just reconnect by hand.
+  }
+  location.reload();
+}
 function setupOnline() {
-  const names = document.querySelectorAll('.net-name');
-  const servers = document.querySelectorAll('.net-server');
-  for (const el of names) {
+  const all = (sel) => document.querySelectorAll(sel);
+  for (const el of all('.net-name')) {
     el.value = settings.netName;
     el.addEventListener('change', () => {
       settings.netName = el.value.trim().slice(0, 16);
-      for (const o of names) o.value = settings.netName;
+      for (const o of all('.net-name')) o.value = settings.netName;
       saveSettings(settings);
     });
   }
-  for (const el of servers) {
+  for (const el of all('.net-code'))
+    el.addEventListener('input', () => {
+      const v = cleanCode(el.value);
+      if (el.value !== v) el.value = v;
+    });
+  for (const el of all('.net-server')) {
     el.value = settings.netServer;
     el.addEventListener('change', () => {
       settings.netServer = el.value.trim();
-      for (const o of servers) o.value = settings.netServer;
+      for (const o of all('.net-server')) o.value = settings.netServer;
       saveSettings(settings);
     });
   }
-  for (const b of document.querySelectorAll('.net-connect')) {
+  const busy = () => online.status === 'online' || online.status === 'connecting';
+  for (const b of all('.net-host'))
     b.addEventListener('click', () => {
-      if (online.status === 'online' || online.status === 'connecting') {
-        online.disconnect();
-        return;
-      }
-      if (!settings.netServer) {
-        toast('ENTER A SERVER ADDRESS');
-        return;
-      }
-      online.connect(settings.netServer, settings.netName || 'Driver', settings.map, tune);
+      if (busy()) online.disconnect();
+      else hostGame();
     });
-  }
+  for (const b of all('.net-join'))
+    b.addEventListener('click', () => {
+      if (busy()) online.disconnect();
+      else joinGame(b.parentElement.querySelector('.net-code').value);
+    });
+  for (const b of all('.net-connect'))
+    b.addEventListener('click', () => {
+      if (busy()) return online.disconnect();
+      if (!settings.netServer) return toast('ENTER A SERVER ADDRESS');
+      online.connect(settings.netServer, driverName(), settings.map, tune);
+    });
+  // The room decides the road and time for everyone in it.
+  online.onRoom = (room) => {
+    if (room.time && room.time !== settings.time && TIMES[room.time]) {
+      settings.time = room.time;
+      saveSettings(settings);
+      applySettings();
+      renderChoices();
+    }
+    if (room.road && room.road !== settings.map && TRACKS[room.road] && !online.room) {
+      settings.map = room.road;
+      saveSettings(settings);
+      toast(`MOVING TO ${TRACKS[room.road].name.toUpperCase()}`, 2);
+      setTimeout(() => reloadInto({ join: room.code || online.roomInfo?.code, server: room.code ? null : settings.netServer }), 900);
+    }
+  };
   online.onChange = () => {
     const on = online.status === 'online';
-    for (const el of document.querySelectorAll('.net-status')) {
-      el.textContent = on ? `${online.serverName} \u00b7 ${online.count + 1} on ${TRACKS[settings.map]?.name || ''}` : STATUS_TEXT[online.status] || '';
+    const code = online.roomInfo?.code;
+    let text = STATUS_TEXT[online.status] || online.error || '';
+    if (on) text = `${online.room ? 'Hosting' : 'In'} ${code ? `room ${code}` : online.serverName} · ${online.count + 1} driver${online.count ? 's' : ''} · ${TRACKS[settings.map]?.name || ''}`;
+    for (const el of all('.net-status')) {
+      el.textContent = text;
       el.classList.toggle('on', on);
+      el.classList.toggle('bad', online.status === 'error' || online.status === 'full');
     }
-    for (const b of document.querySelectorAll('.net-connect')) b.textContent = on || online.status === 'connecting' ? 'DISCONNECT' : 'CONNECT';
+    for (const b of all('.net-host')) b.textContent = busy() && online.kind === 'host' ? 'END GAME' : 'HOST GAME';
+    for (const b of all('.net-join')) b.textContent = busy() && online.kind === 'join' ? 'LEAVE' : 'JOIN';
+    for (const b of all('.net-connect')) b.textContent = busy() && online.kind === 'server' ? 'DISCONNECT' : 'CONNECT';
+    for (const el of all('.net-code')) if (on && code) el.value = code;
+    $('chat-room').textContent = on ? (code ? `ROOM ${code}` : online.serverName) : '';
     $('chat').classList.toggle('hidden', !on || !running);
   };
   const log = $('chat-log');
@@ -500,6 +693,27 @@ function setupOnline() {
     e.target.value = '';
     e.target.blur();
   });
+  online.onChange();
+  // Coming back from a road change: rejoin (or re-host) the room. The old connection takes a few
+  // seconds to clear, so keep trying for a while.
+  let pending = null;
+  try {
+    pending = JSON.parse(sessionStorage.getItem(PENDING_KEY));
+    sessionStorage.removeItem(PENDING_KEY);
+  } catch {
+    pending = null;
+  }
+  if (pending) {
+    let tries = 0;
+    const attempt = () => {
+      if (online.status === 'online' || tries++ > 12) return;
+      if (pending.host) hostGame(pending.host);
+      else if (pending.join) joinGame(pending.join);
+      else if (pending.server) online.connect(pending.server, driverName(), settings.map, tune);
+      setTimeout(() => online.status !== 'online' && attempt(), 3000);
+    };
+    attempt();
+  }
 }
 
 // ---------- Title screen: a slow flight along the pass ----------
@@ -554,16 +768,23 @@ function frame(now) {
     handleEvents(controls.events);
     accumulator += dt;
     let steps = 0;
+    const drive = race.filter(controls);
     while (accumulator >= DT && steps < MAX_STEPS) {
-      vehicle.step(DT, controls);
+      vehicle.step(DT, drive);
       barrier.apply(vehicle.body);
+      race.step(DT, vehicle, run.hint);
       world.step();
+      race.afterStep();
       capturePose();
       accumulator -= DT;
       steps++;
     }
     if (steps === MAX_STEPS) accumulator = 0;
-    updateRun(dt);
+    if (race.active) {
+      const p = vehicle.body.translation();
+      mountain.road.query(p.x, p.z, run.hint, roadQ);
+      run.hint = roadQ.index;
+    } else updateRun(dt);
     throwSparks();
     deer.update(dt, run.hint, Math.max(0, vehicle.forwardSpeed));
     drift.update(dt, vehicle, barrier.touching && barrier.impact > 9000);
@@ -581,6 +802,7 @@ function frame(now) {
     const ev = exhaustEvents.update(vehicle, dt, tune.exhaust);
     audio.setExhaust(tune.exhaust || 'stock');
     audio.setParts(tune.intake || 'stock', tune.turbo || 'none');
+    audio.setBigBrakes(tune.brakes === 'bbk');
     audio.update(vehicle, dt, ev);
     // Race exhaust: little flames off the limiter, on shifts and on lift-off.
     if (tune.exhaust === 'race') {
@@ -592,6 +814,8 @@ function frame(now) {
   carModel.updateFx(dt);
   online.update(dt, vehicle, controls, timePreset.lights);
   sparks.update(dt);
+  if (active || !running) smoke.update(active ? dt : 0, vehicle);
+  if (active) ambience.update(dt, settings.time);
   // In-car view: cockpit on, arms follow the wheel, the shifter and the handbrake.
   carModel.setInterior(running && rig.mode === 'cockpit' && !window.__touge?.debugCam);
   if (vehicle.trans.gear !== lastGear) {
@@ -618,6 +842,10 @@ function frame(now) {
   carModel.root.position.lerpVectors(prevPos, curPos, alpha);
   carModel.root.quaternion.slerpQuaternions(prevQuat, curQuat, alpha);
   carModel.syncWheels(vehicle);
+  race.render(dt, alpha, timePreset.lights);
+  // The sun's shadow box follows the car.
+  moon.target.position.copy(carModel.root.position);
+  moon.position.copy(carModel.root.position).addScaledVector(sunDir, 80);
   carModel.setLights(timePreset.lights, controls.brake > 0);
   const nose = new THREE.Vector3(0, -0.05, 2.1).applyQuaternion(carModel.root.quaternion).add(carModel.root.position);
   headlight.position.copy(nose);
@@ -635,6 +863,14 @@ function frame(now) {
     sunVisible = !world.castRay(ray, 900, true, undefined, undefined, undefined, vehicle.body) && !behindRange(camera.position);
   }
   flare.draw(dt, camera, sunDir, timePreset.flare, timePreset.flareTint, sunVisible);
+  // The sun glinting off the paint (needs the sun in the sky and not hidden by the mountain).
+  glintTint.setRGB(...timePreset.flareTint.map((c) => c / 255));
+  let sunOnCar = false;
+  if (timePreset.flare > 0) {
+    const from = carModel.root.position;
+    sunOnCar = !world.castRay(new RAPIER.Ray({ x: from.x, y: from.y + 1.2, z: from.z }, sunDir), 900, true, undefined, undefined, undefined, vehicle.body) && !behindRange(from);
+  }
+  glints.update(camera, sunDir, sunOnCar ? timePreset.flare : 0, glintTint);
 
   const tr = vehicle.trans;
   hud.draw(
@@ -647,8 +883,9 @@ function frame(now) {
           showGear: tr.mode === 'auto',
           running: vehicle.engine.running,
           needClutchToStart: tr.mode === 'manual' && tr.gear !== 0,
-          lapTime: run.time,
-          bestTime: run.best,
+          lapTime: race.active ? race.hud().time : run.time,
+          bestTime: race.active ? race.record?.best ?? null : run.best,
+          race: race.hud(),
           boost: tune.turbo && tune.turbo !== 'none' ? vehicle.engine.boost : null,
           drift: drift.display,
           fps,
@@ -686,8 +923,16 @@ async function boot() {
   headlight.color.setHex((HEADLIGHTS[tune.headlights] || HEADLIGHTS.white)[1]);
   scene.add(carModel.root);
   sparks = new Sparks(scene);
+  glints = new Glints(carModel.root);
+  smoke = new TyreSmoke(scene);
+  carModel.root.traverse((o) => {
+    if (o.isMesh) o.castShadow = true;
+  });
   deer = new Deer(scene, mountain.road, mountain.terrain);
   online = new Online(scene, world, RAPIER);
+  race = new Race({ scene, world, mountain, roadId: settings.map, wallet, toast, look: () => lookOf(tune) });
+  race.onFinish = showResults;
+  run.best = race.record?.best ?? null;
   setupOnline();
   // Blob shadow rides under the car, at ground level in the car's own frame.
   shadow = blobShadow();
@@ -703,7 +948,7 @@ async function boot() {
   $('loading').textContent = '';
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;

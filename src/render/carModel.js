@@ -481,7 +481,8 @@ export class CarModel {
     const detail = detailPolys();
     // Painted panels get their own material so the paint colour can change.
     const white = (polys) => polys.map((p) => ({ ...p, color: [1, 1, 1] }));
-    this.paintMat = new THREE.MeshLambertMaterial({ color: 0xefeee6, vertexColors: true, flatShading: true });
+    // Glossy paint: a sharp specular highlight where the light catches each panel.
+    this.paintMat = new THREE.MeshPhongMaterial({ color: 0xefeee6, vertexColors: true, flatShading: true, shininess: 70, specular: 0x6a6a6a });
     body.add(new THREE.Mesh(polyGeometry(white([...shell.paint, ...cabin.paint, ...detail.paint])), this.paintMat));
     this.cabinTop = new THREE.Mesh(polyGeometry(white(shell.cabinTop)), this.paintMat);
     body.add(this.cabinTop);

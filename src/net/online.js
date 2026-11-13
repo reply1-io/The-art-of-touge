@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { CarModel } from '../render/carModel.js';
 import { CAR, TUNABLE_DEFAULTS } from '../config.js';
+import { HostRoom, joinLink, serverLink } from './p2p.js';
 
 // What other players need to draw your car.
 export const LOOK_KEYS = ['paint', 'wheel', 'rim', 'profile', 'stretch', 'offsetFront', 'offsetRear', 'camberFront', 'camberRear', 'headlights', 'taillights', 'exhaust', 'plateStyle', 'plateText', 'numbers', 'number', 'numberW', 'numberH', 'rideHeight', 'coilovers', 'seats'];
@@ -45,7 +46,10 @@ export class Online {
     this.scene = scene;
     this.world = world;
     this.RAPIER = RAPIER;
-    this.ws = null;
+    this.link = null;
+    this.room = null;
+    this.error = '';
+    this.onRoom = () => {};
     this.status = 'offline'; // 'offline' | 'connecting' | 'online' | 'error'
     this.serverName = '';
     this.players = new Map(); // id -> { name, model, body, buf: [{ t, s }] }
@@ -59,73 +63,106 @@ export class Online {
     return this.players.size;
   }
 
-  // url: ws:// or wss:// address; name: your driver name; road: 'akina' | 'dragon'.
-  connect(url, name, road, tune) {
+  // ---- Three ways online: host a room, join one by code, or use your own server ----
+  host(code, name, road, time, tune) {
     this.disconnect();
-    let addr = url.trim();
-    if (!/^wss?:\/\//.test(addr)) addr = (location.protocol === 'https:' ? 'wss://' : 'ws://') + addr;
+    this.kind = 'host';
+    const room = new HostRoom(code, { name, road, time });
+    this.room = room;
     this.status = 'connecting';
     this.onChange();
-    let ws;
-    try {
-      ws = new WebSocket(addr);
-    } catch {
-      this.status = 'error';
-      this.onChange();
-      return;
-    }
-    this.ws = ws;
-    ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', name, road, look: lookOf(tune) }));
-    ws.onmessage = (e) => {
-      let m;
-      try {
-        m = JSON.parse(e.data);
-      } catch {
-        return;
-      }
-      this.#handle(m);
-    };
-    ws.onerror = () => {
-      this.status = 'error';
-      this.onChange();
-    };
-    ws.onclose = () => {
-      if (this.ws !== ws) return;
+    room.onOpen = () => this.#use(room.localLink(), name, road, tune);
+    room.onError = (text) => this.#fail(text);
+  }
+
+  join(code, name, road, tune) {
+    this.disconnect();
+    this.kind = 'join';
+    this.#use(joinLink(code), name, road, tune);
+  }
+
+  connect(url, name, road, tune) {
+    this.disconnect();
+    this.kind = 'server';
+    this.#use(serverLink(url), name, road, tune);
+  }
+
+  // Change the road or time for everyone (host only).
+  setRoom(patch) {
+    this.room?.setSettings(patch);
+  }
+
+  get hosting() {
+    return !!this.room && this.status === 'online';
+  }
+
+  #use(link, name, road, tune) {
+    this.link = link;
+    this.status = 'connecting';
+    this.error = '';
+    this.onChange();
+    link.onopen = () => link.send({ t: 'hello', name, road, look: lookOf(tune) });
+    link.onmessage = (m) => this.#handle(m);
+    link.onerror = (text) => this.#fail(text);
+    link.onclose = () => {
+      if (this.link !== link) return;
       this.#clearPlayers();
-      if (this.status !== 'error' && this.status !== 'full') this.status = 'offline';
-      this.ws = null;
+      if (this.status === 'online') {
+        this.status = 'error';
+        this.error = 'The host left';
+      }
+      this.link = null;
       this.onChange();
     };
   }
 
+  #fail(text) {
+    const link = this.link;
+    this.link = null;
+    link?.close();
+    this.room?.close();
+    this.room = null;
+    this.#clearPlayers();
+    this.status = 'error';
+    this.error = text || 'Could not connect';
+    this.onChange();
+  }
+
   disconnect() {
-    if (this.ws) {
-      const ws = this.ws;
-      this.ws = null;
-      ws.close();
-    }
+    const link = this.link;
+    this.link = null;
+    link?.close();
+    this.room?.close();
+    this.room = null;
     this.#clearPlayers();
     this.status = 'offline';
+    this.error = '';
     this.onChange();
   }
 
   sendLook(tune) {
-    if (this.status === 'online') this.ws.send(JSON.stringify({ t: 'look', look: lookOf(tune) }));
+    if (this.status === 'online') this.link.send({ t: 'look', look: lookOf(tune) });
   }
 
   chat(text) {
-    if (this.status === 'online' && text.trim()) this.ws.send(JSON.stringify({ t: 'chat', text: text.slice(0, 80) }));
+    if (this.status === 'online' && text.trim()) this.link.send({ t: 'chat', text: text.slice(0, 80) });
   }
 
   #handle(m) {
-    if (m.t === 'welcome') {
+    if (m.t === 'room') {
+      this.roomInfo = m.room;
+      this.onRoom(m.room);
+    } else if (m.t === 'welcome') {
       this.status = 'online';
       this.serverName = m.server;
       this.myId = m.id;
+      this.roomInfo = m.room || null;
+      if (m.room) this.onRoom(m.room);
       for (const p of m.players) this.#add(p);
     } else if (m.t === 'full') {
       this.status = 'full';
-      this.ws?.close();
+      this.link?.close();
+      this.error = 'That game is full';
     } else if (m.t === 'join') this.#add(m);
     else if (m.t === 'leave') this.#remove(m.id);
     else if (m.t === 'look') {
@@ -187,7 +224,7 @@ export class Online {
         const v = b.linvel();
         const r2 = (n) => Math.round(n * 100) / 100;
         const r4 = (n) => Math.round(n * 10000) / 10000;
-        this.ws.send(JSON.stringify({ t: 'state', s: [r2(p.x), r2(p.y), r2(p.z), r4(q.x), r4(q.y), r4(q.z), r4(q.w), r2(v.x), r2(v.y), r2(v.z), r4(vehicle.steer), Math.round(vehicle.rpm), controls.brake > 0 ? 1 : 0] }));
+        this.link.send({ t: 'state', s: [r2(p.x), r2(p.y), r2(p.z), r4(q.x), r4(q.y), r4(q.z), r4(q.w), r2(v.x), r2(v.y), r2(v.z), r4(vehicle.steer), Math.round(vehicle.rpm), controls.brake > 0 ? 1 : 0] });
       }
     }
     const at = this.clock - DELAY;

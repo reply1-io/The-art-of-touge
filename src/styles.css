@@ -630,7 +630,8 @@ body.in-shop #toast,
 body.in-shop #hud,
 body.in-shop #flare,
 body.in-shop #vhs-play,
-body.paused #vhs-play {
+body.paused #vhs-play,
+body.in-menu #vhs-play {
   visibility: hidden;
 }
 
@@ -1036,6 +1037,8 @@ body.paused #vhs-play {
   touch-action: manipulation;
 }
 
+.net-host,
+.net-join,
 .net-connect {
   font: 400 20px 'VT323', ui-monospace, monospace;
   letter-spacing: 0.1em;
@@ -1053,6 +1056,30 @@ body.paused #vhs-play {
 
 .net-status.on {
   color: #7fe08a;
+}
+
+.net-status.bad {
+  color: #ff6a5a;
+}
+
+.net-code {
+  flex: 0 0 auto !important;
+  width: 7.5em;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+
+.net-adv summary {
+  font: 400 17px 'VT323', ui-monospace, monospace;
+  color: var(--dim);
+  cursor: pointer;
+  margin-top: 2px;
+}
+
+#chat-room {
+  font-size: 20px;
+  letter-spacing: 0.2em;
+  color: var(--accent);
 }
 
 #chat {
@@ -1089,4 +1116,95 @@ body.paused #vhs-play {
 
 #chat-input:focus {
   opacity: 1;
+}
+
+/* ---------- Money and prices ---------- */
+.shop-head h2 {
+  flex: 1;
+}
+
+.shop-money,
+.title-money {
+  font: 400 26px 'VT323', ui-monospace, monospace;
+  letter-spacing: 0.06em;
+  color: #7fe08a;
+  text-shadow: 0 0 6px rgba(127, 224, 138, 0.5);
+}
+
+.shop-card em {
+  font: 400 19px 'VT323', ui-monospace, monospace;
+  font-style: normal;
+  letter-spacing: 0.06em;
+}
+
+.shop-card em.price {
+  color: #7fe08a;
+}
+
+.shop-card em.owned {
+  color: var(--dim);
+}
+
+.shop-card em.pricey,
+.shop-chips button.pricey small {
+  color: #ff6a5a;
+}
+
+.shop-chips button small {
+  display: block;
+  font-size: 15px;
+  color: #7fe08a;
+}
+
+.shop-chips button.sel small {
+  color: #111;
+}
+
+.shop-flash {
+  margin: 8px 0 0;
+  padding: 4px 10px;
+  font: 400 20px 'VT323', ui-monospace, monospace;
+  color: #111;
+  background: #7fe08a;
+}
+
+.shop-flash.bad {
+  background: #ff6a5a;
+}
+
+/* ---------- Races ---------- */
+.race-info {
+  margin: 8px 0;
+  font: 400 19px/1.2 'VT323', ui-monospace, monospace;
+  letter-spacing: 0.03em;
+  color: var(--ink);
+}
+
+#results {
+  z-index: 6;
+}
+
+#results .panel {
+  width: min(420px, 100%);
+}
+
+.res-time {
+  margin: 0;
+  font: 400 clamp(44px, 14vh, 72px) 'VT323', ui-monospace, monospace;
+  color: #fff;
+  text-shadow: 0 0 10px rgba(255, 140, 26, 0.6);
+}
+
+.res-money {
+  margin: 4px 0 6px;
+  font: 400 clamp(30px, 9vh, 44px) 'VT323', ui-monospace, monospace;
+  color: #7fe08a;
+  text-shadow: 0 0 8px rgba(127, 224, 138, 0.5);
+}
+
+#toast.count {
+  top: 18%;
+  font-size: clamp(60px, 22vh, 120px);
+  color: #ffb066;
+  text-shadow: 0 0 16px #ff8c1a, 0 3px 0 #000;
 }
