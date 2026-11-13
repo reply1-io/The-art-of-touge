@@ -43,11 +43,11 @@ const BOTTOM = [
 const BELT = [
   [2.05, 0.57],
   [1.95, 0.64],
-  [1.6, 0.705],
-  [1.2, 0.745],
-  [0.72, 0.8], // a tall cowl: the wings rise up to meet the screen
-  [0.0, 0.81],
-  [-0.8, 0.825],
+  [1.6, 0.72],
+  [1.2, 0.78],
+  [0.72, 0.86], // a tall cowl: the wings rise up to meet the screen
+  [0.0, 0.865],
+  [-0.8, 0.87],
   [-1.6, 0.85],
   [-2.05, 0.885],
   [-2.2, 0.87],
@@ -57,10 +57,10 @@ const BELT = [
 const TOP = [
   [2.05, 0.58],
   [1.95, 0.65],
-  [1.5, 0.72],
-  [1.1, 0.77],
-  [0.72, 0.84], // the bonnet climbs into a tall cowl at the base of the screen
-  [0.0, 0.84],
+  [1.5, 0.735],
+  [1.1, 0.8],
+  [0.72, 0.9], // the bonnet climbs into a tall cowl at the base of the screen
+  [0.0, 0.9],
   [-1.72, 0.88],
   [-2.02, 0.915],
   [-2.2, 0.9],

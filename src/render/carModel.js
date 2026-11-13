@@ -555,7 +555,7 @@ export class CarModel {
         // following the curve of the wing.
         p.box.position.y = (p.H - 0.01) * e;
         p.pivot.rotation.x = p.tilt + (-0.35 - p.tilt) * e;
-        p.pivot.rotation.z = -p.side * 0.16 * e;
+        p.pivot.rotation.z = 0; // level from the front
       }
     }
     if (this.flameLife <= 0) {
