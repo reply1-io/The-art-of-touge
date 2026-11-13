@@ -81,25 +81,25 @@ export const ENGINES = {
     bank: [0, 1, 0, 1, 0, 1],                 // front rotor, rear rotor
     cylGain: [1.0, 0.93, 1.05, 0.96, 0.94, 1.04], // faces and apex seals never seal quite alike
     cylTiming: [0, 1.5, -1, 2, -1.5, 0.5],
-    idleRpm: 800, redline: 7500, crankFlare: 1500, starterRatio: 11,
+    idleRpm: 750, redline: 7500, crankFlare: 1500, starterRatio: 11, // the game's RX-7 idles at 750
     dual: false,                               // short manifold into one pipe
     header: [0.0009, 0.0012], pipe: [3.0, 3.0], pipeRefl: 0.45,
     // Tuned against a recording of an FD RX-7 idling (used only for measurements): a very
     // regular brap once every three shaft turns, energy at 60-500 Hz, little sub.
-    width: [4, 1], tail: 160, pulseSharp: 0.75, // the port snaps open (4 deg), the gas flows on
+    width: [14, 4], tail: 160, pulseSharp: 0.3, // the port opens fast (14 deg), the gas flows on
     raspFloor: 0.5,                            // rasp even at idle (a peripheral-port bark)
     pump: 0.14, jitter: 0.03, idleJitter: 0.03, lope: [0.004, 0.002], scatter: 1,
     baseLope: 0.45,                            // even a stock 13B idles choppy
     // one strong brap per 1,080 deg (repeats every cycle, both halves the same)
-    chop: [1.9, 1.2, 0.6, 0.7, 0.75, 0.65, 1.9, 1.2, 0.6, 0.7, 0.75, 0.65],
-    sizzle: 3.0, idleNoise: 3.0, tick: 0, intakeLag: 360, popMul: 1.8,
+    chop: [1.35, 1.2, 0.72, 0.8, 0.85, 0.75, 1.35, 1.2, 0.72, 0.8, 0.85, 0.75],
+    sizzle: 1.2, idleNoise: 3.0, tick: 0, intakeLag: 360, popMul: 1.0, hitTail: 70,
     subMin: 60,                                // 27 Hz firing at idle: the brap lives above it
     idleHitScale: 1.5,                         // pipes make a bigger difference at idle
-    muff: [1100, 900, 0.1, 3200, 1600], body: [112, 7], drone: [170, 5],
+    muff: [1100, 900, 0.1, 3200, 1600], body: [112, 5], drone: [170, 3.5],
     stumble: 0,                                // a rotary's brap is metronome-regular
-    mid: [290, 5],                             // third pipe resonance heard on the reference
+    mid: [290, 6],                             // third pipe resonance heard on the reference
     rasp: [1300, 0.2, 2.2], rumble: [300, 0.06, 1.0], intake: [600, 0.12, 0.25],
-    level: 0.62,
+    level: 1.3, post: 0.62,                    // driven harder, then turned down: rounder thumps
   },
 };
 
@@ -383,7 +383,8 @@ export class M20Dsp {
         env += v;
         // what the turbulence noise rides on: the sharp start of each firing only (on the
         // rotary's long blowdown tail, riding on env would turn it into a steady hiss)
-        hit += tail > 0 ? (x > 0 && x < width + 120 ? amp * (x < width ? p : Math.exp(-(x - width) / 25)) : 0) : v;
+        const ht = E.hitTail || 25;
+        hit += tail > 0 ? (x > 0 && x < width + ht * 5 ? amp * (x < width ? p : Math.exp(-(x - width) / ht)) : 0) : v;
         // intake valve opens ~360 deg later on the same cylinder
         const xi = x - inLag;
         if (xi > 0 && xi < 180) inEnv += Math.sin(Math.PI * xi / 180);
@@ -459,7 +460,7 @@ export class M20Dsp {
       const subT = Math.max(X.sub, E.subMin || 0);
       if (Math.abs(subT - this.subHz) > 0.5) { this.subHz = subT; this.dcHp.set('hp', subT, 0.7, 0, fs); }
       y = this.dcHp.run(y);
-      let o = Math.tanh(y * 0.38 * E.level * X.level) * 1.35; // gentle: mostly linear, only peaks round off
+      let o = Math.tanh(y * 0.38 * E.level * X.level) * 1.35 * (E.post || 1); // gentle: mostly linear, only peaks round off
       // soft knee above 0.9 so loud engines never clip the output
       if (o > 0.9) o = 0.9 + 0.1 * Math.tanh((o - 0.9) / 0.1);
       else if (o < -0.9) o = -0.9 - 0.1 * Math.tanh((-o - 0.9) / 0.1);
