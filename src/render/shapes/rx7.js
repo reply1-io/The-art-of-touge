@@ -154,7 +154,7 @@ const ROOF_REAR_Z = -0.5;
 const HATCH_BASE_Z = -1.72;
 const ROOF_Y = 1.27;
 const ROOF_HW = 0.57;
-const QUARTER_END_Z = -1.2; // back edge of the rear side window
+const QUARTER_END_Z = -0.98; // back edge of the rear side window: a wide body-colour C-pillar behind it
 
 function cabinTop(z) {
   if (z >= SCREEN_TOP_Z) {
@@ -228,30 +228,17 @@ function detailPolys() {
   // corner, like the real car.
   for (const y of [0.33, 0.255]) front(0.5, -0.5, y, y + 0.045, INK);
   for (const side of [1, -1]) front(side * 0.6, side * 0.72, 0.25, 0.3, INK);
-  // Bonnet vent: a black louvred scoop just ahead of the screen, a little to the left.
-  const vy = (z) => section(z).top + 0.025;
-  trim.push({ pts: [[0.32, vy(1.62), 1.62], [0.02, vy(1.62), 1.62], [0.02, vy(1.36), 1.36], [0.32, vy(1.36), 1.36]], color: INK, out: [0, 1, 0.1] });
-  for (let k = 1; k < 4; k++) {
-    const z = 1.62 - k * 0.065;
-    trim.push({ pts: [[0.3, vy(z) + 0.004, z], [0.04, vy(z) + 0.004, z], [0.04, vy(z - 0.015) + 0.004, z - 0.015], [0.3, vy(z - 0.015) + 0.004, z - 0.015]], color: [0.16, 0.16, 0.18], out: [0, 1, 0.1] });
-  }
-  // Rear wing on two stands above the hatch.
-  const wy = 0.99;
-  const wz0 = -1.98;
-  const wz1 = -2.18;
-  const wingBox = (x0, x1, y0, y1, z0, z1) => {
-    const f = [
-      [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]],
-      [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]],
-      [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]],
-      [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]],
-      [[x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1]],
-      [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]],
-    ];
-    for (const pts of f) paint.push({ pts, color: WHITE });
-  };
-  wingBox(0.74, -0.74, wy, wy + 0.04, wz0, wz1);
-  for (const x of [0.5, -0.5]) wingBox(x + 0.03, x - 0.03, section(-2.08).top - 0.01, wy, -2.04, -2.12);
+  // Bonnet vent: one thin black slot across the bonnet, offset a little to the right.
+  const vz = 1.05;
+  const vy = section(vz).top + 0.006;
+  trim.push({ pts: [[-0.08, vy, vz + 0.025], [-0.5, vy, vz + 0.025], [-0.5, vy, vz - 0.025], [-0.08, vy, vz - 0.025]], color: INK, out: [0, 1, 0] });
+  // Lip spoiler: a small raised lip along the top edge of the tail.
+  const ly = section(TAIL + 0.06).top;
+  const lz0 = TAIL + 0.16;
+  const lz1 = TAIL + 0.01;
+  paint.push({ pts: [[0.74, ly, lz0], [-0.74, ly, lz0], [-0.74, ly + 0.06, lz1], [0.74, ly + 0.06, lz1]], color: WHITE, out: [0, 1, -0.4] });
+  paint.push({ pts: [[0.74, ly + 0.06, lz1], [-0.74, ly + 0.06, lz1], [-0.74, ly - 0.02, lz1 - 0.01], [0.74, ly - 0.02, lz1 - 0.01]], color: WHITE, out: [0, 0, -1] });
+  for (const side of [1, -1]) paint.push({ pts: [[side * 0.74, ly, lz0], [side * 0.74, ly + 0.06, lz1], [side * 0.74, ly - 0.02, lz1 - 0.01]], color: WHITE, out: [side, 0, 0] });
   const zt = TAIL - 0.006;
   const rear = (x0, x1, y0, y1, color, list = trim, z = zt) => list.push({ pts: [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], color, out: [0, 0, -1] });
   // Full-width tail lamps: red over amber and clear, in a black band across the whole tail, with
