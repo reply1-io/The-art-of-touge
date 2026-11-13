@@ -39,7 +39,7 @@ export class Hud {
     const R = 17 * u;
     const cx = w / 2;
     const cy = h - 7 * u;
-    const maxRpm = 7500;
+    const maxRpm = Math.max(7500, Math.ceil((state.redline + 1000) / 1000) * 1000); // room past the redline
     const a0 = Math.PI * 1.02;
     const a1 = Math.PI * 1.98;
     const ang = (rpm) => a0 + (a1 - a0) * Math.min(1, Math.max(0, rpm) / maxRpm);

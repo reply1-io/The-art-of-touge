@@ -3,64 +3,12 @@
 // origin, which rides about 0.62 m above the ground.
 import * as THREE from 'three';
 import { Cockpit } from './cockpit.js';
+import { RX7_SHAPE } from './shapes/rx7.js';
 import { PLATES, cleanPlate, WHEELS, EXHAUSTS, HEADLIGHTS, TAILLIGHTS, wheelSetup, TUNABLE_DEFAULTS } from '../config.js';
 
 const GROUND = -0.62; // ground level in body space at static ride height
 
-const WHITE = [0.94, 0.93, 0.9]; // Alpine White
-const BLACK = [0.06, 0.06, 0.07];
-const TRIM = [0.13, 0.13, 0.14];
-const GLASS = [0.16, 0.2, 0.25];
-const CHROME = [0.72, 0.74, 0.77];
-const UNDER = [0.04, 0.04, 0.05];
-const AMBER = [0.95, 0.55, 0.12];
-
-// Builds a flat-shaded, vertex-coloured mesh from convex polygons. Each polygon is wound to face
-// away from `center`, or along its own `out` hint.
-function polyGeometry(polys, center = [0, 0.1, 0]) {
-  const pos = [];
-  const col = [];
-  for (const p of polys) {
-    let pts = p.pts;
-    const [a, b, c] = pts;
-    const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    const e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
-    let out = p.out;
-    if (!out) {
-      const m = pts.reduce((s, q) => [s[0] + q[0] / pts.length, s[1] + q[1] / pts.length, s[2] + q[2] / pts.length], [0, 0, 0]);
-      out = [m[0] - center[0], m[1] - center[1], m[2] - center[2]];
-    }
-    if (n[0] * out[0] + n[1] * out[1] + n[2] * out[2] < 0) pts = [...pts].reverse();
-    const color = p.color || WHITE;
-    for (let k = 1; k < pts.length - 1; k++) {
-      for (const v of [pts[0], pts[k], pts[k + 1]]) {
-        pos.push(v[0], v[1], v[2]);
-        col.push(color[0], color[1], color[2]);
-      }
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  g.computeVertexNormals();
-  return g;
-}
-
-const mirror = (p) => [-p[0], p[1], p[2]];
-const both = (poly) => [poly, { ...poly, pts: poly.pts.map(mirror), out: poly.out && [-poly.out[0], poly.out[1], poly.out[2]] }];
-
-function lerpTable(table, z) {
-  if (z >= table[0][0]) return table[0][1];
-  for (let i = 1; i < table.length; i++) {
-    if (z >= table[i][0]) {
-      const [z0, v0] = table[i - 1];
-      const [z1, v1] = table[i];
-      return v0 + ((v1 - v0) * (z - z0)) / (z1 - z0);
-    }
-  }
-  return table[table.length - 1][1];
-}
+import { WHITE, BLACK, TRIM, GLASS, CHROME, UNDER, AMBER, polyGeometry, mirror, both, lerpTable } from './shapes/poly.js';
 
 // ---------- Body profile (heights above the ground) ----------
 const FRONT_AXLE = 1.28;
@@ -463,9 +411,26 @@ function makeWheel(ws, styleId, tyreMat, wallMat) {
   return group;
 }
 
+// The E30's body as a shape descriptor; other cars (shapes/rx7.js) provide the same fields.
+const E30_SHAPE = {
+  id: 'e30',
+  build: () => ({ shell: bodyPolys(), cabin: greenhousePolys(), detail: detailPolys() }),
+  section,
+  nose: NOSE,
+  tail: TAIL,
+  plate: { y: 0.7, z: TAIL - 0.014 },
+  pipe: [-0.52, 0.27, TAIL + 0.1],
+  door: -0.3,
+  lamps: HEADLAMPS,
+};
+export const SHAPES = { e30: E30_SHAPE, rx7: RX7_SHAPE };
+
 export class CarModel {
-  constructor(spec) {
+  // spec: the car's physics spec; its `shape` picks the body ('e30' or 'rx7').
+  constructor(spec, shapeId = spec.shape) {
     this.spec = spec;
+    const shape = SHAPES[shapeId] || E30_SHAPE;
+    this.shape = shape;
     this.root = new THREE.Group();
     const body = new THREE.Group();
     body.position.y = GROUND;
@@ -476,17 +441,15 @@ export class CarModel {
     this.headMat = new THREE.MeshLambertMaterial({ color: 0xe8ecf0, emissive: 0x000000, flatShading: true });
     this.tailMat = new THREE.MeshLambertMaterial({ color: 0xd0141c, emissive: 0x000000, flatShading: true });
 
-    const shell = bodyPolys();
-    const cabin = greenhousePolys();
-    const detail = detailPolys();
+    const { shell, cabin, detail } = shape.build();
     // Painted panels get their own material so the paint colour can change.
     const white = (polys) => polys.map((p) => ({ ...p, color: [1, 1, 1] }));
     // Glossy paint: a sharp specular highlight where the light catches each panel.
     this.paintMat = new THREE.MeshPhongMaterial({ color: 0xefeee6, vertexColors: true, flatShading: true, shininess: 70, specular: 0x6a6a6a });
-    body.add(new THREE.Mesh(polyGeometry(white([...shell.paint, ...cabin.paint, ...detail.paint])), this.paintMat));
+    body.add(new THREE.Mesh(polyGeometry(white([...shell.paint, ...cabin.paint, ...(detail.paint || [])])), this.paintMat));
     this.cabinTop = new THREE.Mesh(polyGeometry(white(shell.cabinTop)), this.paintMat);
     body.add(this.cabinTop);
-    body.add(new THREE.Mesh(polyGeometry([...shell.trim, ...cabin.trim, ...detail.trim, ...detail.chrome]), flat));
+    body.add(new THREE.Mesh(polyGeometry([...shell.trim, ...cabin.trim, ...detail.trim, ...(detail.chrome || [])]), flat));
     this.body = body;
     this.numberBoards = new THREE.Group();
     body.add(this.numberBoards);
@@ -498,7 +461,7 @@ export class CarModel {
     this.plateTex.colorSpace = THREE.SRGBColorSpace;
     this.plateTex.anisotropy = 4;
     const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.44, 0.22), new THREE.MeshLambertMaterial({ map: this.plateTex }));
-    plate.position.set(0, 0.7, TAIL - 0.014);
+    plate.position.set(0, shape.plate.y, shape.plate.z);
     plate.rotation.y = Math.PI;
     body.add(plate);
     this.glass = new THREE.Mesh(polyGeometry(cabin.glass), glassMat);
@@ -507,15 +470,38 @@ export class CarModel {
     this.cockpit = new Cockpit();
     body.add(this.cockpit.root);
     body.add(new THREE.Mesh(polyGeometry(detail.tail), this.tailMat));
-    // Round headlamps with chrome rings.
+    // Body-colour parts that are not part of the shell mesh (pop-up lids).
+    this.lidMat = new THREE.MeshPhongMaterial({ color: 0xefeee6, flatShading: true, shininess: 70, specular: 0x6a6a6a });
+    // Round headlamps with chrome rings (E30), or pop-up headlamps (RX-7).
     const ringMat = new THREE.MeshLambertMaterial({ color: 0xb9bcc2 });
-    for (const [x, y, r] of HEADLAMPS) {
+    for (const [x, y, r] of shape.lamps || []) {
       const ring = new THREE.Mesh(new THREE.CircleGeometry(r + 0.012, 14), ringMat);
-      ring.position.set(x, y, NOSE + 0.01);
+      ring.position.set(x, y, shape.nose + 0.01);
       const lamp = new THREE.Mesh(new THREE.CircleGeometry(r, 14), this.headMat);
-      lamp.position.set(x, y, NOSE + 0.014);
+      lamp.position.set(x, y, shape.nose + 0.014);
       body.add(ring, lamp);
     }
+    this.popups = (shape.popups || []).map(([x0, x1, z0, z1]) => {
+      // Hinged at the back edge; closed, the lid lies flush with the bonnet; raised, the pod
+      // stands up and its lamp (on the underside when closed) faces forward.
+      const L = z0 - z1;
+      const w = Math.abs(x1 - x0);
+      const yFront = shape.section(z0).belt;
+      const yBack = shape.section(z1).belt;
+      const pivot = new THREE.Group();
+      pivot.position.set((x0 + x1) / 2, yBack, z1);
+      const lid = new THREE.Mesh(new THREE.BoxGeometry(w, 0.03, L), this.lidMat);
+      lid.position.set(0, -0.012, L / 2);
+      const pod = new THREE.Mesh(new THREE.BoxGeometry(w * 0.96, 0.12, L * 0.9), new THREE.MeshLambertMaterial({ color: 0x141416 }));
+      pod.position.set(0, -0.09, L / 2);
+      const lamp = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.8, 0.09).rotateX(Math.PI / 2), this.headMat);
+      lamp.position.set(0, -0.152, L / 2);
+      pivot.add(lid, pod, lamp);
+      body.add(pivot);
+      return { pivot, closed: Math.asin(Math.max(-1, Math.min(1, (yBack - yFront) / L))) };
+    });
+    this.pop = 0;
+    this.popTarget = 0;
 
     this.tyreMat = new THREE.MeshLambertMaterial({ color: 0x151517 });
     this.wallMat = new THREE.MeshLambertMaterial({ color: 0x1f1f22, side: THREE.DoubleSide });
@@ -530,7 +516,7 @@ export class CarModel {
     // Exhaust tailpipe under the right of the rear bumper, and the flame that can shoot from it.
     this.pipeMat = new THREE.MeshLambertMaterial({ color: 0x9a9da3 });
     this.pipe = new THREE.Group();
-    this.pipe.position.set(-0.52, 0.27, TAIL + 0.1); // body group coordinates: height above the ground
+    this.pipe.position.set(...shape.pipe); // body group coordinates: height above the ground
     body.add(this.pipe);
     this.flameGroup = new THREE.Group();
     const outer = new THREE.ConeGeometry(1, 1, 10, 1, true);
@@ -552,8 +538,13 @@ export class CarModel {
     this.flameMax = Math.max(this.flameMax * (this.flameLife > 0 ? 1 : 0), strength);
   }
 
-  // Animate the flame: flickers, then shrinks away.
+  // Animate the flame: flickers, then shrinks away. (Also swings the pop-up headlamps.)
   updateFx(dt) {
+    if (this.popups.length) {
+      this.pop += Math.max(-dt * 2.2, Math.min(dt * 2.2, this.popTarget - this.pop));
+      const e = this.pop * this.pop * (3 - 2 * this.pop);
+      for (const p of this.popups) p.pivot.rotation.x = p.closed + (-1.38 - p.closed) * e;
+    }
     if (this.flameLife <= 0) {
       this.flameGroup.visible = false;
       this.flameMax = 0;
@@ -611,6 +602,7 @@ export class CarModel {
   }
 
   setLights(on, braking) {
+    this.popTarget = on ? 1 : 0;
     const head = (HEADLIGHTS[this.headColor] || HEADLIGHTS.white)[1];
     this.headMat.emissive.setHex(on ? head : 0x000000);
     this.tailMat.emissive.setHex(braking ? 0xff1a1a : on ? 0x550000 : 0x000000);
@@ -635,6 +627,7 @@ export class CarModel {
   #applyLooks(t) {
     this.cockpit.setSeats(t.seats === 'bucket' ? 'bucket' : 'stock');
     this.paintMat.color.set(t.paint || '#efeee6');
+    this.lidMat.color.set(t.paint || '#efeee6');
     this.headColor = t.headlights || 'white';
     const head = (HEADLIGHTS[this.headColor] || HEADLIGHTS.white)[1];
     this.headMat.color.setHex(head).lerp(new THREE.Color(0xe8ecf0), 0.35);
@@ -722,7 +715,7 @@ export class CarModel {
     const y = 0.47 + h / 2;
     for (const side of [1, -1]) {
       const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
-      m.position.set(side * (section(-0.3).hw + 0.012), y, -0.3);
+      m.position.set(side * (this.shape.section(this.shape.door).hw + 0.012), y, this.shape.door);
       m.rotation.y = side * (Math.PI / 2);
       this.numberBoards.add(m);
     }

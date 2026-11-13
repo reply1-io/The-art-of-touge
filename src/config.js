@@ -1,8 +1,11 @@
 // BMW E30 325i (1988, M20B25 2.5 straight-six). Numbers follow the real car where known.
 // Values in TUNABLE can be changed live from the dev tuning panel.
 
-export const CAR = {
+const E30 = {
+  id: 'e30',
+  shape: 'e30',
   name: 'BMW E30 325i',
+  blurb: '2.5 straight-six, 170 hp, 6,500 rpm. Heavier nose, smooth and torquey: easy to balance.',
   mass: 1230, // kg with driver and fuel (the six is heavier than the 318is four)
   // Body box used for the collider (half extents, metres): width, height, length.
   halfExtents: { x: 0.8, y: 0.32, z: 2.12 },
@@ -64,6 +67,83 @@ export const CAR = {
 
   paint: 0xefeee6, // Alpine White
 };
+
+// Mazda RX-7 (FC3S, 1990 non-turbo): 13B two-rotor, about 160 hp at 7,000 rpm and a 7,500 rpm
+// redline, near 50:50 balance with the engine behind the front axle, a light, quick-revving
+// rotor pack and little engine braking.
+const RX7 = {
+  id: 'rx7',
+  shape: 'rx7',
+  name: 'Mazda RX-7 FC',
+  blurb: '13B rotary, 160 hp, 7,500 rpm. Balanced and light on its feet; loves to rev, little engine braking.',
+  mass: 1250,
+  halfExtents: { x: 0.83, y: 0.3, z: 2.14 },
+  centerOfMass: { x: 0, y: -0.2, z: 0.0 },
+  inertia: { x: 1500, y: 1800, z: 440 },
+  dragArea: 0.53, // Cd 0.31 x 1.7 m2
+  rollingResistance: 0.013,
+
+  wheelbase: 2.43,
+  trackFront: 1.45,
+  trackRear: 1.44,
+  frontAxleZ: 1.2,
+  rearAxleZ: -1.23,
+  wheelMountY: -0.1,
+  wheelRadius: 0.305,
+  wheelWidth: 0.195,
+  wheelInertia: 1.0,
+  suspensionRest: 0.3,
+  suspensionTravel: 0.18,
+  maxSteer: (36 * Math.PI) / 180,
+
+  engine: {
+    idleRpm: 800,
+    redline: 7500,
+    limiterRpm: 7600,
+    limiterResumeRpm: 7300,
+    stallRpm: 450,
+    inertia: 0.13, // rotors and a light flywheel: revs climb and fall quickly
+    torqueCurve: [
+      [0, 90],
+      [800, 120],
+      [1500, 140],
+      [2500, 160],
+      [3500, 176],
+      [4500, 190],
+      [5500, 186],
+      [6500, 175],
+      [7000, 165],
+      [7500, 150],
+      [8000, 125],
+    ],
+    frictionTorque: 14,
+    frictionPerRpm: 0.005, // a rotary has little engine braking
+  },
+
+  gears: [3.475, 2.002, 1.366, 1.0, 0.711],
+  reverse: 3.493,
+  finalDrive: 4.1,
+  drivelineEfficiency: 0.9,
+  clutchTorque: 300,
+
+  brakeTorqueFront: 1700,
+  brakeTorqueRear: 800,
+  handbrakeTorque: 1800,
+
+  paint: 0xc8241d,
+};
+
+export const CARS = { e30: E30, rx7: RX7 };
+
+// The car you drive, picked in the tuning shop (changing it reloads the game).
+function chosenCar() {
+  try {
+    return typeof localStorage === 'undefined' ? 'e30' : JSON.parse(localStorage.getItem('touge.settings.v4'))?.car;
+  } catch {
+    return 'e30';
+  }
+}
+export const CAR = CARS[chosenCar()] || E30;
 
 // Tyre compounds (tuning shop).
 //   mu         peak friction on dry asphalt
@@ -136,7 +216,7 @@ export const TUNABLE_DEFAULTS = {
   turbo: 'none',
   clutch: 'stock',
   gearbox: 'stock',
-  finalDrive: 3.73,
+  finalDrive: CAR.finalDrive,
   coilovers: false,
   bump: 0.3, // coilover damping ratios (compression / extension)
   rebound: 0.36,
