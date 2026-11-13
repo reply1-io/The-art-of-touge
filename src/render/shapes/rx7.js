@@ -32,9 +32,9 @@ const HALF_WIDTH = [
   [-2.24, 0.77],
 ];
 const BOTTOM = [
-  [2.05, 0.38],
-  [2.0, 0.22],
-  [1.8, 0.17],
+  [2.05, 0.19], // a tall front bumper face, down to a low chin
+  [2.0, 0.17],
+  [1.8, 0.16],
   [-1.85, 0.18],
   [-2.12, 0.27],
   [-2.24, 0.42],
@@ -220,18 +220,18 @@ function detailPolys() {
   const front = (x0, x1, y0, y1, color, z = zn) => trim.push({ pts: [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], color, out: [0, 0, 1] });
   // No grille: a slim slot in the nose; a grey strip across the bumper with amber indicators at
   // its ends; below it a big black intake with two rows of slats.
-  front(0.3, -0.3, 0.49, 0.515, TRIM);
-  front(0.78, -0.78, 0.43, 0.46, TRIM, NOSE - 0.004);
-  for (const side of [1, -1]) front(side * 0.6, side * 0.77, 0.43, 0.462, AMBER, NOSE - 0.002);
-  front(0.56, -0.56, 0.23, 0.39, INK, NOSE - 0.006);
-  for (const y of [0.275, 0.335]) front(0.53, -0.53, y, y + 0.022, [0.17, 0.17, 0.19], NOSE - 0.002);
-  for (const side of [1, -1]) front(side * 0.66, side * 0.76, 0.27, 0.33, INK, NOSE - 0.008); // corner ducts
+  front(0.28, -0.28, 0.52, 0.54, TRIM); // slot in the nose tip
+  front(0.74, -0.74, 0.44, 0.47, TRIM); // bumper strip
+  for (const side of [1, -1]) front(side * 0.56, side * 0.73, 0.44, 0.475, AMBER, zn + 0.002);
+  front(0.6, -0.6, 0.22, 0.4, INK); // big intake
+  for (const y of [0.27, 0.335]) front(0.57, -0.57, y, y + 0.025, [0.17, 0.17, 0.19], zn + 0.002);
+  for (const side of [1, -1]) front(side * 0.64, side * 0.72, 0.25, 0.37, INK); // corner ducts
   // Bonnet vent: a black louvred scoop just ahead of the screen, a little to the left.
   const vy = (z) => section(z).top + 0.025;
-  trim.push({ pts: [[0.36, vy(1.22), 1.22], [0.04, vy(1.22), 1.22], [0.04, vy(0.98), 0.98], [0.36, vy(0.98), 0.98]], color: INK, out: [0, 1, 0.1] });
+  trim.push({ pts: [[0.32, vy(1.62), 1.62], [0.02, vy(1.62), 1.62], [0.02, vy(1.36), 1.36], [0.32, vy(1.36), 1.36]], color: INK, out: [0, 1, 0.1] });
   for (let k = 1; k < 4; k++) {
-    const z = 1.22 - k * 0.06;
-    trim.push({ pts: [[0.34, vy(z) + 0.004, z], [0.06, vy(z) + 0.004, z], [0.06, vy(z - 0.015) + 0.004, z - 0.015], [0.34, vy(z - 0.015) + 0.004, z - 0.015]], color: [0.16, 0.16, 0.18], out: [0, 1, 0.1] });
+    const z = 1.62 - k * 0.065;
+    trim.push({ pts: [[0.3, vy(z) + 0.004, z], [0.04, vy(z) + 0.004, z], [0.04, vy(z - 0.015) + 0.004, z - 0.015], [0.3, vy(z - 0.015) + 0.004, z - 0.015]], color: [0.16, 0.16, 0.18], out: [0, 1, 0.1] });
   }
   // Rear wing on two stands above the hatch.
   const wy = 0.99;
