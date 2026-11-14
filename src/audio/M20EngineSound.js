@@ -8,6 +8,7 @@
 //   // every frame from your car sim:
 //   engine.setRpm(car.rpm);
 //   engine.setThrottle(car.throttle);  // 0..1; 0 above idle = overrun (fuel cut)
+//   engine.setTurbo(true);             // 48 mm turbo: whistle, spool, flutter on lift-off
 //   engine.setExhaust('street');       // 'stock' | 'street' | 'race'
 //   engine.stop();
 //
@@ -18,7 +19,7 @@
 // Browser rule: create/resume the AudioContext inside the click/tap handler,
 // before any await, or phones keep it silent.
 
-import { M20Dsp, Biquad, Delay, randn, crankRpm, exhaustName, CRANK_SECONDS, IDLE_RPM, ENGINES, EXHAUSTS, TAU } from './m20-dsp.js';
+import { M20Dsp, Biquad, Delay, randn, crankRpm, exhaustName, CRANK_SECONDS, IDLE_RPM, ENGINES, EXHAUSTS, TURBOS, TAU } from './m20-dsp.js';
 export { crankRpm, CRANK_SECONDS, IDLE_RPM, ENGINES, EXHAUSTS };
 
 function workletSource(dspSource) {
@@ -30,6 +31,7 @@ function workletSource(dspSource) {
         `const TAU = ${TAU};`,
         `const ENGINES = ${JSON.stringify(ENGINES)};`,
         `const EXHAUSTS = ${JSON.stringify(EXHAUSTS)};`,
+        `const TURBOS = ${JSON.stringify(TURBOS)};`,
         `const IDLE_RPM = ${IDLE_RPM};`,
         `const CRANK_SECONDS = ${CRANK_SECONDS};`,
         randn, crankRpm, exhaustName, Biquad, Delay, M20Dsp,
@@ -40,7 +42,7 @@ function workletSource(dspSource) {
       constructor() {
         super();
         this.d = new M20Dsp(sampleRate);
-        this.d.onCycle = (s) => this.port.postMessage({ cycle: s }, [s.buffer]);
+        this.d.onCycle = (s, boost) => this.port.postMessage({ cycle: s, boost }, [s.buffer]);
         this.port.onmessage = (e) => {
           const m = e.data;
           if (m.set) this.d.set(m.set);
@@ -71,7 +73,7 @@ export class M20EngineSound {
         const node = new AudioWorkletNode(ctx, 'm20-engine', {
           numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
         });
-        node.port.onmessage = (m) => { if (m.data.cycle) e.onCycle?.(m.data.cycle); };
+        node.port.onmessage = (m) => { if (m.data.boost !== undefined) e.boost = m.data.boost; if (m.data.cycle) e.onCycle?.(m.data.cycle); };
         e._send = (m) => node.port.postMessage(m);
         e.node = node;
         e.backend = 'worklet';
@@ -81,7 +83,7 @@ export class M20EngineSound {
     }
     if (!e.node) {
       const dsp = new M20Dsp(ctx.sampleRate);
-      dsp.onCycle = (s) => e.onCycle?.(s);
+      dsp.onCycle = (s, boost) => { e.boost = boost; e.onCycle?.(s); };
       const node = ctx.createScriptProcessor(1024, 1, 1);
       node.onaudioprocess = (ev) => dsp.process(ev.outputBuffer.getChannelData(0));
       e._send = (m) => { if (m.set) dsp.set(m.set); if (m.cmd) dsp.command(m.cmd); };
@@ -99,7 +101,8 @@ export class M20EngineSound {
     this.output.gain.value = 0;
     this.cranking = false;
     this.running = false;
-    this.onCycle = null; // (Float32Array: one engine cycle of output) => void
+    this.onCycle = null;
+    this.boost = 0; // 0..1, turbo boost read back from the synth // (Float32Array: one engine cycle of output) => void
   }
 
   connect(dest) { this.output.connect(dest); return this; }
@@ -109,6 +112,14 @@ export class M20EngineSound {
   setThrottle(t) { this._send({ set: { throttle: Math.min(1, Math.max(0, t)) } }); }
   /** 'stock' | 'street' | 'race'. Street and race are rowdier and lope at idle. */
   setExhaust(x) { this._send({ set: { exhaust: exhaustName(x) } }); }
+
+  /**
+   * Turbo: whistle, air rush and compressor flutter on lift-off (no blow-off valve).
+   * size: 'small' (48 mm) or 'big' (T3-size: deeper whistle, slower spool and flutter).
+   * Boost (0..1) is modelled here unless you pass your own each frame with
+   * setState({ boost }). engine.boost reads it back.
+   */
+  setTurbo(on, size = 'small') { this._send({ set: { turbo: on ? 1 : 0, turboSize: size } }); }
 
   /** 'm20' (BMW straight-six) or 'ls3' (GM V8). Switches instantly, even while running. */
   setEngine(name) {
