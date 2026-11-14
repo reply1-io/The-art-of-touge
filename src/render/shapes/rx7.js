@@ -10,7 +10,7 @@ export const REAR_AXLE = -1.23;
 const WHEEL_R = 0.305;
 const ARCH_R = 0.38;
 export const NOSE = 2.05;
-export const TAIL = -2.24;
+export const TAIL = -2.0; // a short tail: the glass hatch runs nearly to the end
 const RED = [0.85, 0.08, 0.08];
 const CLEAR = [0.82, 0.83, 0.8];
 const INK = [0.012, 0.012, 0.014]; // deep black for openings, so bright light can't wash them out
@@ -27,17 +27,17 @@ const HALF_WIDTH = [
   [-0.7, 0.835],
   [-1.05, 0.852],
   [-1.5, 0.852],
-  [-1.95, 0.83],
-  [-2.2, 0.8],
-  [-2.24, 0.77],
+  [-1.8, 0.84],
+  [-1.96, 0.81],
+  [-2.0, 0.78],
 ];
 const BOTTOM = [
   [2.05, 0.19], // a tall front bumper face, down to a low chin
   [2.0, 0.17],
   [1.8, 0.16],
-  [-1.85, 0.18],
-  [-2.12, 0.27],
-  [-2.24, 0.42],
+  [-1.7, 0.18],
+  [-1.9, 0.26],
+  [-2.0, 0.4],
 ];
 // Top of the flanks: a low front wing that rises steadily to the high, short tail.
 const BELT = [
@@ -48,10 +48,10 @@ const BELT = [
   [0.72, 0.86], // a tall cowl: the wings rise up to meet the screen
   [0.0, 0.865],
   [-0.8, 0.87],
-  [-1.6, 0.85],
-  [-2.05, 0.885],
-  [-2.2, 0.87],
-  [-2.24, 0.8],
+  [-1.6, 0.86],
+  [-1.85, 0.885],
+  [-1.97, 0.875],
+  [-2.0, 0.82],
 ];
 // Centreline: a long, flat, low bonnet, then (under the glass) the hatch deck and spoiler lip.
 const TOP = [
@@ -61,10 +61,9 @@ const TOP = [
   [1.1, 0.8],
   [0.72, 0.9], // the bonnet climbs into a tall cowl at the base of the screen
   [0.0, 0.9],
-  [-1.72, 0.88],
-  [-2.02, 0.915],
-  [-2.2, 0.9],
-  [-2.24, 0.82],
+  [-1.84, 0.89],
+  [-1.96, 0.9],
+  [-2.0, 0.84],
 ];
 
 export function section(z) {
@@ -107,7 +106,7 @@ function shellPolys() {
   for (let i = 0; i < rings.length - 1; i++) {
     const a = rings[i];
     const b = rings[i + 1];
-    const inCabin = stations[i] <= 0.72 && stations[i + 1] >= -1.72;
+    const inCabin = stations[i] <= 0.72 && stations[i + 1] >= -1.84;
     for (let k = 0; k < a.length - 1; k++) (inCabin && k >= 3 && k <= 6 ? cabinTop : paint).push({ pts: [a[k], a[k + 1], b[k + 1], b[k]] });
     trim.push({ pts: [a[0], a[a.length - 1], b[b.length - 1], b[0]], color: UNDER, out: [0, -1, 0] });
     // Black body-side moulding along the doors.
@@ -151,7 +150,7 @@ function shellPolys() {
 const SCREEN_BASE_Z = 0.72;
 const SCREEN_TOP_Z = -0.1;
 const ROOF_REAR_Z = -0.5;
-const HATCH_BASE_Z = -1.72;
+const HATCH_BASE_Z = -1.84; // the glass reaches back almost to the tail
 const ROOF_Y = 1.27;
 const ROOF_HW = 0.57;
 const QUARTER_END_Z = -0.98; // back edge of the rear side window: a wide body-colour C-pillar behind it
@@ -173,7 +172,7 @@ function greenhousePolys() {
   const paint = [];
   const glass = [];
   const trim = [];
-  const zs = [0.72, 0.5, 0.25, -0.1, -0.3, -0.5, -0.56, -0.8, -1.0, -1.2, -1.4, -1.58, -1.72];
+  const zs = [0.72, 0.5, 0.25, -0.1, -0.3, -0.5, -0.56, -0.8, -0.98, -1.2, -1.4, -1.6, -1.84];
   const rings = zs.map((z) => {
     const s = section(z);
     const t = cabinTop(z);
@@ -200,9 +199,12 @@ function greenhousePolys() {
   }
   // Body-coloured spoiler lip across the bottom of the hatch.
   const last = rings[rings.length - 1];
-  const lip = [last.lt, mirror(last.lt), [-(last.lt[0] + 0.02), last.lt[1] + 0.04, HATCH_BASE_Z - 0.12], [last.lt[0] + 0.02, last.lt[1] + 0.04, HATCH_BASE_Z - 0.12]];
+  // A small ducktail: the short deck behind the glass kicks up into a lip at the very end.
+  const dz = TAIL + 0.01;
+  const lip = [last.lt, mirror(last.lt), [-(last.lt[0] + 0.04), last.lt[1] + 0.07, dz], [last.lt[0] + 0.04, last.lt[1] + 0.07, dz]];
   paint.push({ pts: lip, out: [0, 1, -0.3] });
-  paint.push({ pts: [lip[3], lip[2], [-(last.lt[0] + 0.02), last.lt[1] - 0.02, HATCH_BASE_Z - 0.16], [last.lt[0] + 0.02, last.lt[1] - 0.02, HATCH_BASE_Z - 0.16]], out: [0, 0, -1] });
+  paint.push({ pts: [lip[3], lip[2], [-(last.lt[0] + 0.04), section(TAIL).belt - 0.02, dz], [last.lt[0] + 0.04, section(TAIL).belt - 0.02, dz]], out: [0, 0, -1] });
+  for (const sd of [1, -1]) paint.push({ pts: [[sd * last.lt[0], last.lt[1], HATCH_BASE_Z], [sd * (last.lt[0] + 0.04), last.lt[1] + 0.07, dz], [sd * (last.lt[0] + 0.04), section(TAIL).belt - 0.02, dz], [sd * section(HATCH_BASE_Z).hw * 0.94, section(HATCH_BASE_Z).belt, HATCH_BASE_Z]], out: [sd, 0.3, 0] });
   return { paint, glass, trim };
 }
 
@@ -232,13 +234,6 @@ function detailPolys() {
   const vz = 1.05;
   const vy = section(vz).top + 0.006;
   trim.push({ pts: [[-0.08, vy, vz + 0.025], [-0.5, vy, vz + 0.025], [-0.5, vy, vz - 0.025], [-0.08, vy, vz - 0.025]], color: INK, out: [0, 1, 0] });
-  // Lip spoiler: a small raised lip along the top edge of the tail.
-  const ly = section(TAIL + 0.06).top;
-  const lz0 = TAIL + 0.16;
-  const lz1 = TAIL + 0.01;
-  paint.push({ pts: [[0.74, ly, lz0], [-0.74, ly, lz0], [-0.74, ly + 0.06, lz1], [0.74, ly + 0.06, lz1]], color: WHITE, out: [0, 1, -0.4] });
-  paint.push({ pts: [[0.74, ly + 0.06, lz1], [-0.74, ly + 0.06, lz1], [-0.74, ly - 0.02, lz1 - 0.01], [0.74, ly - 0.02, lz1 - 0.01]], color: WHITE, out: [0, 0, -1] });
-  for (const side of [1, -1]) paint.push({ pts: [[side * 0.74, ly, lz0], [side * 0.74, ly + 0.06, lz1], [side * 0.74, ly - 0.02, lz1 - 0.01]], color: WHITE, out: [side, 0, 0] });
   const zt = TAIL - 0.006;
   const rear = (x0, x1, y0, y1, color, list = trim, z = zt) => list.push({ pts: [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], color, out: [0, 0, -1] });
   // Full-width tail lamps: red over amber and clear, in a black band across the whole tail, with
@@ -294,7 +289,7 @@ export const RX7_SHAPE = {
   nose: NOSE,
   tail: TAIL,
   plate: { y: 0.5, z: TAIL - 0.012 }, // in the rear bumper, under the lamps
-  pipe: [-0.46, 0.24, TAIL + 0.12],
+  pipe: [-0.5, 0.24, TAIL + 0.12],
   door: -0.15,
   popups: POPUPS,
 };
