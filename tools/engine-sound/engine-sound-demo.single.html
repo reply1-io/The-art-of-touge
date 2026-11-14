@@ -490,7 +490,13 @@ class M20Dsp {
     if (th > 0.5) T.armed = true;
     if (T.armed && T.closedT >= 0.09) {
       T.armed = false;
-      if (T.boost > 0.15 && t.turbo) { T.flut = Math.min(1, 0.3 + T.boost); T.flutRate = Z.flutter[0] + Z.flutter[1] * T.boost; T.flutPh = 0; }
+      if (T.boost > 0.15 && t.turbo) {
+        // the higher the revs you lift at, the more air surges back: soft from low rpm,
+        // full strength near the top, and still scaled by the boost you had
+        const rf = Math.min(1, Math.max(0, (r - 2200) / 4300));
+        T.flut = Math.min(1, T.boost * (0.05 + 0.95 * Math.pow(rf, 1.5)));
+        T.flutRate = Z.flutter[0] + Z.flutter[1] * T.boost + 5 * rf; T.flutPh = 0;
+      }
     }
   }
 
@@ -738,7 +744,7 @@ class M20Dsp {
           // smooth swells, not hard gates: it dips about 12 dB between pulses
           const g = 0.4 + 0.6 * Math.pow(0.5 + 0.5 * Math.cos(TAU * T.flutPh), 2);
           const n = randn();
-          ty += (this.tFlut.run(n) * 1 + this.tFlutLo.run(n) * 0.6) * g * T.flutA * T.flut * 5;
+          ty += (this.tFlut.run(n) * 1 + this.tFlutLo.run(n) * 0.6) * g * T.flutA * T.flut * 12;
           T.flut *= 1 - 1 / (0.55 * fs);
         }
         y += ty * T.on;
