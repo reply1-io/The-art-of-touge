@@ -93,6 +93,7 @@ export class Terrain {
     // A route that loops round (the world map) has no single downhill direction: tilting the land
     // to fit it throws up cliffs at the edges. Keep it level and let the nearby road set the height.
     if (level) this.plane = [0, 0, sy / n];
+    this.level = level;
 
     // Coarse residual samples for blending toward each leg's real height.
     this.residuals = [];
@@ -106,6 +107,11 @@ export class Terrain {
       if (!this.resHash.has(k)) this.resHash.set(k, []);
       this.resHash.get(k).push(r);
     }
+
+    // On a looping route the road heights differ a lot across the map, so the local lookup above
+    // (which only reaches about 200 m) would leave cliffs where it runs out. Instead blend every
+    // road sample into a smooth 32 m grid covering the whole map.
+    if (level) this.#buildCoarse();
 
     // Features: the lake behind the summit start and the town around the finish.
     const h0 = road.heading[0];
@@ -218,8 +224,47 @@ export class Terrain {
     return a * x + b * z + c;
   }
 
+  #buildCoarse() {
+    const c = 32;
+    const nx = Math.ceil(((this.nx - 1) * this.cell) / c) + 2;
+    const nz = Math.ceil(((this.nz - 1) * this.cell) / c) + 2;
+    const H = new Float32Array(nx * nz);
+    const R = this.residuals;
+    for (let iz = 0; iz < nz; iz++) {
+      for (let ix = 0; ix < nx; ix++) {
+        const x = this.x0 + ix * c;
+        const z = this.z0 + iz * c;
+        let ws = 0;
+        let hs = 0;
+        for (const [rx, rz, r] of R) {
+          const w = 1 / ((x - rx) ** 2 + (z - rz) ** 2 + 3600) ** 1.5;
+          ws += w;
+          hs += w * r;
+        }
+        H[iz * nx + ix] = hs / ws;
+      }
+    }
+    this.coarse = { H, nx, nz, c };
+  }
+
+  #coarseAt(x, z) {
+    const { H, nx, nz, c } = this.coarse;
+    const gx = clamp((x - this.x0) / c, 0, nx - 1.001);
+    const gz = clamp((z - this.z0) / c, 0, nz - 1.001);
+    const ix = Math.floor(gx);
+    const iz = Math.floor(gz);
+    const tx = gx - ix;
+    const tz = gz - iz;
+    const a = H[iz * nx + ix];
+    const b = H[iz * nx + ix + 1];
+    const d = H[(iz + 1) * nx + ix];
+    const e = H[(iz + 1) * nx + ix + 1];
+    return a + (b - a) * tx + (d - a) * tz + (a - b - d + e) * tx * tz;
+  }
+
   // Natural mountain height, ignoring the road cut.
   natural(x, z) {
+    if (this.coarse) return this.planeAt(x, z) + this.#coarseAt(x, z) + fbm(x, z) * 16 + 2;
     let wsum = 0;
     let rsum = 0;
     const cx = Math.floor(x / this.resCell);

@@ -115,7 +115,7 @@ function applyTime() {
   moon.intensity = p.sunIntensity;
   moon.position.copy(sunDir).multiplyScalar(100);
   // Night shadows from the moon are faint; the lamps carry the light.
-  moon.shadow.intensity = p.stars >= 0.9 ? 0.45 : 0.85;
+  moon.shadow.intensity = p.stars >= 0.9 ? 0.5 : 1;
   hemi.color.setHex(p.hemiSky);
   hemi.groundColor.setHex(p.hemiGround);
   hemi.intensity = p.hemiIntensity;

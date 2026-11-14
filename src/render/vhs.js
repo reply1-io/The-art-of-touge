@@ -57,9 +57,12 @@ const fragmentShader = /* glsl */ `
     vec3 chroma = mix(shifted, smear, 0.45 * strength) - dot(mix(shifted, smear, 0.45 * strength), lumaW);
     vec3 col = mix(c, luma + chroma, strength);
 
-    // Tape grade: slightly lower saturation, lifted blacks, a touch warm.
-    vec3 graded = mix(vec3(dot(col, lumaW)), col, 0.86) * 0.93 + vec3(0.03, 0.025, 0.035);
+    // Tape grade: a touch warm with gently lifted blacks.
+    vec3 graded = col * 0.95 + vec3(0.02, 0.016, 0.022);
     col = mix(col, graded, strength);
+    // Punch: more contrast (deeper shadows, brighter highlights) and a little more colour.
+    col = clamp((col - 0.5) * 1.16 + 0.5, 0.0, 1.0);
+    col = mix(vec3(dot(col, lumaW)), col, 1.12);
 
     // Grain, band noise and scanlines.
     col += (rand(vUv * res + fract(time) * 100.0) - 0.5) * 0.05 * strength;

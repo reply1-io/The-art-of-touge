@@ -39,7 +39,7 @@ export class LensFlare {
     const sy = (-p.y * 0.5 + 0.5) * h;
     // Brightest when the sun is near the middle of the view, gone once it leaves the frame.
     const off = Math.hypot(p.x, p.y);
-    const target = inFront && visible && strength > 0 ? strength * Math.max(0, 1 - Math.max(0, off - 0.6) / 0.75) : 0;
+    const target = inFront && visible && strength > 0 ? Math.min(1.4, strength) * Math.max(0, 1 - Math.max(0, off - 0.6) / 0.75) : 0;
     this.level += (target - this.level) * Math.min(1, dt * 4);
     if (this.level < 0.01) return;
     const L = this.level;
@@ -49,15 +49,15 @@ export class LensFlare {
     // Glow around the sun.
     const R = h * 0.42;
     let grad = g.createRadialGradient(sx, sy, 0, sx, sy, R);
-    grad.addColorStop(0, rgba([r, gg, b], 0.75 * L));
-    grad.addColorStop(0.25, rgba([r, gg, b], 0.16 * L));
+    grad.addColorStop(0, rgba([r, gg, b], Math.min(1, 0.85 * L)));
+    grad.addColorStop(0.25, rgba([r, gg, b], 0.24 * L));
     grad.addColorStop(1, rgba([r, gg, b], 0));
     g.fillStyle = grad;
     g.fillRect(sx - R, sy - R, R * 2, R * 2);
     // Thin horizontal streak.
     grad = g.createLinearGradient(sx - w * 0.35, sy, sx + w * 0.35, sy);
     grad.addColorStop(0, rgba([r, gg, b], 0));
-    grad.addColorStop(0.5, rgba([r, gg, b], 0.32 * L));
+    grad.addColorStop(0.5, rgba([r, gg, b], 0.45 * L));
     grad.addColorStop(1, rgba([r, gg, b], 0));
     g.fillStyle = grad;
     g.fillRect(sx - w * 0.35, sy - 1, w * 0.7, 2);
