@@ -1208,3 +1208,42 @@ body.in-menu #vhs-play {
   color: #ffb066;
   text-shadow: 0 0 16px #ff8c1a, 0 3px 0 #000;
 }
+
+/* ---------- Menu map: tap a road to teleport there ---------- */
+.map-hint {
+  margin-left: 8px;
+  font-size: 15px;
+  letter-spacing: 0.05em;
+  text-transform: none;
+  color: var(--accent);
+}
+
+.map-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  background: #6f7c3a;
+  border: 3px solid rgba(255, 255, 255, 0.22);
+}
+
+canvas.map {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+
+.map-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font: 400 18px 'VT323', ui-monospace, monospace;
+  color: #fff;
+  text-shadow: 0 2px 0 #000;
+}
+
+#teleport .panel {
+  width: min(440px, 100%);
+}

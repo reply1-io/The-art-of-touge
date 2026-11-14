@@ -4,7 +4,6 @@
 // World axes: x east, z south, y up. Heading h: forward = (sin h, cos h) in (x, z),
 // left = (cos h, -sin h). Positive curvature turns left; positive bank raises the left edge.
 
-import { AKINA_POINTS } from './akinaMap.js';
 
 export const STEP = 2; // metres between centreline samples
 export const HALF = 3.4; // half the lane width, out to the white edge lines (two narrow lanes)
@@ -84,7 +83,7 @@ function catmullRom(pts, perSegment = 24) {
 export class Road {
   // points: map pixels scaled to targetLength, or (opts.world) world metres used as they are.
   // opts.gradeBase / opts.twistGain shape the elevation profile.
-  constructor(points = AKINA_POINTS, targetLength = 5000, opts = {}) {
+  constructor(points, targetLength = 5000, opts = {}) {
     const { world: inMetres = false, gradeBase = 0.058, twistGain = 1.1, width = 'wide', gradeAt = null } = opts;
     this.w = WIDTHS[width] || WIDTHS.wide;
     // ---- Plan view: spline, scale to length, resample at STEP ----

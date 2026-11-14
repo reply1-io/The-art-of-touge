@@ -1,10 +1,9 @@
 // The roads you can drive.
 import { Road } from './road.js';
-import { AKINA_POINTS } from './akinaMap.js';
 import { dragonPoints } from './dragonMap.js';
 import { worldRoute, STAGES } from './worldMap.js';
 
-const WORLD = worldRoute(81);
+const WORLD = worldRoute(93);
 // The stage a distance along the world route belongs to.
 export function stageAt(s) {
   let k = 0;
@@ -13,16 +12,6 @@ export function stageAt(s) {
 }
 
 export const TRACKS = {
-  akina: {
-    name: 'Akina',
-    blurb: '5 km downhill · five hairpins',
-    road: () => new Road(AKINA_POINTS, 5000, { width: 'narrow' }), // skinny Japanese touge road
-    cornerLights: true,
-    relief: 110, // ridges and valleys away from the road (m)
-    peaks: 750, // height of the surrounding ranges (m)
-    waterfalls: 2,
-    rockCuts: false,
-  },
   dragon: {
     name: "Dragon's Tail",
     blurb: '8 km · hundreds of corners, no straights',
@@ -35,7 +24,7 @@ export const TRACKS = {
   },
   world: {
     name: 'Kaido Mountain',
-    blurb: '9.5 km · seven roads around a big mountain',
+    blurb: '11 km · seven roads round a big mountain',
     road: () =>
       new Road(WORLD.pts, 0, {
         world: true,

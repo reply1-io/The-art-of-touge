@@ -13,7 +13,6 @@ const GHOST_DT = 0.1; // seconds between ghost samples
 
 // Prize money per road: time attack base (scaled by pace) and battle win / loss.
 const PRIZES = {
-  akina: { par: 255, base: 500, win: 1500, lose: 200 },
   dragon: { par: 540, base: 800, win: 2200, lose: 300 },
 };
 

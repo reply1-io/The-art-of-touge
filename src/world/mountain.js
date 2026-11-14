@@ -193,15 +193,12 @@ const COLORS = {
 export class Mountain {
   // stage: on a route made of several roads (the world map), which one to start and finish on
   // (-1 for the whole route).
-  constructor(world, scene, trackId = 'akina', stage = -1) {
+  constructor(world, scene, trackId = 'world', stage = -1) {
     this.scene = scene;
-    this.track = TRACKS[trackId] || TRACKS.akina;
+    this.track = TRACKS[trackId] || TRACKS.world;
     this.road = this.track.road();
-    if (this.track.stages && stage >= 0 && this.track.stages[stage]) {
-      const st = this.track.stages[stage];
-      this.road.startIndex = Math.max(this.road.startIndex, Math.round(st.s0 / STEP) + 30);
-      this.road.finishIndex = Math.min(this.road.finishIndex, Math.round(st.s1 / STEP));
-    }
+    this.full = { start: this.road.startIndex, finish: this.road.finishIndex };
+    this.stage = -1;
     this.terrain = new Terrain(this.road, { margin: this.road.length > 6000 ? 180 : 260, relief: this.track.relief ?? 110, lakes: this.track.lakes, peak: this.track.peak?.(this.road), stops: this.track.stopsOpts || {}, level: !!this.track.world });
     this.layout = buildMountainPhysics(world, this.road, this.terrain);
     this.chunks = []; // { group, x, z, r }
@@ -216,6 +213,7 @@ export class Mountain {
     this.#buildLake();
     this.#buildTown();
     this.#buildLines();
+    this.setStage(stage);
     // The wild country beyond: ranges to the horizon, cloud in the valleys, waterfalls.
     this.sunAz = sunAzimuth(this.road);
     this.ranges = new Ranges(scene, this.terrain, { height: this.track.peaks ?? 800, sunAz: this.sunAz });
@@ -556,6 +554,22 @@ export class Mountain {
     return t.stages[t.stageAt(i * STEP)].scene;
   }
 
+  // On a route made of several roads: race and time just one of them (-1 for the whole route).
+  // Moves the start and finish lines; the world itself stays as it is.
+  setStage(stage) {
+    const r = this.road;
+    const st = this.track.stages?.[stage];
+    this.stage = st ? stage : -1;
+    r.startIndex = st ? Math.max(this.full.start, Math.round(st.s0 / STEP) + 30) : this.full.start;
+    r.finishIndex = st ? Math.min(this.full.finish, Math.round(st.s1 / STEP)) : this.full.finish;
+    if (this.lineMeshes) {
+      this.lineMeshes[0].geometry.dispose();
+      this.lineMeshes[1].geometry.dispose();
+      this.lineMeshes[0].geometry = this.#lineGeo(r.startIndex);
+      this.lineMeshes[1].geometry = this.#lineGeo(r.finishIndex);
+    }
+  }
+
   // Where the car starts: just before the start line, in the downhill (left) lane, facing down.
   get spawn() {
     const r = this.road;
@@ -805,6 +819,8 @@ export class Mountain {
       return groups.get(k);
     };
     const step = 5;
+    this.mapTrees = []; // a share of the trees, for the menu map: [x, z, maple]
+    let nth = 0;
     for (let z = t.z0 + 10; z < t.z0 + (t.nz - 1) * t.cell - 10; z += step) {
       for (let x = t.x0 + 10; x < t.x0 + (t.nx - 1) * t.cell - 10; x += step) {
         const jx = x + (noise2(x * 0.7, z * 0.3) - 0.5) * 6;
@@ -825,6 +841,7 @@ export class Mountain {
         const dense = noise2(jx / 30, jz / 30) - (1 - sc.trees) * 0.35;
         // Patches of autumn maples break up the cedars with red, orange and gold.
         const maple = noise2(jx / 45 + 9, jz / 45) > 0.7 - sc.maple * 0.6 || (near.d < 20 && noise2(jx * 0.5, jz * 0.5) > 0.9 - sc.maple * 0.4);
+        if (dense > 0.22 && nth++ % 3 === 0) this.mapTrees.push([jx, jz, maple ? 1 : 0]);
         if (dense > 0.22 && maple) bucket(near.i).maples.push([jx, y, jz, 6 + noise2(jx, jz) * 6]);
         else if (dense > 0.22) bucket(near.i).trees.push([jx, y, jz, 10 + noise2(jx, jz) * 10]);
         else bucket(near.i).bushes.push([jx, y, jz, 1 + noise2(jz, jx) * 1.4]);
@@ -1218,19 +1235,27 @@ export class Mountain {
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.magFilter = THREE.NearestFilter;
     const mat = new THREE.MeshLambertMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -2 });
-    for (const i of [road.startIndex, road.finishIndex]) {
-      const a = road.pointAt(i, road.w.PAVED, 0.02);
-      const b = road.pointAt(i, -road.w.PAVED, 0.02);
-      const h = road.heading[i];
-      const f = [Math.sin(h) * 0.6, 0, Math.cos(h) * 0.6];
-      const pos = [a[0] - f[0], a[1], a[2] - f[2], b[0] - f[0], b[1], b[2] - f[2], b[0] + f[0], b[1], b[2] + f[2], a[0] + f[0], a[1], a[2] + f[2]];
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      geo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2));
-      geo.setIndex([0, 2, 1, 0, 3, 2]);
-      geo.computeVertexNormals();
-      this.scene.add(new THREE.Mesh(geo, mat));
-    }
+    this.lineMeshes = [road.startIndex, road.finishIndex].map((i) => {
+      const m = new THREE.Mesh(this.#lineGeo(i), mat);
+      this.scene.add(m);
+      return m;
+    });
+  }
+
+  // A chequered strip across the road at sample i.
+  #lineGeo(i) {
+    const road = this.road;
+    const a = road.pointAt(i, road.w.PAVED, 0.02);
+    const b = road.pointAt(i, -road.w.PAVED, 0.02);
+    const h = road.heading[i];
+    const f = [Math.sin(h) * 0.6, 0, Math.cos(h) * 0.6];
+    const pos = [a[0] - f[0], a[1], a[2] - f[2], b[0] - f[0], b[1], b[2] - f[2], b[0] + f[0], b[1], b[2] + f[2], a[0] + f[0], a[1], a[2] + f[2]];
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2));
+    geo.setIndex([0, 2, 1, 0, 3, 2]);
+    geo.computeVertexNormals();
+    return geo;
   }
 
   // Things that make the mountain feel lived-in: curve mirrors at the blind corners, warning and

@@ -24,7 +24,7 @@ export const STAGES = [
   { name: 'Summit Spiral', blurb: 'Fast sweepers circling the mountain from the summit meet', grade: 0.085, roll: 0.5, scene: { trees: 0.7, maple: 0.15, rock: 0.5, ponds: 0 } },
   { name: 'Cedar Sweepers', blurb: 'Long, quick bends through tall dark cedars', grade: 0.05, roll: 0.8, scene: { trees: 1.3, maple: 0.02, rock: 0.15, ponds: 0 } },
   { name: 'Lakeside', blurb: 'Gentle curves along the lake shore, nearly flat', grade: 0.012, roll: 0.25, scene: { trees: 0.6, maple: 0.25, rock: 0, ponds: 3 } },
-  { name: 'Dragon Coil', blurb: 'Tight corner after corner with no breath between', grade: 0.04, roll: 0.6, scene: { trees: 1.1, maple: 0.1, rock: 0.3, ponds: 0 } },
+  { name: "Dragon's Tail", blurb: 'Hundreds of tight corners and no straights, deep in the forest', grade: 0.035, roll: 0.6, scene: { trees: 1.2, maple: 0.12, rock: 0.3, ponds: 0 } },
   { name: 'Rock Canyon', blurb: 'Medium-speed corners between mossy rock walls', grade: 0.06, roll: 0.7, scene: { trees: 0.5, maple: 0.05, rock: 1, ponds: 1 } },
   { name: 'Maple Hairpins', blurb: 'Six hairpins stacked down a hillside of red maples', grade: 0.07, roll: 0.3, scene: { trees: 0.9, maple: 0.75, rock: 0.3, ponds: 0 } },
   { name: 'Valley Run', blurb: 'Fast and flowing, down past the ponds to the village', grade: 0.03, roll: 0.6, scene: { trees: 0.8, maple: 0.2, rock: 0, ponds: 3 } },
@@ -36,7 +36,7 @@ const STYLES = [
   null,
   { rMin: 70, rMax: 180, aMin: 30, aMax: 80, gap: 40, limit: 50, bias: 6, length: 1100 },
   { rMin: 120, rMax: 300, aMin: 15, aMax: 45, gap: 80, limit: 35, bias: 3, length: 1100 },
-  { rMin: 14, rMax: 40, aMin: 40, aMax: 140, gap: 8, limit: 70, bias: 4, length: 1000 },
+  { rMin: 13, rMax: 45, aMin: 35, aMax: 150, gap: 10, limit: 72, bias: 3, length: 2600 }, // the Dragon's Tail
   { rMin: 30, rMax: 70, aMin: 40, aMax: 100, gap: 25, limit: 60, bias: 5, length: 1000 },
   { hairpins: 6, leg: 75, r: 14 },
   { rMin: 90, rMax: 250, aMin: 20, aMax: 60, gap: 120, limit: 40, bias: 2, length: 1200 },

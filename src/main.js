@@ -5,7 +5,6 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { CAR } from './config.js';
 import { Vehicle } from './physics/vehicle.js';
 import { SoftBarrier } from './physics/barrier.js';
-import { MODES, MODE_LABELS } from './physics/transmission.js';
 import { CarModel } from './render/carModel.js';
 import { CameraRig } from './render/camera.js';
 import { VhsRenderer } from './render/vhs.js';
@@ -35,6 +34,7 @@ import { makeCode, cleanCode } from './net/p2p.js';
 import { HEADLIGHTS } from './config.js';
 import { TuningPanel } from './ui/tuning.js';
 import { Shop } from './ui/shop.js';
+import { MapView } from './ui/mapView.js';
 import { loadSettings, saveSettings, loadTuning, saveTuning } from './settings.js';
 
 const DT = 1 / 60; // fixed physics step
@@ -217,7 +217,9 @@ function renderChoices() {
     const key = box.dataset.setting;
     const options =
       key === 'mode'
-        ? MODES.filter((m) => m !== 'autoClutch').map((m) => [m, MODE_LABELS[m]])
+        ? [['auto', 'Automatic'], ['manual', 'Manual']]
+        : key === 'driveMode'
+        ? [['free', 'Free Roam'], ['touge', 'Touge']]
         : key === 'map'
           ? Object.entries(TRACKS).map(([id, t]) => [id, t.name])
           : key === 'time'
@@ -245,13 +247,6 @@ function renderChoices() {
         // Joined to someone else's room: they choose the road and time.
         if ((key === 'map' || key === 'time') && online?.status === 'online' && !online.room && online.roomInfo) {
           toast('THE HOST PICKS THE ROAD AND TIME');
-          return;
-        }
-        // Switching road (or the stage of a route) rebuilds the whole world: save and reload.
-        if (key === 'stage' && settings.stage !== value) {
-          settings.stage = value;
-          saveSettings(settings);
-          location.reload();
           return;
         }
         if (key === 'map' && settings.map !== value) {
@@ -282,6 +277,10 @@ function renderChoices() {
 }
 
 function applySettings() {
+  // Free Roam drives off from the picked road; Touge races down it.
+  const touge = settings.driveMode === 'touge';
+  $('btn-drive').classList.toggle('hidden', touge);
+  $('btn-race').classList.toggle('hidden', !touge);
   applyTime();
   updateTitleSub();
   rig.mode = settings.camera;
@@ -345,6 +344,7 @@ function setPaused(p) {
   if (p) {
     input.releaseAll();
     audio.suspend();
+    drawMaps();
   } else {
     audio.resume();
   }
@@ -382,6 +382,77 @@ $('btn-restart').addEventListener('click', () => {
   race?.abort();
   resetCar();
   setPaused(false);
+});
+
+// ---------- The map: pick a road and teleport there ----------
+// The roads of the map each have their own start and finish line; -1 is the whole route.
+function stageRoadId() {
+  return mountain.stage >= 0 ? `${settings.map}:${mountain.stage}` : settings.map;
+}
+function selectStage(k) {
+  settings.stage = k;
+  saveSettings(settings);
+  race?.abort();
+  mountain.setStage(k);
+  race.roadId = stageRoadId();
+  run.best = race.record?.best ?? null;
+  updateTitleSub();
+  drawMaps();
+}
+const maps = [];
+function drawMaps() {
+  for (const m of maps) {
+    m.selected = mountain.stage;
+    // In the pause menu the pin is the car; on the title screen it is where you will start.
+    const p = running && vehicle ? vehicle.body.translation() : null;
+    const s = mountain.spawn.pos;
+    m.pin = p ? [p.x, p.z] : [s[0], s[2]];
+    m.draw();
+  }
+}
+function setupMaps() {
+  for (const c of document.querySelectorAll('canvas.map')) maps.push(new MapView(c, mountain, askTeleport));
+  window.__maps = maps;
+  for (const el of document.querySelectorAll('.map-loading')) el.remove();
+  // Redraw once the pixel font has loaded so the names are measured in it.
+  document.fonts?.ready.then(() => {
+    for (const m of maps) m.base = null;
+    drawMaps();
+  });
+  drawMaps();
+}
+window.addEventListener('resize', () => setTimeout(drawMaps, 100));
+let teleportTo = -1;
+function askTeleport(k) {
+  const st = mountain.track.stages[k];
+  if (!st) return;
+  teleportTo = k;
+  const touge = settings.driveMode === 'touge';
+  const km = ((st.s1 - st.s0) / 1000).toFixed(1);
+  $('tp-title').textContent = touge ? `RACE ${st.name.toUpperCase()}?` : `TELEPORT TO ${st.name.toUpperCase()}?`;
+  $('tp-info').textContent = `${k + 1} of ${mountain.track.stages.length} · ${km} km · ${st.blurb}`;
+  $('btn-tp-go').textContent = touge ? 'RACE HERE' : 'TELEPORT';
+  for (const m of maps) {
+    m.selected = k;
+    m.draw();
+  }
+  $('teleport').classList.remove('hidden');
+}
+$('btn-tp-cancel').addEventListener('click', () => {
+  $('teleport').classList.add('hidden');
+  drawMaps();
+});
+$('btn-tp-go').addEventListener('click', () => {
+  $('teleport').classList.add('hidden');
+  selectStage(teleportTo);
+  if (settings.driveMode === 'touge') {
+    openRaceMenu();
+    return;
+  }
+  if (!running) enterGame();
+  resetCar();
+  setPaused(false);
+  toast(mountain.track.stages[teleportTo].name.toUpperCase(), 2);
 });
 
 // ---------- Race menu and results ----------
@@ -786,7 +857,7 @@ function titleCamera(dt) {
 }
 
 function updateTitleSub() {
-  const t = TRACKS[settings.map] || TRACKS.akina;
+  const t = TRACKS[settings.map] || TRACKS.world;
   const time = TIMES[settings.time] || TIMES.night;
   $('title-sub').innerHTML = '';
   const b = document.createElement('b');
@@ -950,7 +1021,7 @@ async function boot() {
   world.timestep = DT;
   $('loading').textContent = 'Building the mountain…';
   await new Promise((r) => setTimeout(r, 30));
-  mountain = new Mountain(world, scene, settings.map, TRACKS[settings.map]?.stages ? settings.stage ?? -1 : -1);
+  mountain = new Mountain(world, scene, settings.map, settings.stage ?? -1);
   vehicle = new Vehicle(world, CAR, tune, settings.mode);
   vehicle.surfaceOf = mountain.layout.surfaceOf;
   // Guardrails are a cushion, not a wall: see physics/barrier.js.
@@ -982,7 +1053,7 @@ async function boot() {
   wildlife = new Wildlife(scene, mountain.road, mountain.terrain);
   wildlife.setTime(timePreset);
   online = new Online(scene, world, RAPIER);
-  race = new Race({ scene, world, mountain, roadId: TRACKS[settings.map]?.stages && (settings.stage ?? -1) >= 0 ? `${settings.map}:${settings.stage}` : settings.map, wallet, toast, look: () => lookOf(tune) });
+  race = new Race({ scene, world, mountain, roadId: stageRoadId(), wallet, toast, look: () => lookOf(tune) });
   race.onFinish = showResults;
   run.best = race.record?.best ?? null;
   setupOnline();
@@ -997,6 +1068,7 @@ async function boot() {
   resetCar();
   applySettings();
   renderChoices();
+  setupMaps();
   $('loading').textContent = '';
   try {
     if (sessionStorage.getItem('touge.openShop')) {
