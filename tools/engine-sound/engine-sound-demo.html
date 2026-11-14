@@ -223,7 +223,7 @@ const $ = (id) => document.getElementById(id);
 
 let ctx, engine, out;
 let state = 'off', mode = 'free', crankT0 = 0, lastCycle = null;
-const sim = { rpm: 0, thr: 0, thrIn: 0, brake: 0, v: 0, gear: 0, cut: 0, shift: 0 };
+const sim = { rpm: 0, thr: 0, thrIn: 0, brake: 0, v: 0, gear: 0, cut: 0, shift: 0, shiftDir: 0, blip: 0 };
 
 // Phones only allow sound if the AudioContext is created and resumed right inside the tap,
 // before anything is awaited. iPhones also mute web audio on the silent switch unless the
@@ -315,6 +315,13 @@ $('xManual').onclick = () => { gearMode = 'manual'; updateGearUi(); };
 
 let msgTimer = 0;
 function shiftMsg(text) { $('shiftMsg').textContent = text; clearTimeout(msgTimer); msgTimer = setTimeout(() => { $('shiftMsg').textContent = ''; }, 1600); }
+// A shift: clutch in, revs settle to the new gear. Downshifts get a rev-matching throttle
+// blip (heel-and-toe), which is the "bwap" you hear from a real car.
+function downOrUp(g, dir) {
+  sim.gear = g; sim.shiftDir = dir;
+  sim.shift = dir > 0 ? 0.25 : 0.22;
+  sim.blip = dir < 0 ? 0.18 : 0;
+}
 function shift(dir) {
   if (mode !== 'drive' || gearMode !== 'manual' || state !== 'running' || sim.shift > 0) return;
   const g = sim.gear + dir;
@@ -324,8 +331,7 @@ function shift(dir) {
     shiftMsg(`Too fast for ${['1st', '2nd', '3rd', '4th', '5th'][g - 1]}: it would over-rev`);
     return;
   }
-  sim.gear = g;
-  sim.shift = dir > 0 ? 0.25 : 0.2; // clutch in, throttle off, revs settle to the new gear
+  downOrUp(g, dir);
 }
 for (const [id, dir] of [['pUp', 1], ['pDown', -1]]) {
   const el = $(id);
@@ -405,7 +411,8 @@ function step(dt) {
   if (sim.rpm >= REDLINE) sim.cut = 0.07;          // rev limiter: fuel cut
   sim.cut = Math.max(0, sim.cut - dt);
   sim.shift = Math.max(0, sim.shift - dt);
-  sim.thr = sim.cut > 0 || sim.shift > 0 ? 0 : sim.thrIn;
+  sim.blip = Math.max(0, sim.blip - dt);
+  sim.thr = sim.cut > 0 ? 0 : sim.blip > 0 ? Math.max(0.75, sim.thrIn) : sim.shift > 0 ? 0 : sim.thrIn;
 
   if (mode === 'free' || sim.gear === 0) {
     let a = sim.thr * (torque(sim.rpm) / CARS[eng].peakNm) * CARS[eng].freeRev - (250 + (sim.rpm - IDLE) * 0.75);
@@ -414,15 +421,16 @@ function step(dt) {
     return;
   }
   const g = sim.gear, wr = wheelRpm(sim.v, g);
-  if (sim.shift > 0) sim.rpm += (wr - sim.rpm) * Math.min(1, dt * 9);
+  if (sim.shift > 0 && sim.shiftDir < 0) sim.rpm += (Math.min(wr * 1.06, REDLINE) - sim.rpm) * Math.min(1, dt * 14); // blip flares just past the target
+  else if (sim.shift > 0) sim.rpm += (wr - sim.rpm) * Math.min(1, dt * 9);
   else if (g === 1 && wr < 1400) sim.rpm += (Math.max(IDLE + 500 + sim.thr * 2600, wr) - sim.rpm) * Math.min(1, dt * 6);
   else sim.rpm += (Math.max(wr, gearMode === 'manual' ? IDLE * 0.85 : 0) - sim.rpm) * Math.min(1, dt * 20); // too high a gear: it lugs
-  const drive = sim.thr * torque(sim.rpm) * GEARS[g - 1] * FINAL * 0.9 / TYRE_R;
+  const drive = sim.shift > 0 ? 0 : sim.thr * torque(sim.rpm) * GEARS[g - 1] * FINAL * 0.9 / TYRE_R; // clutch in while shifting
   const resist = 0.42 * sim.v * sim.v + (sim.v > 0.1 ? 180 : 0) + sim.brake * 9500 + (sim.thr ? 0 : sim.rpm * 0.12);
   sim.v = Math.max(0, sim.v + (drive - resist) / MASS * dt);
   if (gearMode === 'auto') {
-    if (sim.shift === 0 && sim.rpm > REDLINE - 200 && g < 5) { sim.gear++; sim.shift = 0.28; }
-    if (sim.shift === 0 && sim.rpm < 2100 && g > 1 && !sim.thr) { sim.gear--; sim.shift = 0.2; }
+    if (sim.shift === 0 && sim.rpm > REDLINE - 200 && g < 5) { downOrUp(g + 1, 1); sim.shift = 0.28; }
+    if (sim.shift === 0 && sim.rpm < 2100 && g > 1 && !sim.thr) downOrUp(g - 1, -1);
   }
 }
 
