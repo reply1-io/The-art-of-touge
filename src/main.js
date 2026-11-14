@@ -35,6 +35,9 @@ import { HEADLIGHTS } from './config.js';
 import { TuningPanel } from './ui/tuning.js';
 import { Shop } from './ui/shop.js';
 import { MapView } from './ui/mapView.js';
+import { MiniMap } from './ui/miniMap.js';
+import { Rain } from './render/rain.js';
+import { medalTimes, medalFor } from './game/medals.js';
 import { loadSettings, saveSettings, loadTuning, saveTuning } from './settings.js';
 
 const DT = 1 / 60; // fixed physics step
@@ -121,7 +124,7 @@ function applyTime() {
   hemi.intensity = p.hemiIntensity;
   headlight.visible = p.lights;
   sky.setTime(p, sunDir);
-  smoke?.setTint({ day: 0xeeeef0, sunset: 0xf3c9b0, night: 0x7d8496 }[settings.time] ?? 0xeeeef0);
+  smoke?.setTint({ day: 0xeeeef0, sunset: 0xf3c9b0, night: 0x7d8496, rain: 0xc9ced6 }[settings.time] ?? 0xeeeef0);
   mountain.setTime(p);
   wildlife?.setTime(p);
   camera.updateProjectionMatrix();
@@ -198,6 +201,7 @@ function resize() {
   shopRef?.resize(w, h);
 }
 let shopRef = null;
+let miniMap = null;
 window.addEventListener('resize', resize);
 resize();
 
@@ -389,18 +393,40 @@ $('btn-restart').addEventListener('click', () => {
 function stageRoadId() {
   return mountain.stage >= 0 ? `${settings.map}:${mountain.stage}` : settings.map;
 }
+// Medal times for each road (and the full loop, under -1), worked out once the mountain is built.
+const medals = new Map();
+function setupMedals() {
+  const n = mountain.track.stages?.length ?? 0;
+  for (let k = -1; k < n; k++) {
+    const { start, finish } = mountain.stageRange(k);
+    medals.set(k, medalTimes(mountain.road, start, finish));
+  }
+}
+// Your best time and medal on a road (-1: the full loop).
+function bestOn(k) {
+  const id = k >= 0 ? `${settings.map}:${k}` : settings.map;
+  const best = race?.records[id]?.best ?? null;
+  return { best, medal: medalFor(medals.get(k), best) };
+}
 function selectStage(k) {
   settings.stage = k;
   saveSettings(settings);
   race?.abort();
   mountain.setStage(k);
   race.roadId = stageRoadId();
+  race.par = medals.get(mountain.stage)?.gold ?? null;
   run.best = race.record?.best ?? null;
   updateTitleSub();
   drawMaps();
 }
 const maps = [];
 function drawMaps() {
+  if (!mountain) return;
+  for (const b of document.querySelectorAll('.btn-loop')) {
+    const md = bestOn(-1).medal;
+    b.textContent = `FULL LOOP · ${(mountain.road.length / 1000).toFixed(0)} KM${md ? ` · ${md.name.toUpperCase()}` : ''}`;
+    b.classList.toggle('sel', mountain.stage < 0);
+  }
   for (const m of maps) {
     m.selected = mountain.stage;
     // In the pause menu the pin is the car; on the title screen it is where you will start.
@@ -411,7 +437,12 @@ function drawMaps() {
   }
 }
 function setupMaps() {
-  for (const c of document.querySelectorAll('canvas.map')) maps.push(new MapView(c, mountain, askTeleport));
+  for (const c of document.querySelectorAll('canvas.map')) {
+    const m = new MapView(c, mountain, askTeleport);
+    m.medalOf = (k) => bestOn(k).medal;
+    maps.push(m);
+  }
+  for (const b of document.querySelectorAll('.btn-loop')) b.onclick = () => askTeleport(-1);
   window.__maps = maps;
   for (const el of document.querySelectorAll('.map-loading')) el.remove();
   // Redraw once the pixel font has loaded so the names are measured in it.
@@ -424,13 +455,20 @@ function setupMaps() {
 window.addEventListener('resize', () => setTimeout(drawMaps, 100));
 let teleportTo = -1;
 function askTeleport(k) {
-  const st = mountain.track.stages[k];
+  const loop = k < 0;
+  const st = loop ? { name: 'the full loop', s0: 0, s1: mountain.road.length, blurb: 'All eleven roads, from the car meet round the whole map and back' } : mountain.track.stages[k];
   if (!st) return;
   teleportTo = k;
   const touge = settings.driveMode === 'touge';
   const km = ((st.s1 - st.s0) / 1000).toFixed(1);
   $('tp-title').textContent = touge ? `RACE ${st.name.toUpperCase()}?` : `TELEPORT TO ${st.name.toUpperCase()}?`;
-  $('tp-info').textContent = `${k + 1} of ${mountain.track.stages.length} · ${km} km · ${st.blurb}`;
+  const mt = medals.get(k);
+  const { best, medal } = bestOn(k);
+  const short = (t) => formatTime(t).replace(/\.\d+$/, '');
+  $('tp-info').textContent =
+    `${loop ? '' : `${k + 1} of ${mountain.track.stages.length} · `}${km} km · ${st.blurb}.` +
+    (mt ? ` Gold ${short(mt.gold)} · Silver ${short(mt.silver)} · Bronze ${short(mt.bronze)}.` : '') +
+    (best != null ? ` Your best: ${formatTime(best)}${medal ? ` (${medal.name})` : ''}.` : ' Not driven yet.');
   $('btn-tp-go').textContent = touge ? 'RACE HERE' : 'TELEPORT';
   for (const m of maps) {
     m.selected = k;
@@ -452,7 +490,9 @@ $('btn-tp-go').addEventListener('click', () => {
   if (!running) enterGame();
   resetCar();
   setPaused(false);
-  toast(mountain.track.stages[teleportTo].name.toUpperCase(), 2);
+  // The road's banner shows as soon as the car is on it.
+  bannerStage = -1;
+  if (teleportTo < 0) toast('FULL LOOP', 2);
 });
 
 // ---------- Race menu and results ----------
@@ -520,9 +560,12 @@ function showResults(r) {
       ? r.botTime !== null
         ? `Rival: ${formatTime(r.botTime)}`
         : 'The rival was still on the mountain.'
-      : r.pb
-        ? 'Saved as your ghost.'
-        : `Best: ${formatTime(r.best)} (+${(r.time - r.best).toFixed(3)})`;
+      : (() => {
+          const m = medalFor(medals.get(mountain.stage), r.time);
+          const mt = medals.get(mountain.stage);
+          const medalText = m ? `${m.name.toUpperCase()} MEDAL. ` : mt ? `Bronze is ${formatTime(mt.bronze)}. ` : '';
+          return medalText + (r.pb ? 'Saved as your ghost.' : `Best: ${formatTime(r.best)} (+${(r.time - r.best).toFixed(3)})`);
+        })();
   $('res-money').textContent = `+${money(r.earned)}`;
   setTimeout(() => $('results').classList.remove('hidden'), 1200);
 }
@@ -614,6 +657,7 @@ function updateRun(dt) {
   const r = mountain.road;
   const start = r.startIndex * 2;
   const finish = r.finishIndex * 2;
+  roadBanner(roadQ.s);
   if (run.phase === 'ready' && roadQ.s >= start && roadQ.s < start + 20) {
     run.phase = 'running';
     run.time = 0;
@@ -627,6 +671,52 @@ function updateRun(dt) {
       toast(`${best ? 'NEW BEST ' : 'FINISH '}${formatTime(run.time)}`, 4);
     }
   }
+}
+
+// ---------- Weather: mist over the lakes at night, and rain ----------
+let rain = null;
+let mist = 0;
+const mistColor = new THREE.Color(0x5a6a8a);
+function updateWeather(dt) {
+  const p = timePreset;
+  rain ??= new Rain(scene);
+  // At night a mist rolls in along the Lakeside road and over any water you pass.
+  let want = 0;
+  if (settings.time === 'night' && mountain.track.stages) {
+    const pos = vehicle.body.translation();
+    if (mountain.track.stages[mountain.track.stageAt(roadQ.s ?? 0)]?.name === 'Lakeside') want = 1;
+    else if (mountain.terrain.inLake(pos.x, pos.z, 90)) want = 0.6;
+  }
+  mist += (want - mist) * Math.min(1, dt * 0.4);
+  const swirl = 1 + 0.18 * Math.sin(performance.now() / 3200);
+  scene.fog.density = p.fogDensity * (1 + mist * 5 * swirl);
+  scene.fog.color.setHex(p.fog).lerp(mistColor, mist * 0.75);
+  scene.background.copy(scene.fog.color);
+  rain.update(dt, !!p.rain, camera, vehicle.body.linvel());
+  // A wet road has about four fifths of the grip.
+  vehicle.weatherGrip = p.rain ? 0.8 : 1;
+}
+
+// ---------- The name of each road as you drive onto it ----------
+let bannerStage = -2;
+let bannerTimer = 0;
+function roadBanner(s) {
+  const stages = mountain.track.stages;
+  if (!stages) return;
+  const k = mountain.track.stageAt(s);
+  if (k === bannerStage) return;
+  const first = bannerStage === -2;
+  bannerStage = k;
+  if (first) return;
+  const st = stages[k];
+  const el = $('road-banner');
+  const { best, medal } = bestOn(k);
+  el.querySelector('small').textContent = `ROAD ${k + 1} OF ${stages.length}`;
+  el.querySelector('b').textContent = st.name.toUpperCase();
+  el.querySelector('span').textContent = `${((st.s1 - st.s0) / 1000).toFixed(1)} km${best != null ? ` · best ${formatTime(best)}${medal ? ` · ${medal.name}` : ''}` : ''}`;
+  el.classList.add('show');
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(() => el.classList.remove('show'), 3200);
 }
 
 // ---------- Pass-by whooshes: rail posts and roadside posts rushing past ----------
@@ -900,7 +990,14 @@ function frame(now) {
       const p = vehicle.body.translation();
       mountain.road.query(p.x, p.z, run.hint, roadQ);
       run.hint = roadQ.index;
+      roadBanner(roadQ.s);
     } else updateRun(dt);
+    {
+      const p = vehicle.body.translation();
+      const q = vehicle.body.rotation();
+      miniMap?.update(p.x, p.z, Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.x * q.x)));
+    }
+    updateWeather(dt);
     throwSparks();
     passBy();
     deer.update(dt, run.hint, Math.max(0, vehicle.forwardSpeed));
@@ -1068,7 +1165,10 @@ async function boot() {
   resetCar();
   applySettings();
   renderChoices();
+  setupMedals();
+  race.par = medals.get(mountain.stage)?.gold ?? null;
   setupMaps();
+  miniMap = new MiniMap($('minimap'), mountain);
   $('loading').textContent = '';
   try {
     if (sessionStorage.getItem('touge.openShop')) {

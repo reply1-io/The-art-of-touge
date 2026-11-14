@@ -77,12 +77,15 @@ test('Kaido Mountain: eleven roads, no leg of the route comes too close to anoth
   assert.equal(TRACKS.world.stages.length, 11);
   let closest = Infinity;
   for (let i = 0; i < road.count; i += 3)
-    for (let j = i + 40; j < road.count; j += 3) closest = Math.min(closest, Math.hypot(road.x[i] - road.x[j], road.z[i] - road.z[j]));
+    for (let j = i + 40; j < road.count - Math.max(0, 40 - i); j += 3) closest = Math.min(closest, Math.hypot(road.x[i] - road.x[j], road.z[i] - road.z[j]));
   assert.ok(closest > 4 * road.w.HALF, `closest legs ${closest}`);
   assert.ok(road.top > 80, `the summit is ${road.top} m above the village`);
+  // A loop: the end of the road meets its start, at the same height and heading the same way.
+  assert.ok(Math.hypot(road.x[0] - road.x[road.count - 1], road.z[0] - road.z[road.count - 1]) < 3, 'the loop closes');
+  assert.ok(Math.abs(road.y[0] - road.y[road.count - 1]) < 0.3, 'no step at the join');
 });
 
-// How fast a well tuned car (about 300 hp) could possibly go anywhere on the map: flat out
+// How fast a well tuned car (about 300 hp, on semi-slicks) could possibly go anywhere on the map: flat out
 // wherever it can, braking hard for every corner it needs to.
 test('Kaido Mountain: every road is all corners, nowhere near 80 mph even flat out', async () => {
   const { TRACKS } = await import('../src/world/tracks.js');
@@ -92,16 +95,19 @@ test('Kaido Mountain: every road is all corners, nowhere near 80 mph even flat o
   for (let i = 0; i < n; i++) {
     let k = 0;
     for (let j = Math.max(0, i - 2); j <= Math.min(n - 1, i + 2); j++) k = Math.max(k, Math.abs(road.kappa[j]));
-    cap[i] = Math.sqrt((1.15 * 9.81) / Math.max(k, 1e-5));
+    cap[i] = Math.sqrt((1.4 * 9.81) / Math.max(k, 1e-5)); // semi-slicks
   }
   const v = Float64Array.from(cap);
   v[0] = 0;
-  for (let i = 1; i < n; i++) {
-    const u = v[i - 1];
-    const a = Math.min(7, 220000 / (1200 * Math.max(u, 1))) - (0.45 * u * u) / 1200 + 9.81 * road.grade[i];
-    v[i] = Math.min(cap[i], Math.sqrt(Math.max(0, u * u + 2 * a * 2)));
+  // Round the loop twice, so the speed carried across the join counts too.
+  for (let lap = 0; lap < 2; lap++) {
+    for (let i = lap ? 0 : 1; i < n; i++) {
+      const u = v[(i - 1 + n) % n];
+      const a = Math.min(7, 220000 / (1200 * Math.max(u, 1))) - (0.45 * u * u) / 1200 + 9.81 * road.grade[i];
+      v[i] = Math.min(cap[i], Math.sqrt(Math.max(0, u * u + 2 * a * 2)));
+    }
   }
-  for (let i = n - 2; i >= 0; i--) v[i] = Math.min(v[i], Math.sqrt(v[i + 1] ** 2 + 2 * 9 * 2));
+  for (let lap = 0; lap < 2; lap++) for (let i = n - 1; i >= 0; i--) v[i] = Math.min(v[i], Math.sqrt(v[(i + 1) % n] ** 2 + 2 * 9 * 2));
   const top = Math.max(...v) * 2.237;
   assert.ok(top < 76, `${top.toFixed(1)} mph possible`);
 });

@@ -270,7 +270,15 @@ body {
   top: max(8px, env(safe-area-inset-top, 0px));
   left: calc(10px + var(--sl));
   display: flex;
+  align-items: flex-start;
   gap: 10px;
+}
+
+#minimap {
+  width: min(104px, 26vh);
+  height: min(104px, 26vh);
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(255, 140, 26, 0.5);
 }
 
 #topbar button {
@@ -1246,4 +1254,64 @@ canvas.map {
 
 #teleport .panel {
   width: min(440px, 100%);
+}
+
+.btn-loop {
+  margin-top: 4px;
+  font: 400 18px 'VT323', ui-monospace, monospace;
+  letter-spacing: 0.1em;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.05);
+  border: 3px solid rgba(255, 255, 255, 0.22);
+  padding: 3px 10px;
+}
+
+.btn-loop.sel {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---------- Road name banner: shown as you drive onto each road ---------- */
+#road-banner {
+  position: fixed;
+  left: 50%;
+  top: calc(56px + var(--st, 0px));
+  transform: translate(-50%, -8px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 6px 22px 8px;
+  background: rgba(20, 52, 120, 0.82);
+  border: 3px solid #f2f4f7;
+  color: #f2f4f7;
+  font-family: 'VT323', ui-monospace, monospace;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.5s, transform 0.5s;
+  z-index: 5;
+}
+
+#road-banner.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+#road-banner small {
+  font-size: 15px;
+  letter-spacing: 0.2em;
+  opacity: 0.85;
+}
+
+#road-banner b {
+  font-weight: 400;
+  font-size: 30px;
+  letter-spacing: 0.1em;
+  line-height: 1;
+}
+
+#road-banner span {
+  font-size: 17px;
+  letter-spacing: 0.06em;
 }

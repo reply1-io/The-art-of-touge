@@ -49,6 +49,31 @@ export class Ambience {
     wind.connect(wf).connect(this.windGain).connect(this.out);
     wind.start(0, Math.random() * 1.5);
     gust.start();
+    // Rain: a hiss of fine drops on the leaves and the road, over a soft patter.
+    const rain = ctx.createBufferSource();
+    rain.buffer = a.noise;
+    rain.loop = true;
+    const hiss = ctx.createBiquadFilter();
+    hiss.type = 'highpass';
+    hiss.frequency.value = 1500;
+    const soft = ctx.createBiquadFilter();
+    soft.type = 'lowpass';
+    soft.frequency.value = 6500;
+    this.rainGain = ctx.createGain();
+    this.rainGain.gain.value = 0;
+    rain.connect(hiss).connect(soft).connect(this.rainGain).connect(this.out);
+    rain.start(0, Math.random() * 1.5);
+    const patter = ctx.createBufferSource();
+    patter.buffer = a.noise;
+    patter.loop = true;
+    const pf = ctx.createBiquadFilter();
+    pf.type = 'bandpass';
+    pf.frequency.value = 700;
+    pf.Q.value = 0.7;
+    this.patterGain = ctx.createGain();
+    this.patterGain.gain.value = 0;
+    patter.connect(pf).connect(this.patterGain).connect(this.out);
+    patter.start(0, Math.random() * 1.5);
     // Crickets: a high trill pulsing in bursts.
     this.cricket = ctx.createOscillator();
     this.cricket.frequency.value = 4400;
@@ -82,6 +107,8 @@ export class Ambience {
     const t = ctx.currentTime;
     if (time !== this.time) this.time = time;
     this.cricketGain.gain.setTargetAtTime(time === 'night' ? 0.012 : time === 'sunset' ? 0.006 : 0, t, 1);
+    this.rainGain.gain.setTargetAtTime(time === 'rain' ? 0.05 : 0, t, 1.5);
+    this.patterGain.gain.setTargetAtTime(time === 'rain' ? 0.035 : 0, t, 1.5);
     if (time === 'day' || time === 'sunset') {
       this.birdTimer -= dt;
       if (this.birdTimer <= 0) {
@@ -104,6 +131,7 @@ export class Ambience {
     if (this.critterTimer <= 0) {
       if (time === 'day') (Math.random() < 0.5 ? this.#woodpecker() : this.#crow());
       else if (time === 'sunset') (Math.random() < 0.5 ? this.#frogs() : this.#crow());
+      else if (time === 'rain') this.#frogs();
       else (Math.random() < 0.55 ? this.#frogs() : this.#owl());
       this.critterTimer = rand(7, 16);
     }

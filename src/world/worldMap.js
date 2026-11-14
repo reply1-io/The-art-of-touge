@@ -1,6 +1,6 @@
-// "Kaido Mountain": eleven roads joined end to end into one route that winds back and forth across
+// "Kaido Mountain": eleven roads joined end to end into one loop that winds back and forth across
 // the whole map. It starts at the car meet just below the summit of the central mountain, works
-// its way across the hillsides, and finishes in the village at the edge of the map.
+// its way across the hillsides past the village, and comes back round to the meet: no dead ends.
 //
 // Layout: the map is split into 170 m cells. The route visits the cells one after another (a walk
 // that never revisits a cell), and between cell centres the road twists its way along: so two
@@ -49,7 +49,7 @@ export const STAGES = [
   { name: 'Fox Hollow', blurb: 'Quick esses through the hollows', style: 'medium', cells: 5, scene: { trees: 1.1, maple: 0.15, rock: 0.2, ponds: 2 } },
   { name: 'Waterfall Pass', blurb: 'Tight and steep along the falls', style: 'tight', cells: 4, scene: { trees: 0.8, maple: 0.1, rock: 0.8, ponds: 1 } },
   { name: 'Old Logging Road', blurb: 'Bumpy, tight and forgotten', style: 'technical', cells: 4, scene: { trees: 1.4, maple: 0.05, rock: 0.2, ponds: 0 } },
-  { name: 'Valley Run', blurb: 'Flowing down past the ponds to the village', style: 'flowing', cells: 5, scene: { trees: 0.8, maple: 0.2, rock: 0, ponds: 3 } },
+  { name: 'Valley Run', blurb: 'Flowing past the village and back up to the meet', style: 'flowing', cells: 5, scene: { trees: 0.8, maple: 0.2, rock: 0, ponds: 3 } },
 ];
 
 const smoothstep = (a, b, x) => {
@@ -64,8 +64,8 @@ export function heightAt(x, z) {
   return 125 * (1 - smoothstep(60, 980, r)) + 9 * Math.sin(x / 210 + 1.3) * Math.cos(z / 190 + 0.4) + 6 * Math.sin((x - z) / 120 + 2.1);
 }
 
-// A walk over the cells that never revisits one, from a cell next to the peak to one at the edge
-// of the map, covering most of the map: a depth-first search that tries the neighbour with the
+// A walk over the cells that never revisits one, from a cell next to the peak back to a cell next
+// to where it started (so the route closes into a loop), covering most of the map: a depth-first search that tries the neighbour with the
 // fewest free neighbours of its own first (so it does not wall itself in), and backs up when stuck.
 function cellWalk(rand) {
   const key = (i, j) => `${i},${j}`;
@@ -75,7 +75,6 @@ function cellWalk(rand) {
   const free = new Set(cells.map(([i, j]) => key(i, j)));
   const total = cells.length;
   const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-  const rim = (i, j) => Math.hypot(i, j) * CELL > RMAX - CELL * 0.8;
   const degree = (i, j) => dirs.reduce((n, [a, b]) => n + (free.has(key(i + a, j + b)) ? 1 : 0), 0);
   const goal = Math.ceil(total * 0.9);
   const start = dirs[Math.floor(rand() * 4)];
@@ -83,7 +82,8 @@ function cellWalk(rand) {
   free.delete(key(...start));
   let budget = 60000;
   const dfs = () => {
-    if (path.length >= goal && rim(...path[path.length - 1])) return true;
+    const [li, lj] = path[path.length - 1];
+    if (path.length >= goal && Math.abs(li - start[0]) + Math.abs(lj - start[1]) === 1) return true;
     if (--budget < 0) return false;
     const [i, j] = path[path.length - 1];
     const next = dirs
@@ -123,10 +123,8 @@ function tryRoute(seed) {
 
   // Cell centres, nudged a little so the grid does not show.
   const wps = path.map(([i, j]) => [i * CELL + (rand() - 0.5) * 30, j * CELL + (rand() - 0.5) * 30]);
-  // Out of the last cell to the village, away from the peak.
-  const [lx, lz] = wps[wps.length - 1];
-  const lr = Math.hypot(lx, lz);
-  wps.push([lx + (lx / lr) * 140, lz + (lz / lr) * 140]);
+  // ...and back to the first cell to close the loop.
+  wps.push(wps[0]);
   const legs = wps.length - 1;
 
   // Share the legs out between the roads.
@@ -164,7 +162,8 @@ function tryRoute(seed) {
     if (Math.abs(d) > 0.01) step(Math.max(1, Math.round(Math.abs(d) * r)), d / Math.max(1, Math.round(Math.abs(d) * r)));
   };
   pts.push([x, z]);
-  step(30, 0); // out of the car meet
+  const [x0, z0, h0] = [x, z, h];
+  step(36, 0); // out of the car meet
 
   let side = 1;
   for (let leg = 0; leg < legs; leg++) {
@@ -177,9 +176,11 @@ function tryRoute(seed) {
     const ux = (bx - ax) / len;
     const uz = (bz - az) / len;
     const along = () => (x - ax) * ux + (z - az) * uz;
+    const closing = leg === legs - 1;
     const lateral = () => (x - ax) * uz - (z - az) * ux;
 
-    if (sty.hairpins && len > 120) {
+    // (Not on the first leg: the meet's lot sits beside it.)
+    if (sty.hairpins && len > 120 && leg > 0) {
       // Switchbacks across the leg: legs out to one side and back, a hairpin at each end, each
       // pair of hairpins stepping 30 m along the leg.
       const r = 15;
@@ -207,9 +208,9 @@ function tryRoute(seed) {
 
     // Twisting along the leg: each corner is aimed at a point a little further along the line,
     // so the road wriggles about it but always makes progress.
-    const style = sty.hairpins ? STYLE.technical : sty;
+    const style = leg === 0 ? STYLE.medium : sty.hairpins ? STYLE.technical : sty;
     let guard = 0;
-    while (along() < len - 30 && guard++ < 200) {
+    while (along() < len - (closing ? 65 : 30) && guard++ < 200) {
       const t = Math.min(len, Math.max(0, along()) + 55);
       const aimX = ax + ux * t;
       const aimZ = az + uz * t;
@@ -228,7 +229,28 @@ function tryRoute(seed) {
       step(Math.round(rand() * style.gap), 0);
     }
   }
-  step(15, 0); // into the village
+  // Close the loop: one smooth curve back into the start, facing the way the route set off.
+  {
+    const d = Math.hypot(x0 - x, z0 - z);
+    const c = d * 0.36;
+    const P = [
+      [x, z],
+      [x + Math.sin(h) * c, z + Math.cos(h) * c],
+      [x0 - Math.sin(h0) * c, z0 - Math.cos(h0) * c],
+      [x0, z0],
+    ];
+    const m = Math.ceil(d * 1.4);
+    let [px, pz] = [x, z];
+    for (let q = 1; q <= m; q++) {
+      const t = q / m;
+      const u = 1 - t;
+      const bx = u * u * u * P[0][0] + 3 * u * u * t * P[1][0] + 3 * u * t * t * P[2][0] + t * t * t * P[3][0];
+      const bz = u * u * u * P[0][1] + 3 * u * u * t * P[1][1] + 3 * u * t * t * P[2][1] + t * t * t * P[3][1];
+      s += Math.hypot(bx - px, bz - pz);
+      pts.push([bx, bz]);
+      [px, pz] = [bx, bz];
+    }
+  }
 
   // Never closer than 40 m to another part of the route (24 m within the same stretch).
   const G = 40;
@@ -240,8 +262,10 @@ function tryRoute(seed) {
       for (let b = -1; b <= 1; b++) {
         for (const j of grid.get(`${kx + a},${kz + b}`) || []) {
           // Switchback legs sit 30 m apart; anything else keeps a full 40 m away.
+          // Measured round the loop both ways: the end joins up with the start.
+          const gap = Math.min(i - j, pts.length - (i - j));
           const d = Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]);
-          if ((i - j > 150 && d < 23) || (i - j > 700 && d < G)) return null;
+          if ((gap > 150 && d < 23) || (gap > 700 && d < G)) return null;
         }
       }
     }

@@ -55,7 +55,7 @@ export function ridged(x, z, scales, seed = 0) {
 export class Terrain {
   // lakes: optional (road) => [{ x, z, r, level }] in place of the lake behind the start;
   // peak: optional { x, z, r, rise } cone that tops out the mountain the road circles.
-  constructor(road, { cell = 4, margin = 260, relief = 110, lakes = null, peak = null, stops = {}, level = false } = {}) {
+  constructor(road, { cell = 4, margin = 260, relief = 110, lakes = null, peak = null, stops = {}, level = false, town = null } = {}) {
     this.road = road;
     this.cell = cell;
     let minX = Infinity;
@@ -127,8 +127,9 @@ export class Terrain {
         ];
     this.lake = this.lakes[0] || { x: 1e9, z: 1e9, r: 0, level: 0 };
     this.peak = peak;
-    const f = road.count - 1;
-    this.town = { x: road.x[f], z: road.z[f], r: 140, level: road.y[f] - 0.3 };
+    // The town: at the end of the road, or where `town` ({ i, r }) puts it.
+    const f = town ? town.i : road.count - 1;
+    this.town = { i: f, x: road.x[f], z: road.z[f], r: town?.r ?? 140, level: road.y[f] - 0.3 };
 
     // Coarse distance to the road (chamfer transform on a 16 m grid). Far from the road the land
     // rises into wooded ridges and falls into valleys; near it, nothing changes.
