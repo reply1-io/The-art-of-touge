@@ -14,6 +14,7 @@ const DEFAULTS = {
   picture: 'sharp', // 'sharp' | 'retro'
   map: 'akina', // 'akina' | 'dragon'
   time: 'night', // 'day' | 'sunset' | 'night'
+  stage: -1, // world map: which road to start on (-1 = the whole route)
   money: 'unlimited', // 'career' | 'unlimited'
   netName: '',
   netServer: '',

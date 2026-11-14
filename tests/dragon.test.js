@@ -70,3 +70,14 @@ test("Dragon's Tail: a careful driver gets from start to finish", async () => {
   }
   assert.ok(q.index >= road.finishIndex, `stopped at s=${q.s}`);
 });
+
+test('Kaido Mountain: seven roads, no leg of the route comes too close to another', async () => {
+  const { TRACKS } = await import('../src/world/tracks.js');
+  const road = TRACKS.world.road();
+  assert.equal(TRACKS.world.stages.length, 7);
+  let closest = Infinity;
+  for (let i = 0; i < road.count; i += 3)
+    for (let j = i + 40; j < road.count; j += 3) closest = Math.min(closest, Math.hypot(road.x[i] - road.x[j], road.z[i] - road.z[j]));
+  assert.ok(closest > 4 * road.w.HALF, `closest legs ${closest}`);
+  assert.ok(road.top > 400, `the summit is ${road.top} m above the village`);
+});

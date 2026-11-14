@@ -67,7 +67,10 @@ export class Race {
   }
 
   get prize() {
-    return PRIZES[this.roadId] || PRIZES.akina;
+    if (PRIZES[this.roadId]) return PRIZES[this.roadId];
+    // Other routes and stages: scaled by the distance from start to finish.
+    const km = ((this.road.finishIndex - this.road.startIndex) * 2) / 1000;
+    return { par: km * 52, base: Math.round((km * 100) / 10) * 10, win: Math.round(km * 300 / 50) * 50, lose: Math.round(km * 40 / 10) * 10 };
   }
 
   // Begin a race. placePlayer(pose) puts the player's car on the grid.

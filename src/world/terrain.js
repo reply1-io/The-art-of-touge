@@ -53,7 +53,9 @@ export function ridged(x, z, scales, seed = 0) {
 }
 
 export class Terrain {
-  constructor(road, { cell = 4, margin = 260, relief = 110 } = {}) {
+  // lakes: optional (road) => [{ x, z, r, level }] in place of the lake behind the start;
+  // peak: optional { x, z, r, rise } cone that tops out the mountain the road circles.
+  constructor(road, { cell = 4, margin = 260, relief = 110, lakes = null, peak = null, stops = {}, level = false } = {}) {
     this.road = road;
     this.cell = cell;
     let minX = Infinity;
@@ -88,6 +90,9 @@ export class Terrain {
     const D = det(M);
     const solve = (col) => det(M.map((row, r) => row.map((val, c) => (c === col ? v[r] : val)))) / D;
     this.plane = [solve(0), solve(1), solve(2)];
+    // A route that loops round (the world map) has no single downhill direction: tilting the land
+    // to fit it throws up cliffs at the edges. Keep it level and let the nearby road set the height.
+    if (level) this.plane = [0, 0, sy / n];
 
     // Coarse residual samples for blending toward each leg's real height.
     this.residuals = [];
@@ -104,12 +109,18 @@ export class Terrain {
 
     // Features: the lake behind the summit start and the town around the finish.
     const h0 = road.heading[0];
-    this.lake = {
-      x: road.x[0] - Math.sin(h0) * 120 + Math.cos(h0) * 50,
-      z: road.z[0] - Math.cos(h0) * 120 - Math.sin(h0) * 50,
-      r: 95,
-      level: road.y[0] - 5,
-    };
+    this.lakes = lakes
+      ? lakes(road, this)
+      : [
+          {
+            x: road.x[0] - Math.sin(h0) * 120 + Math.cos(h0) * 50,
+            z: road.z[0] - Math.cos(h0) * 120 - Math.sin(h0) * 50,
+            r: 95,
+            level: road.y[0] - 5,
+          },
+        ];
+    this.lake = this.lakes[0] || { x: 1e9, z: 1e9, r: 0, level: 0 };
+    this.peak = peak;
     const f = road.count - 1;
     this.town = { x: road.x[f], z: road.z[f], r: 140, level: road.y[f] - 0.3 };
 
@@ -119,7 +130,7 @@ export class Terrain {
     this.#buildFarDistance();
 
     // Pull-offs, the gas station and the car-show lot: the ground is levelled under them.
-    this.zones = stopsFor(road);
+    this.zones = stopsFor(road, stops);
 
     this.heights = new Float32Array(this.nx * this.nz);
     this.roadDist = new Float32Array(this.nx * this.nz);
@@ -248,12 +259,19 @@ export class Terrain {
 
   #height(x, z, near) {
     let h = this.natural(x, z) + this.reliefAt(x, z);
-    // Lake basin and the flat town.
-    const lk = this.lake;
-    const dl = Math.hypot(x - lk.x, z - lk.z);
-    if (dl < lk.r + 50) {
-      const basin = lk.level - 2.5 - 4 * clamp(1 - dl / lk.r, 0, 1);
-      h += (Math.min(h, basin) - h) * smoothstep(lk.r + 50, lk.r - 10, dl);
+    // The peak the road spirals around.
+    const pk = this.peak;
+    if (pk) {
+      const dp = Math.hypot(x - pk.x, z - pk.z);
+      if (dp < pk.r) h = Math.max(h, pk.top + pk.rise * (1 - dp / pk.r) ** 1.4 - 8 * (dp / pk.r));
+    }
+    // Lake basins and the flat town.
+    for (const lk of this.lakes) {
+      const dl = Math.hypot(x - lk.x, z - lk.z);
+      if (dl < lk.r + 50) {
+        const basin = lk.level - 2.5 - 4 * clamp(1 - dl / lk.r, 0, 1);
+        h += (Math.min(h, basin) - h) * smoothstep(lk.r + 50, lk.r - 10, dl);
+      }
     }
     const tw = this.town;
     const dt = Math.hypot(x - tw.x, z - tw.z);
@@ -285,6 +303,12 @@ export class Terrain {
       h += (target - h) * t;
     }
     return h;
+  }
+
+  // Is (x, z) in or right by water?
+  inLake(x, z, pad = 10) {
+    for (const lk of this.lakes) if (Math.hypot(x - lk.x, z - lk.z) < lk.r + pad) return true;
+    return false;
   }
 
   // Bilinear height of the grid at (x, z).

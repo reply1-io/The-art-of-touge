@@ -225,6 +225,8 @@ function renderChoices() {
           ? [[true, 'On'], [false, 'Off']]
           : key === 'steering'
             ? [['buttons', 'Buttons'], ['slider', 'Slider']]
+            : key === 'stage'
+            ? [[-1, 'Full route'], ...(TRACKS[settings.map]?.stages || []).map((st, k) => [k, `${k + 1}. ${st.name}`])]
             : key === 'money'
             ? [['career', 'Earn it'], ['unlimited', 'Unlimited']]
             : key === 'shifter'
@@ -242,7 +244,13 @@ function renderChoices() {
           toast('THE HOST PICKS THE ROAD AND TIME');
           return;
         }
-        // Switching road rebuilds the whole world: save and reload (taking your room with you).
+        // Switching road (or the stage of a route) rebuilds the whole world: save and reload.
+        if (key === 'stage' && settings.stage !== value) {
+          settings.stage = value;
+          saveSettings(settings);
+          location.reload();
+          return;
+        }
         if (key === 'map' && settings.map !== value) {
           settings.map = value;
           saveSettings(settings);
@@ -780,7 +788,9 @@ function updateTitleSub() {
   $('title-sub').innerHTML = '';
   const b = document.createElement('b');
   b.textContent = t.name;
-  $('title-sub').append(`${CAR.name} · `, b, ` · ${t.blurb} · ${time.name}`);
+  const st = t.stages && (settings.stage ?? -1) >= 0 ? t.stages[settings.stage] : null;
+  $('title-sub').append(`${CAR.name} · `, b, st ? ` · ${st.name}: ${st.blurb}` : ` · ${t.blurb}`, ` · ${time.name}`);
+  for (const f of document.querySelectorAll('.stage-field')) f.classList.toggle('hidden', !t.stages);
 }
 
 // ---------- Main loop ----------
@@ -936,7 +946,7 @@ async function boot() {
   world.timestep = DT;
   $('loading').textContent = 'Building the mountain…';
   await new Promise((r) => setTimeout(r, 30));
-  mountain = new Mountain(world, scene, settings.map);
+  mountain = new Mountain(world, scene, settings.map, TRACKS[settings.map]?.stages ? settings.stage ?? -1 : -1);
   vehicle = new Vehicle(world, CAR, tune, settings.mode);
   vehicle.surfaceOf = mountain.layout.surfaceOf;
   // Guardrails are a cushion, not a wall: see physics/barrier.js.
@@ -966,7 +976,7 @@ async function boot() {
   });
   deer = new Deer(scene, mountain.road, mountain.terrain);
   online = new Online(scene, world, RAPIER);
-  race = new Race({ scene, world, mountain, roadId: settings.map, wallet, toast, look: () => lookOf(tune) });
+  race = new Race({ scene, world, mountain, roadId: TRACKS[settings.map]?.stages && (settings.stage ?? -1) >= 0 ? `${settings.map}:${settings.stage}` : settings.map, wallet, toast, look: () => lookOf(tune) });
   race.onFinish = showResults;
   run.best = race.record?.best ?? null;
   setupOnline();

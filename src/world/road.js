@@ -85,7 +85,7 @@ export class Road {
   // points: map pixels scaled to targetLength, or (opts.world) world metres used as they are.
   // opts.gradeBase / opts.twistGain shape the elevation profile.
   constructor(points = AKINA_POINTS, targetLength = 5000, opts = {}) {
-    const { world: inMetres = false, gradeBase = 0.058, twistGain = 1.1, width = 'wide' } = opts;
+    const { world: inMetres = false, gradeBase = 0.058, twistGain = 1.1, width = 'wide', gradeAt = null } = opts;
     this.w = WIDTHS[width] || WIDTHS.wide;
     // ---- Plan view: spline, scale to length, resample at STEP ----
     const dense = inMetres ? points : catmullRom(points);
@@ -136,7 +136,9 @@ export class Road {
     const grade = new Float64Array(n);
     for (let i = 0; i < n; i++) {
       const s = i * STEP;
-      let g = gradeBase + 0.075 * Math.sin(s / 190 + 0.5) + 0.035 * Math.sin(s / 71 + 2) + 0.015 * Math.sin(s / 37 + 1);
+      // gradeAt(s) -> { base, roll } lets a route set the slope section by section.
+      const gs = gradeAt ? gradeAt(s) : { base: gradeBase, roll: 1 };
+      let g = gs.base + gs.roll * (0.075 * Math.sin(s / 190 + 0.5) + 0.035 * Math.sin(s / 71 + 2) + 0.015 * Math.sin(s / 37 + 1));
       g += clamp(twist[i] * twistGain, 0, 0.04);
       g = clamp(g, -0.06, 0.135);
       if (s < 90) g = 0.008;

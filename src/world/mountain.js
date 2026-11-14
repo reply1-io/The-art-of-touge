@@ -9,6 +9,7 @@ import { Ranges, CloudSea, buildWaterfalls, sunAzimuth } from './wilds.js';
 import { ZONE_INNER, zoneAt, zonePoint, stationLayout, showLayout } from './stops.js';
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
+const DEFAULT_SCENE = { trees: 1, maple: 0, rock: 0.5, ponds: 0 };
 const ROAD_CHUNK = 60; // samples per road chunk (120 m)
 const TILE = 24; // terrain cells per tile
 
@@ -190,11 +191,18 @@ const COLORS = {
 };
 
 export class Mountain {
-  constructor(world, scene, trackId = 'akina') {
+  // stage: on a route made of several roads (the world map), which one to start and finish on
+  // (-1 for the whole route).
+  constructor(world, scene, trackId = 'akina', stage = -1) {
     this.scene = scene;
     this.track = TRACKS[trackId] || TRACKS.akina;
     this.road = this.track.road();
-    this.terrain = new Terrain(this.road, { margin: this.road.length > 6000 ? 180 : 260, relief: this.track.relief ?? 110 });
+    if (this.track.stages && stage >= 0 && this.track.stages[stage]) {
+      const st = this.track.stages[stage];
+      this.road.startIndex = Math.max(this.road.startIndex, Math.round(st.s0 / STEP) + 30);
+      this.road.finishIndex = Math.min(this.road.finishIndex, Math.round(st.s1 / STEP));
+    }
+    this.terrain = new Terrain(this.road, { margin: this.road.length > 6000 ? 180 : 260, relief: this.track.relief ?? 110, lakes: this.track.lakes, peak: this.track.peak?.(this.road), stops: this.track.stopsOpts || {}, level: !!this.track.world });
     this.layout = buildMountainPhysics(world, this.road, this.terrain);
     this.chunks = []; // { group, x, z, r }
     this.#buildRoad();
@@ -535,7 +543,17 @@ export class Mountain {
   #wallAt(j, side) {
     const k = Math.max(0, Math.min(this.road.count - 1, j));
     if (this.inZone(k, side, 8)) return false;
-    return this.terrain.sideProfile(k, side) > 0 && noise2(k / 40, side * 5) > 0.4 && this.road.clearance(k, side, 16) >= 16;
+    const rock = this.sceneAt(k).rock;
+    // Rock roads get walls on both sides wherever the ground is not falling away.
+    const cut = rock > 0.8 ? this.terrain.sideProfile(k, side) >= 0 : this.terrain.sideProfile(k, side) > 0;
+    return cut && noise2(k / 40, side * 5) > 0.4 + 0.25 * (0.5 - rock) && this.road.clearance(k, side, 16) >= 16;
+  }
+
+  // What grows and stands beside the road at sample i (the world map varies it road by road).
+  sceneAt(i) {
+    const t = this.track;
+    if (!t.stages) return DEFAULT_SCENE;
+    return t.stages[t.stageAt(i * STEP)].scene;
   }
 
   // Where the car starts: just before the start line, in the downhill (left) lane, facing down.
@@ -799,12 +817,14 @@ export class Mountain {
           if (noise2(jx * 0.8, jz * 0.8) > 0.7) bucket(near.i).bushes.push([jx, t.heightAt(jx, jz) - 0.3, jz, 0.8 + noise2(jx, jz)]);
           continue;
         }
-        if (Math.hypot(jx - t.lake.x, jz - t.lake.z) < t.lake.r + 10) continue;
+        if (t.inLake(jx, jz)) continue;
         if (Math.hypot(jx - t.town.x, jz - t.town.z) < t.town.r) continue;
         const y = t.heightAt(jx, jz) - 0.3;
-        const dense = noise2(jx / 30, jz / 30);
+        const sc = this.sceneAt(near.i);
+        // Thinner or thicker forest depending on the road (1 = normal).
+        const dense = noise2(jx / 30, jz / 30) - (1 - sc.trees) * 0.35;
         // Patches of autumn maples break up the cedars with red, orange and gold.
-        const maple = noise2(jx / 45 + 9, jz / 45) > 0.7 || (near.d < 20 && noise2(jx * 0.5, jz * 0.5) > 0.9);
+        const maple = noise2(jx / 45 + 9, jz / 45) > 0.7 - sc.maple * 0.6 || (near.d < 20 && noise2(jx * 0.5, jz * 0.5) > 0.9 - sc.maple * 0.4);
         if (dense > 0.22 && maple) bucket(near.i).maples.push([jx, y, jz, 6 + noise2(jx, jz) * 6]);
         else if (dense > 0.22) bucket(near.i).trees.push([jx, y, jz, 10 + noise2(jx, jz) * 10]);
         else bucket(near.i).bushes.push([jx, y, jz, 1 + noise2(jz, jx) * 1.4]);
@@ -822,7 +842,7 @@ export class Mountain {
         const jz = z + (noise2(x * 0.4, z * 0.5) - 0.5) * 7;
         const d = t.roadDistance(jx, jz);
         if (d < 62 || d > 165) continue;
-        if (Math.hypot(jx - t.lake.x, jz - t.lake.z) < t.lake.r + 10 || Math.hypot(jx - t.town.x, jz - t.town.z) < t.town.r) continue;
+        if (t.inLake(jx, jz) || Math.hypot(jx - t.town.x, jz - t.town.z) < t.town.r) continue;
         if (t.nearestRoad(jx, jz, 56).d < 56) continue;
         if (noise2(jx / 30, jz / 30) < 0.16) continue;
         const key = `${Math.floor(jx / FT)},${Math.floor(jz / FT)}`;
@@ -1107,15 +1127,33 @@ export class Mountain {
   }
 
   #buildLake() {
-    const lk = this.terrain.lake;
-    const water = new THREE.Mesh(new THREE.CircleGeometry(lk.r + 30, 40), new THREE.MeshLambertMaterial({ color: 0x0c1b33, emissive: 0x050b18 }));
-    water.rotation.x = -Math.PI / 2;
-    water.position.set(lk.x, lk.level, lk.z);
-    // The moon reflected in the lake.
-    const glint = new THREE.Mesh(new THREE.PlaneGeometry(14, 60), new THREE.MeshBasicMaterial({ map: glowTexture('rgba(190,210,255,0.5)', 'rgba(120,150,220,0)'), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
-    glint.rotation.x = -Math.PI / 2;
-    glint.position.set(lk.x + 10, lk.level + 0.05, lk.z - 20);
-    this.scene.add(water, glint);
+    const water = new THREE.MeshLambertMaterial({ color: 0x0c1b33, emissive: 0x050b18 });
+    this.waterMat = water;
+    const glintMat = new THREE.MeshBasicMaterial({ map: glowTexture('rgba(190,210,255,0.5)', 'rgba(120,150,220,0)'), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false });
+    for (const lk of this.terrain.lakes) {
+      const w = new THREE.Mesh(new THREE.CircleGeometry(lk.r + 30, 40), water);
+      w.rotation.x = -Math.PI / 2;
+      w.position.set(lk.x, lk.level, lk.z);
+      // Reeds round the edge of the smaller ponds, and the moon (or sun) glinting on the water.
+      const g = new THREE.Group();
+      g.add(w);
+      const glint = new THREE.Mesh(new THREE.PlaneGeometry(lk.r * 0.15, lk.r * 0.6), glintMat);
+      glint.rotation.x = -Math.PI / 2;
+      glint.position.set(lk.x + lk.r * 0.1, lk.level + 0.05, lk.z - lk.r * 0.2);
+      g.add(glint);
+      const reed = new THREE.MeshLambertMaterial({ color: 0x5f6b33, flatShading: true });
+      const reedGeo = new THREE.ConeGeometry(0.25, 1.6, 4);
+      for (let k = 0; k < Math.round(lk.r / 2); k++) {
+        const a = (k / Math.round(lk.r / 2)) * Math.PI * 2 + noise2(k, lk.r) * 0.4;
+        const rr = lk.r * (0.92 + noise2(k * 1.7, 2) * 0.16);
+        const rx = lk.x + Math.sin(a) * rr;
+        const rz = lk.z + Math.cos(a) * rr;
+        const m = new THREE.Mesh(reedGeo, reed);
+        m.position.set(rx, lk.level + 0.7, rz);
+        g.add(m);
+      }
+      this.#addChunk(g, lk.x, lk.z, lk.r + 40, 'ground');
+    }
   }
 
   // A few houses, a shop and a vending machine glowing at the bottom of the pass.
