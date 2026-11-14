@@ -71,6 +71,10 @@ button:disabled { opacity: .45; cursor: default; }
 .pedal.gas.down { background: var(--needle); color: #fff; border-color: var(--needle); }
 .pedal.brake.down { background: var(--fg); color: var(--bg); }
 .hint { font-size: 13px; color: var(--muted); margin: 0; }
+.shifts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pedal.shift { height: 72px; font-size: 20px; }
+.pedal.shift.down { background: var(--fg); color: var(--bg); }
+#shiftMsg { font: 500 13px/1.4 var(--font-data); color: var(--warn); min-height: 1.4em; margin: 0; }
 kbd { font: 500 12px var(--font-data); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
 
 label.sl { display: grid; gap: 4px; font-size: 14px; }
@@ -130,6 +134,12 @@ input[type=range] { width: 100%; accent-color: var(--needle); }
             <button id="mManual" aria-pressed="false">Manual</button>
           </div>
         </div>
+        <div class="row" id="gearRow" hidden><span class="seglabel">Gears</span>
+          <div class="seg" role="group" aria-label="Gears">
+            <button id="xAuto" aria-pressed="true">Auto</button>
+            <button id="xManual" aria-pressed="false">Manual</button>
+          </div>
+        </div>
         <div class="row"><span class="seglabel">Exhaust</span>
           <div class="seg" role="group" aria-label="Exhaust">
             <button id="eStock" aria-pressed="true">Stock</button>
@@ -141,6 +151,11 @@ input[type=range] { width: 100%; accent-color: var(--needle); }
           <button class="pedal brake" id="pBrake">BRAKE</button>
           <button class="pedal gas" id="pGas">GAS</button>
         </div>
+        <div id="shiftBox" class="shifts" hidden>
+          <button class="pedal shift" id="pDown" aria-label="Shift down">◀ DOWN</button>
+          <button class="pedal shift" id="pUp" aria-label="Shift up">UP ▶</button>
+        </div>
+        <p id="shiftMsg" hidden></p>
         <p class="hint" id="pedalHint">Hold <kbd>W</kbd> / <kbd>↑</kbd> / <kbd>Space</kbd> for gas, <kbd>S</kbd> / <kbd>↓</kbd> to brake. Drive mode shifts up at 6,300 rpm. The limiter cuts fuel at 6,500.</p>
         <div id="manualBox" hidden>
           <label class="sl" for="sRpm"><span>Rpm <output id="oRpm">800</output></span>
@@ -274,7 +289,56 @@ function setMode(m) {
   for (const [id, k] of [['mFree', 'free'], ['mDrive', 'drive'], ['mManual', 'manual']]) $(id).setAttribute('aria-pressed', String(k === m));
   $('pedalBox').hidden = m === 'manual'; $('pedalHint').hidden = m === 'manual'; $('manualBox').hidden = m !== 'manual';
   sim.v = 0; sim.gear = m === 'drive' ? 1 : 0;
+  updateGearUi();
 }
+
+// ---------- gears: auto or manual (drive mode) ----------
+let gearMode = 'auto';
+function updateGearUi() {
+  const drive = mode === 'drive', man = drive && gearMode === 'manual';
+  $('gearRow').hidden = !drive;
+  $('shiftBox').hidden = !man; $('shiftMsg').hidden = !man;
+  $('xAuto').setAttribute('aria-pressed', String(gearMode === 'auto'));
+  $('xManual').setAttribute('aria-pressed', String(gearMode === 'manual'));
+  updateHint();
+}
+function updateHint() {
+  const E = ENGINES[eng];
+  const pedals = 'Hold <kbd>W</kbd> / <kbd>↑</kbd> / <kbd>Space</kbd> for gas, <kbd>S</kbd> / <kbd>↓</kbd> to brake.';
+  const gears = mode === 'drive' && gearMode === 'manual'
+    ? ' Shift up with <kbd>E</kbd> / <kbd>→</kbd>, down with <kbd>Q</kbd> / <kbd>←</kbd>.'
+    : mode === 'drive' ? ` Drive mode shifts up at ${(E.redline - 200).toLocaleString()} rpm.` : '';
+  $('pedalHint').innerHTML = `${pedals}${gears} The limiter cuts fuel at ${E.redline.toLocaleString()}.`;
+}
+$('xAuto').onclick = () => { gearMode = 'auto'; updateGearUi(); };
+$('xManual').onclick = () => { gearMode = 'manual'; updateGearUi(); };
+
+let msgTimer = 0;
+function shiftMsg(text) { $('shiftMsg').textContent = text; clearTimeout(msgTimer); msgTimer = setTimeout(() => { $('shiftMsg').textContent = ''; }, 1600); }
+function shift(dir) {
+  if (mode !== 'drive' || gearMode !== 'manual' || state !== 'running' || sim.shift > 0) return;
+  const g = sim.gear + dir;
+  if (g < 1) { shiftMsg('Already in 1st'); return; }
+  if (g > GEARS.length) { shiftMsg('Already in top gear'); return; }
+  if (dir < 0 && wheelRpm(sim.v, g) > ENGINES[eng].redline + 150) {
+    shiftMsg(`Too fast for ${['1st', '2nd', '3rd', '4th', '5th'][g - 1]}: it would over-rev`);
+    return;
+  }
+  sim.gear = g;
+  sim.shift = dir > 0 ? 0.25 : 0.2; // clutch in, throttle off, revs settle to the new gear
+}
+for (const [id, dir] of [['pUp', 1], ['pDown', -1]]) {
+  const el = $(id);
+  el.addEventListener('pointerdown', (e) => { e.preventDefault(); el.classList.add('down'); shift(dir); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(ev, () => el.classList.remove('down'));
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+addEventListener('keydown', (e) => {
+  if (e.repeat || e.target.tagName === 'INPUT') return;
+  const dir = { KeyE: 1, ArrowRight: 1, KeyQ: -1, ArrowLeft: -1 }[e.code];
+  if (!dir || mode !== 'drive' || gearMode !== 'manual') return;
+  e.preventDefault(); shift(dir);
+});
 $('mFree').onclick = () => setMode('free');
 $('mDrive').onclick = () => setMode('drive');
 $('mManual').onclick = () => setMode('manual');
@@ -302,7 +366,7 @@ function setEngineChoice(name) {
   for (const k of ['eyebrow', 'title', 'intro', 'bankA', 'bankB', 'noteH', 'noteP']) {
     $({ eyebrow: 'engEyebrow', title: 'engTitle', intro: 'engIntro' }[k] || k).textContent = C[k];
   }
-  $('pedalHint').innerHTML = `Hold <kbd>W</kbd> / <kbd>↑</kbd> / <kbd>Space</kbd> for gas, <kbd>S</kbd> / <kbd>↓</kbd> to brake. Drive mode shifts up at ${(E.redline - 200).toLocaleString()} rpm. The limiter cuts fuel at ${E.redline.toLocaleString()}.`;
+  updateHint();
   engine?.setEngine(name);
   drawTach();
 }
@@ -352,12 +416,14 @@ function step(dt) {
   const g = sim.gear, wr = wheelRpm(sim.v, g);
   if (sim.shift > 0) sim.rpm += (wr - sim.rpm) * Math.min(1, dt * 9);
   else if (g === 1 && wr < 1400) sim.rpm += (Math.max(IDLE + 500 + sim.thr * 2600, wr) - sim.rpm) * Math.min(1, dt * 6);
-  else sim.rpm += (wr - sim.rpm) * Math.min(1, dt * 20);
+  else sim.rpm += (Math.max(wr, gearMode === 'manual' ? IDLE * 0.85 : 0) - sim.rpm) * Math.min(1, dt * 20); // too high a gear: it lugs
   const drive = sim.thr * torque(sim.rpm) * GEARS[g - 1] * FINAL * 0.9 / TYRE_R;
   const resist = 0.42 * sim.v * sim.v + (sim.v > 0.1 ? 180 : 0) + sim.brake * 9500 + (sim.thr ? 0 : sim.rpm * 0.12);
   sim.v = Math.max(0, sim.v + (drive - resist) / MASS * dt);
-  if (sim.shift === 0 && sim.rpm > REDLINE - 200 && g < 5) { sim.gear++; sim.shift = 0.28; }
-  if (sim.shift === 0 && sim.rpm < 2100 && g > 1 && !sim.thr) { sim.gear--; sim.shift = 0.2; }
+  if (gearMode === 'auto') {
+    if (sim.shift === 0 && sim.rpm > REDLINE - 200 && g < 5) { sim.gear++; sim.shift = 0.28; }
+    if (sim.shift === 0 && sim.rpm < 2100 && g > 1 && !sim.thr) { sim.gear--; sim.shift = 0.2; }
+  }
 }
 
 // ---------- tach ----------
