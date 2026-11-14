@@ -342,7 +342,8 @@ export class Terrain {
       if (zn.side !== side || i < zn.i0 - 8 || i > zn.i1 + 8) continue;
       const k = clamp(i, zn.i0, zn.i1);
       const outer = zn.outerAt(k);
-      const target = zn.heightAt(road, k, l) - 0.25;
+      // Past either end of the lot, follow the road's own rise and fall rather than the lot's level.
+      const target = zn.heightAt(road, k, l) - 0.25 + (road.y[i] - road.y[k]);
       const along = smoothstep(8, 0, i < zn.i0 ? zn.i0 - i : i > zn.i1 ? i - zn.i1 : 0);
       const t = smoothstep(outer + 9, outer + 1, l) * along;
       h += (target - h) * t;

@@ -2,7 +2,8 @@
 // dots of cedar and maple, blue lakes, the road, and each road's name in yellow along it. A red pin
 // marks where you are. Tap a road (or its name) to pick it.
 
-const PAD = 90; // metres of land shown around the road
+const PAD = 110; // metres of land shown around the road
+const LABEL = 13; // road name size (CSS pixels)
 
 export class MapView {
   // canvas: the <canvas> to draw in. mountain: the built Mountain. onPick(stageIndex) on a tap.
@@ -124,42 +125,81 @@ export class MapView {
       }
     }
 
-    // Lakes and ponds.
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+
+    // Lakes and ponds: an uneven shoreline, a sandy rim, deeper blue in the middle and a glint.
     for (const lk of t.lakes || []) {
       const [x, y] = this.toPx(lk.x, lk.z);
       const rad = Math.max(3 * dpr, lk.r * this.scale);
-      g.fillStyle = '#3f7fbf';
-      g.beginPath();
-      g.arc(x, y, rad, 0, Math.PI * 2);
+      const ph = rnd() * 6;
+      const shore = (grow) => {
+        g.beginPath();
+        for (let a = 0; a <= 24; a++) {
+          const th = (a / 24) * Math.PI * 2;
+          const k = 1 + 0.12 * Math.sin(th * 3 + ph) + 0.07 * Math.sin(th * 5 + ph * 2);
+          const px = x + Math.cos(th) * (rad * k + grow);
+          const py = y + Math.sin(th) * (rad * k * 0.92 + grow);
+          if (a) g.lineTo(px, py);
+          else g.moveTo(px, py);
+        }
+        g.closePath();
+      };
+      shore(1.6 * dpr);
+      g.fillStyle = '#b5ad74';
       g.fill();
-      g.strokeStyle = 'rgba(180, 220, 255, 0.55)';
-      g.lineWidth = 1.2 * dpr;
-      g.stroke();
+      shore(0);
+      const grad = g.createRadialGradient(x - rad * 0.2, y - rad * 0.2, rad * 0.1, x, y, rad);
+      grad.addColorStop(0, '#2c5f9a');
+      grad.addColorStop(1, '#4f93cf');
+      g.fillStyle = grad;
+      g.fill();
+      if (rad > 6 * dpr) {
+        g.strokeStyle = 'rgba(230, 245, 255, 0.55)';
+        g.lineWidth = 1 * dpr;
+        g.beginPath();
+        g.arc(x - rad * 0.25, y - rad * 0.3, rad * 0.35, Math.PI * 1.1, Math.PI * 1.6);
+        g.stroke();
+      }
     }
 
-    // Forest further out: scattered dots in patches, thicker in the hollows.
-    let seed = 7;
-    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    const spots = Math.round((W * H) / (35 * dpr * dpr));
+    // Trees seen from above: round crowns with a shadow on one side and light on the other.
+    const crowns = [];
+    const spots = Math.round((W * H) / (26 * dpr * dpr));
     for (let n = 0; n < spots; n++) {
       const px = rnd() * W;
       const py = rnd() * H;
       const [x, z] = this.toWorld(px, py);
-      if (t.inLake?.(x, z, 6)) continue;
-      const patch = Math.sin(x / 70) * Math.cos(z / 55) + Math.sin((x + z) / 130);
-      if (patch < -0.2 + rnd() * 0.6) continue;
-      g.fillStyle = rnd() < 0.08 ? '#d8641f' : rnd() < 0.5 ? '#2e461c' : '#3b5522';
-      g.beginPath();
-      g.arc(px, py, (1.1 + rnd() * 1.1) * dpr, 0, Math.PI * 2);
-      g.fill();
+      if (t.inLake?.(x, z, 8)) continue;
+      // Woods in patches with clearings between.
+      const patch = Math.sin(x / 70) * Math.cos(z / 55) + Math.sin((x + z) / 130) + 0.5 * Math.sin(x / 33 - z / 41);
+      if (patch < -0.35 + rnd() * 0.7) continue;
+      crowns.push([px, py, (1.3 + rnd() * 1.5) * dpr, rnd() < 0.07 ? 1 : 0, rnd()]);
     }
-
-    // Forest by the road: a dot for a share of the real trees, maples in orange.
-    const dot = Math.max(1, 1.1 * dpr);
+    // Trees by the road: a share of the real ones, maples in orange.
     for (const [x, z, maple] of this.mountain.mapTrees || []) {
       const [px, py] = this.toPx(x, z);
-      g.fillStyle = maple ? '#d8641f' : '#2e461c';
-      g.fillRect(px - dot, py - dot, dot * 2, dot * 2);
+      crowns.push([px, py, 1.2 * dpr, maple, rnd()]);
+    }
+    crowns.sort((p, q) => p[1] - q[1]);
+    const shades = [
+      ['#1d2f12', '#2e4a1c', '#4f7330'],
+      ['#6e2a0c', '#d8641f', '#f3a04a'],
+    ];
+    for (const [px, py, cr, maple, tone] of crowns) {
+      const [shadow, body, light] = shades[maple];
+      g.fillStyle = shadow;
+      g.beginPath();
+      g.arc(px + cr * 0.35, py + cr * 0.35, cr, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = maple ? body : tone < 0.5 ? body : '#36541f';
+      g.beginPath();
+      g.arc(px, py, cr, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = light;
+      g.beginPath();
+      g.arc(px - cr * 0.35, py - cr * 0.35, cr * 0.4, 0, Math.PI * 2);
+      g.fill();
     }
 
     // The road: a dark edge with a pale line on top.
@@ -184,21 +224,22 @@ export class MapView {
 
     // Landmarks: the summit meet and the village.
     this.marks = [];
-    const mark = (i, text) => {
+    const mark = (i, text, above = false) => {
       const [x, y] = this.toPx(r.x[i], r.z[i]);
       g.font = `${Math.round(13 * dpr)}px VT323, ui-monospace, monospace`;
       const w = g.measureText(text).width;
-      this.marks.push({ k: -1, x: x - w / 2, y: y + 2 * dpr, w, h: 16 * dpr });
+      const ty = above ? y - 6 * dpr : y + 15 * dpr;
+      this.marks.push({ k: -1, x: x - w / 2, y: ty - 13 * dpr, w, h: 16 * dpr });
       g.fillStyle = '#fff';
       g.strokeStyle = '#111';
       g.lineWidth = 3 * dpr;
       g.font = `${Math.round(13 * dpr)}px VT323, ui-monospace, monospace`;
       g.textAlign = 'center';
-      g.strokeText(text, x, y + 15 * dpr);
-      g.fillText(text, x, y + 15 * dpr);
+      g.strokeText(text, x, ty);
+      g.fillText(text, x, ty);
     };
     mark(0, '▲ CAR MEET');
-    mark(r.count - 1, 'VILLAGE');
+    mark(r.count - 1, 'VILLAGE', true);
     this.baseImage = c;
     this.base = true;
     this.#placeLabels();
@@ -209,7 +250,7 @@ export class MapView {
     const g = this.canvas.getContext('2d');
     const r = this.road;
     const dpr = this.dpr;
-    const size = Math.round(15 * dpr);
+    const size = Math.round(LABEL * dpr);
     g.font = `${size}px VT323, ui-monospace, monospace`;
     this.labels = [];
     const W = this.canvas.width;
@@ -219,11 +260,14 @@ export class MapView {
       const w = g.measureText(st.name).width;
       const h = size * 0.8;
       let place = null;
-      for (const f of [0.5, 0.35, 0.65, 0.2, 0.8, 0.1, 0.9]) {
+      // Try spots along the road from the middle outward: above it, below it, then beside it.
+      const fracs = [];
+      for (let f = 0; f <= 0.45; f += 0.05) fracs.push(0.5 - f, 0.5 + f);
+      for (const f of fracs) {
         const i = Math.round((st.s0 + (st.s1 - st.s0) * f) / 2);
         const [x, y] = this.toPx(r.x[Math.min(r.count - 1, i)], r.z[Math.min(r.count - 1, i)]);
-        for (const dy of [-h - 6 * dpr, 6 * dpr]) {
-          const a = { k, x: Math.max(2, Math.min(W - w - 2, x - w / 2)), y: Math.max(2, Math.min(H - h - 2, y + dy)), w, h };
+        for (const [dx, dy] of [[-w / 2, -h - 5 * dpr], [-w / 2, 5 * dpr], [6 * dpr, -h / 2], [-w - 6 * dpr, -h / 2]]) {
+          const a = { k, x: Math.max(2, Math.min(W - w - 2, x + dx)), y: Math.max(2, Math.min(H - h - 2, y + dy)), w, h };
           if (!overlaps(a)) {
             place = a;
             break;
@@ -257,7 +301,7 @@ export class MapView {
       g.stroke();
     }
     // Names in yellow with a dark outline.
-    g.font = `${Math.round(15 * dpr)}px VT323, ui-monospace, monospace`;
+    g.font = `${Math.round(LABEL * dpr)}px VT323, ui-monospace, monospace`;
     g.textAlign = 'left';
     g.textBaseline = 'top';
     for (const l of this.labels) {

@@ -11,11 +11,11 @@ const track = TRACKS.world;
 const road = track.road();
 const terrain = new Terrain(road, { margin: 180, relief: track.relief, lakes: track.lakes, peak: track.peak(road), stops: track.stopsOpts, level: true });
 
-test('Kaido Mountain is about 11 km and drops a few hundred metres from the summit', () => {
-  assert.ok(road.length > 9000 && road.length < 13000, `length ${road.length}`);
-  assert.ok(road.top > 250, `drop ${road.top}`);
+test('Kaido Mountain is about 13 km of road across a mountain', () => {
+  assert.ok(road.length > 12000 && road.length < 16000, `length ${road.length}`);
+  assert.ok(road.top > 80, `drop ${road.top}`);
   for (const g of road.grade) assert.ok(g < 0.16, `grade ${g}`);
-  assert.equal(track.stages.length, 7);
+  assert.equal(track.stages.length, 11);
   assert.ok(track.stages.some((st) => st.name === "Dragon's Tail"), "the Dragon's Tail is on the map");
 });
 
@@ -58,7 +58,8 @@ test('the terrain never pokes through the road', () => {
   for (let i = 0; i < road.count; i++) {
     for (const l of [-HALF, 0, HALF]) {
       const [x, y, z] = road.pointAt(i, l);
-      assert.ok(terrain.heightAt(x, z) < y - 0.05, `terrain above road at s=${i * 2}`);
+      const th = terrain.heightAt(x, z);
+      assert.ok(th < y - 0.05, `terrain above road at s=${i * 2} lat ${l}: ${th.toFixed(2)} vs ${y.toFixed(2)}`);
     }
   }
 });
