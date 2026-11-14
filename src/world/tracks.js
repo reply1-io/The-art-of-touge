@@ -3,7 +3,7 @@ import { Road } from './road.js';
 import { dragonPoints } from './dragonMap.js';
 import { worldRoute, STAGES, heightAt, CELL } from './worldMap.js';
 
-const WORLD = worldRoute(2011);
+const WORLD = worldRoute(15319);
 // The stage a distance along the world route belongs to.
 export function stageAt(s) {
   let k = 0;
@@ -24,10 +24,17 @@ export const TRACKS = {
   },
   world: {
     name: 'Kaido Mountain',
-    blurb: `${Math.round(WORLD.length / 1000)} km · eleven twisting roads across a mountain`,
-    road: () => new Road(WORLD.pts, 0, { world: true, heightAt }),
+    blurb: `${Math.round(WORLD.length / 1000)} km loop · eleven twisting roads across a mountain`,
+    road: () => new Road(WORLD.pts, 0, { world: true, heightAt, loop: true }),
     stages: STAGES.map((st, k) => ({ ...st, s0: WORLD.starts[k], s1: WORLD.starts[k + 1] ?? WORLD.length })),
     stageAt,
+    // The village sits on the Valley Run, at the point furthest from the peak.
+    town: (road) => {
+      const k = STAGES.length - 1;
+      let best = 0;
+      for (let i = Math.round(WORLD.starts[k] / 2); i < road.count - 200; i++) if (Math.hypot(road.x[i], road.z[i]) > Math.hypot(road.x[best], road.z[best])) best = i;
+      return { i: best, r: 85 };
+    },
     cornerLights: true,
     relief: 120,
     peaks: 520,

@@ -84,7 +84,7 @@ export class Road {
   // points: map pixels scaled to targetLength, or (opts.world) world metres used as they are.
   // opts.gradeBase / opts.twistGain shape the elevation profile.
   constructor(points, targetLength = 5000, opts = {}) {
-    const { world: inMetres = false, gradeBase = 0.058, twistGain = 1.1, width = 'wide', gradeAt = null, heightAt = null } = opts;
+    const { world: inMetres = false, gradeBase = 0.058, twistGain = 1.1, width = 'wide', gradeAt = null, heightAt = null, loop = false } = opts;
     this.w = WIDTHS[width] || WIDTHS.wide;
     // ---- Plan view: spline, scale to length, resample at STEP ----
     const dense = inMetres ? points : catmullRom(points);
@@ -95,20 +95,34 @@ export class Road {
     const cum = [0];
     for (let i = 1; i < world.length; i++) cum.push(cum[i - 1] + Math.hypot(world[i][0] - world[i - 1][0], world[i][1] - world[i - 1][1]));
     const total = cum[cum.length - 1];
-    const n = Math.floor(total / STEP) + 1;
+    // A loop takes a sample right on its end so the two ends meet.
+    const n = loop ? Math.round(total / STEP) + 1 : Math.floor(total / STEP) + 1;
     let xs = new Float64Array(n);
     let zs = new Float64Array(n);
     let j = 0;
     for (let i = 0; i < n; i++) {
-      const s = i * STEP;
+      const s = loop ? (i * total) / (n - 1) : i * STEP;
       while (j < cum.length - 2 && cum[j + 1] < s) j++;
-      const f = (s - cum[j]) / Math.max(1e-9, cum[j + 1] - cum[j]);
+      const f = Math.min(1, (s - cum[j]) / Math.max(1e-9, cum[j + 1] - cum[j]));
       xs[i] = world[j][0] + (world[j + 1][0] - world[j][0]) * f;
       zs[i] = world[j][1] + (world[j + 1][1] - world[j][1]) * f;
     }
     // Light smoothing removes tracing jitter without opening up the hairpins.
-    xs = smooth(xs, 5, 2);
-    zs = smooth(zs, 5, 2);
+    if (loop) {
+      // Smooth round the join as well: wrap a stretch of each end onto the other.
+      const PADN = 20;
+      const wrapSmooth = (a) => {
+        const ext = new Float64Array(n + 2 * PADN);
+        for (let i = 0; i < ext.length; i++) ext[i] = a[(i - PADN + 2 * (n - 1)) % (n - 1)];
+        const sm = smooth(ext, 5, 2);
+        return sm.slice(PADN, PADN + n);
+      };
+      xs = wrapSmooth(xs);
+      zs = wrapSmooth(zs);
+    } else {
+      xs = smooth(xs, 5, 2);
+      zs = smooth(zs, 5, 2);
+    }
 
     this.count = n;
     this.x = xs;
@@ -117,8 +131,9 @@ export class Road {
     this.heading = new Float64Array(n);
     const kappaRaw = new Float64Array(n);
     for (let i = 0; i < n; i++) {
-      const a = Math.max(0, i - 1);
-      const b = Math.min(n - 1, i + 1);
+      // On a loop the first and last samples are the same point: look across the join.
+      const a = loop && i === 0 ? n - 2 : Math.max(0, i - 1);
+      const b = loop && i === n - 1 ? 1 : Math.min(n - 1, i + 1);
       this.heading[i] = Math.atan2(xs[b] - xs[a], zs[b] - zs[a]);
     }
     for (let i = 1; i < n - 1; i++) {
@@ -158,6 +173,11 @@ export class Road {
       for (let i = 1; i < n; i++) y[i] = clamp(y[i], y[i - 1] - MAXG * STEP, y[i - 1] + MAXG * STEP);
       for (let i = n - 2; i >= 0; i--) y[i] = clamp(y[i], y[i + 1] - MAXG * STEP, y[i + 1] + MAXG * STEP);
       y = smooth(y, 9, 2);
+      // A loop has to meet itself: share out any difference between its two ends.
+      if (loop) {
+        const miss = y[0] - y[n - 1];
+        for (let i = 0; i < n; i++) y[i] += (miss * i) / (n - 1);
+      }
       for (let i = 0; i < n; i++) this.y[i] = y[i];
       for (let i = 1; i < n; i++) this.grade[i] = (this.y[i - 1] - this.y[i]) / STEP;
       this.grade[0] = this.grade[1];
@@ -169,6 +189,7 @@ export class Road {
     for (let i = 0; i < n; i++) this.y[i] -= bottom;
     // The highest point of the road (the summit end of a downhill pass).
     this.top = heightAt ? Math.max(...this.y) : this.y[0];
+    this.loop = loop;
 
     // ---- Banking: corners lean hard into the turn, hairpins most of all (up to about 12 degrees) ----
     const bankRaw = this.kappa.map((k) => clamp(-k * 3.4, -0.21, 0.21));

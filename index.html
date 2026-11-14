@@ -49,9 +49,11 @@
         <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="8" width="26" height="19" rx="3" /><circle cx="16" cy="17.5" r="5.5" /><path d="M21 8V5h5v3" /></svg>
         <span>CAMERA</span>
       </button>
+      <canvas id="minimap" aria-label="Map around the car"></canvas>
     </div>
 
     <div id="toast"></div>
+    <div id="road-banner" aria-live="polite"><small></small><b></b><span></span></div>
     <div id="chat" class="hidden">
       <div id="chat-room"></div>
       <div id="chat-log"></div>
@@ -70,6 +72,7 @@
         <div class="field">
           <span class="label">Map <span class="map-hint">Tap a road to go there</span></span>
           <div class="map-wrap"><canvas class="map" aria-label="Map of the mountain roads"></canvas><span class="map-loading">Drawing the map&hellip;</span></div>
+          <button type="button" class="btn-loop">FULL LOOP</button>
         </div>
         <div class="field">
           <span class="label">Driving mode</span>
@@ -125,6 +128,7 @@
         <div class="field">
           <span class="label">Map <span class="map-hint">Tap a road to go there</span></span>
           <div class="map-wrap"><canvas class="map" aria-label="Map of the mountain roads"></canvas><span class="map-loading">Drawing the map&hellip;</span></div>
+          <button type="button" class="btn-loop">FULL LOOP</button>
         </div>
         <div class="field">
           <span class="label">Driving mode</span>

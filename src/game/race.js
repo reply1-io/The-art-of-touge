@@ -67,6 +67,11 @@ export class Race {
 
   get prize() {
     if (PRIZES[this.roadId]) return PRIZES[this.roadId];
+    // A gold-medal time, when the road has one, is the pace that pays full money.
+    if (this.par) {
+      const km = ((this.road.finishIndex - this.road.startIndex) * 2) / 1000;
+      return { par: this.par, base: Math.round((km * 100) / 10) * 10, win: Math.round((km * 300) / 50) * 50, lose: Math.round((km * 40) / 10) * 10 };
+    }
     // Other routes and stages: scaled by the distance from start to finish.
     const km = ((this.road.finishIndex - this.road.startIndex) * 2) / 1000;
     return { par: km * 52, base: Math.round((km * 100) / 10) * 10, win: Math.round(km * 300 / 50) * 50, lose: Math.round(km * 40 / 10) * 10 };

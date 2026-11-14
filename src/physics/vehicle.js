@@ -334,7 +334,8 @@ export class Vehicle {
       // Grip from the tyre compound and the surface under it. On grass some tyres get nervous:
       // their grip wanders from moment to moment.
       const tyre = TIRES[t.tire] || TIRES.street;
-      let mu = tyre.mu * (t.grip ?? 1) * ws.gripScale;
+      // weatherGrip: less grip on a wet road.
+      let mu = tyre.mu * (t.grip ?? 1) * ws.gripScale * (this.weatherGrip ?? 1);
       if (w.surface === 'gravel') mu *= tyre.gravel;
       if (w.surface === 'grass') {
         w.grassJitter = clamp((w.grassJitter ?? 0) * 0.9 + (Math.random() - 0.5) * 0.5, -1, 1);

@@ -4,6 +4,7 @@
 
 const PAD = 110; // metres of land shown around the road
 const LABEL = 13; // road name size (CSS pixels)
+const MEDAL = 11; // space for the medal before each name
 
 export class MapView {
   // canvas: the <canvas> to draw in. mountain: the built Mountain. onPick(stageIndex) on a tap.
@@ -31,6 +32,7 @@ export class MapView {
     }
     this.bounds = { x0: x0 - PAD, x1: x1 + PAD, z0: z0 - PAD, z1: z1 + PAD };
     let down = null;
+    if (!onPick) return; // drawn off-screen (the mini-map): nothing to tap
     canvas.addEventListener('pointerdown', (e) => {
       down = [e.clientX, e.clientY];
     });
@@ -69,6 +71,15 @@ export class MapView {
     this.#fit();
     this.#drawBase();
     return true;
+  }
+
+  // Draw just the map (no names or pin) at a set size, off-screen.
+  drawStatic(w, h, dpr) {
+    this.canvas.width = w;
+    this.canvas.height = h;
+    this.dpr = dpr;
+    this.#fit();
+    this.#drawBase();
   }
 
   // Which road a pointer event is on, or -1.
@@ -239,7 +250,7 @@ export class MapView {
       g.fillText(text, x, ty);
     };
     mark(0, '▲ CAR MEET');
-    mark(r.count - 1, 'VILLAGE', true);
+    mark(t.town?.i ?? r.count - 1, 'VILLAGE', true);
     this.baseImage = c;
     this.base = true;
     this.#placeLabels();
@@ -257,7 +268,7 @@ export class MapView {
     const H = this.canvas.height;
     const overlaps = (a) => [...this.labels, ...this.marks].some((b) => a.x < b.x + b.w + 4 && a.x + a.w + 4 > b.x && a.y < b.y + b.h + 2 && a.y + a.h + 2 > b.y);
     this.stages.forEach((st, k) => {
-      const w = g.measureText(st.name).width;
+      const w = g.measureText(st.name).width + MEDAL * dpr; // room for the medal in front
       const h = size * 0.8;
       let place = null;
       // Try spots along the road from the middle outward: above it, below it, then beside it.
@@ -306,11 +317,23 @@ export class MapView {
     g.textBaseline = 'top';
     for (const l of this.labels) {
       const name = this.stages[l.k].name;
+      // The medal you hold on this road; an empty ring where you have not earned one yet.
+      const medal = this.medalOf?.(l.k);
+      const cx = l.x + 4.5 * dpr;
+      const cy = l.y + l.h * 0.55;
+      g.beginPath();
+      g.arc(cx, cy, 3.6 * dpr, 0, Math.PI * 2);
+      g.fillStyle = medal ? medal.color : 'rgba(10, 10, 10, 0.55)';
+      g.fill();
+      g.lineWidth = 1.4 * dpr;
+      g.strokeStyle = medal ? '#1a1206' : 'rgba(255, 210, 63, 0.75)';
+      g.stroke();
+      const tx = l.x + MEDAL * dpr;
       g.lineWidth = 3.5 * dpr;
       g.strokeStyle = 'rgba(10, 10, 10, 0.9)';
-      g.strokeText(name, l.x, l.y);
+      g.strokeText(name, tx, l.y);
       g.fillStyle = l.k === this.selected ? '#fff6c2' : '#ffd23f';
-      g.fillText(name, l.x, l.y);
+      g.fillText(name, tx, l.y);
     }
     g.textBaseline = 'alphabetic';
     // The red pin.

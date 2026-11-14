@@ -199,7 +199,7 @@ export class Mountain {
     this.road = this.track.road();
     this.full = { start: this.road.startIndex, finish: this.road.finishIndex };
     this.stage = -1;
-    this.terrain = new Terrain(this.road, { margin: this.road.length > 6000 ? 180 : 260, relief: this.track.relief ?? 110, lakes: this.track.lakes, peak: this.track.peak?.(this.road), stops: this.track.stopsOpts || {}, level: !!this.track.world });
+    this.terrain = new Terrain(this.road, { margin: this.road.length > 6000 ? 180 : 260, relief: this.track.relief ?? 110, lakes: this.track.lakes, peak: this.track.peak?.(this.road), stops: this.track.stopsOpts || {}, level: !!this.track.world, town: this.track.town?.(this.road) });
     this.layout = buildMountainPhysics(world, this.road, this.terrain);
     this.chunks = []; // { group, x, z, r }
     this.#buildRoad();
@@ -209,6 +209,7 @@ export class Mountain {
     this.#buildTrees();
     this.#buildRoadside();
     this.#buildLandmarks();
+    this.#buildRoadSigns();
     this.#buildStops();
     this.#buildLake();
     this.#buildTown();
@@ -221,6 +222,63 @@ export class Mountain {
     for (let i = 0; i < this.road.count; i++) lowest = Math.min(lowest, this.road.y[i]);
     this.cloudSea = new CloudSea(scene, [this.ranges.cx, this.ranges.cz], this.ranges.half * 2, lowest - 22);
     this.waterfalls = buildWaterfalls(this.road, this.terrain, this.#waterfallSpots(), (g, x, z, r) => this.#addChunk(g, x, z, r));
+  }
+
+  // A blue Japanese-style road sign at the start of each road of the route: its number, name and
+  // length, facing the traffic coming in.
+  #buildRoadSigns() {
+    const stages = this.track.stages;
+    if (!stages) return;
+    const road = this.road;
+    const postMat = new THREE.MeshLambertMaterial({ color: 0x9aa0a6 });
+    const backMat = new THREE.MeshLambertMaterial({ color: 0x5d636a });
+    const post = new THREE.CylinderGeometry(0.07, 0.07, 3.1, 6);
+    post.translate(0, 1.55, 0);
+    stages.forEach((st, k) => {
+      const c = document.createElement('canvas');
+      c.width = 256;
+      c.height = 112;
+      const g = c.getContext('2d');
+      g.fillStyle = '#1d4fa3';
+      g.fillRect(0, 0, 256, 112);
+      g.strokeStyle = '#f2f4f7';
+      g.lineWidth = 5;
+      g.strokeRect(7, 7, 242, 98);
+      g.fillStyle = '#f2f4f7';
+      g.textAlign = 'center';
+      g.font = 'bold 15px sans-serif';
+      g.fillText(`ROAD ${k + 1}`, 128, 30);
+      let size = 32;
+      g.font = `bold ${size}px sans-serif`;
+      while (g.measureText(st.name).width > 222 && size > 16) g.font = `bold ${--size}px sans-serif`;
+      g.fillText(st.name, 128, 66);
+      g.font = 'bold 19px sans-serif';
+      g.fillText(`${((st.s1 - st.s0) / 1000).toFixed(1)} km`, 128, 93);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 4;
+      const face = new THREE.MeshLambertMaterial({ map: tex });
+      const board = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.4, 0.08), [backMat, backMat, backMat, backMat, face, backMat]);
+      // Just past where the road begins, on the left verge.
+      let i = Math.round(st.s0 / STEP) + 8;
+      for (let n = 0; n < 20 && this.#onLot(...(() => { const p = road.pointAt(i, road.w.RAIL + 1.8); return [p[0], p[2]]; })(), i, 2); n++) i += 4;
+      const p = road.pointAt(i, road.w.RAIL + 1.8);
+      const y = this.terrain.heightAt(p[0], p[2]);
+      const g3 = new THREE.Group();
+      board.position.set(0, 3.1, 0);
+      const l = new THREE.Mesh(post, postMat);
+      const r = new THREE.Mesh(post, postMat);
+      l.position.set(-1.1, 0, -0.06);
+      r.position.set(1.1, 0, -0.06);
+      g3.add(board, l, r);
+      g3.position.set(p[0], Math.min(y, p[1]) - 0.1, p[2]);
+      // Face the oncoming car, turned a little toward the road.
+      g3.rotation.y = road.heading[i] + Math.PI - 0.25;
+      g3.traverse((o) => {
+        if (o.isMesh) o.castShadow = true;
+      });
+      this.#addChunk(g3, p[0], p[2], 6);
+    });
   }
 
   // True when (x, z) is on, or within `pad` metres of, a pull-off or lot next to sample i.
@@ -560,14 +618,22 @@ export class Mountain {
     const r = this.road;
     const st = this.track.stages?.[stage];
     this.stage = st ? stage : -1;
-    r.startIndex = st ? Math.max(this.full.start, Math.round(st.s0 / STEP) + 30) : this.full.start;
-    r.finishIndex = st ? Math.min(this.full.finish, Math.round(st.s1 / STEP)) : this.full.finish;
+    const { start, finish } = this.stageRange(this.stage);
+    r.startIndex = start;
+    r.finishIndex = finish;
     if (this.lineMeshes) {
       this.lineMeshes[0].geometry.dispose();
       this.lineMeshes[1].geometry.dispose();
       this.lineMeshes[0].geometry = this.#lineGeo(r.startIndex);
       this.lineMeshes[1].geometry = this.#lineGeo(r.finishIndex);
     }
+  }
+
+  // Start and finish line samples for a road of the route (-1: the whole route).
+  stageRange(stage) {
+    const st = this.track.stages?.[stage];
+    if (!st) return { start: this.full.start, finish: this.full.finish };
+    return { start: Math.max(this.full.start, Math.round(st.s0 / STEP) + 30), finish: Math.min(this.full.finish, Math.round(st.s1 / STEP)) };
   }
 
   // Where the car starts: just before the start line, in the downhill (left) lane, facing down.
@@ -1207,8 +1273,8 @@ export class Mountain {
       this.#addChunk(g, x, z, 15);
       placed++;
     }
-    // Vending machine by the finish.
-    const f = road.finishIndex + 10;
+    // Vending machine in town.
+    const f = Math.min(road.count - 12, t.town.i + 10);
     const p = road.pointAt(f, -(road.w.RAIL + 1.6));
     const vend = new THREE.Mesh(new THREE.BoxGeometry(1, 1.9, 0.8), new THREE.MeshBasicMaterial({ color: 0xdff4ff }));
     vend.position.set(p[0], p[1] + 0.95, p[2]);

@@ -9,7 +9,7 @@ import { buildMountainPhysics } from '../src/world/mountainPhysics.js';
 // The Kaido Mountain map, built the way the game builds it.
 const track = TRACKS.world;
 const road = track.road();
-const terrain = new Terrain(road, { margin: 180, relief: track.relief, lakes: track.lakes, peak: track.peak(road), stops: track.stopsOpts, level: true });
+const terrain = new Terrain(road, { margin: 180, relief: track.relief, lakes: track.lakes, peak: track.peak(road), stops: track.stopsOpts, level: true, town: track.town(road) });
 
 test('Kaido Mountain is about 13 km of road across a mountain', () => {
   assert.ok(road.length > 12000 && road.length < 16000, `length ${road.length}`);
@@ -22,7 +22,7 @@ test('Kaido Mountain is about 13 km of road across a mountain', () => {
 test('the road never crosses itself and corners stay drivable', () => {
   let closest = Infinity;
   for (let i = 0; i < road.count; i += 2) {
-    for (let j = i + 60; j < road.count; j += 2) closest = Math.min(closest, Math.hypot(road.x[i] - road.x[j], road.z[i] - road.z[j]));
+    for (let j = i + 60; j < road.count - Math.max(0, 60 - i); j += 2) closest = Math.min(closest, Math.hypot(road.x[i] - road.x[j], road.z[i] - road.z[j]));
   }
   assert.ok(closest > 4 * HALF, `closest legs ${closest}`);
   let minR = Infinity;
