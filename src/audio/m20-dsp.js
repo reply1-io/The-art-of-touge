@@ -86,19 +86,22 @@ export const ENGINES = {
     header: [0.0009, 0.0012], pipe: [3.0, 3.0], pipeRefl: 0.45,
     // Tuned against a recording of an FD RX-7 idling (used only for measurements): a very
     // regular brap once every three shaft turns, energy at 60-500 Hz, little sub.
-    width: [14, 4], tail: 160, pulseSharp: 0.3, // the port opens fast (14 deg), the gas flows on
-    raspFloor: 0.5,                            // rasp even at idle (a peripheral-port bark)
+    width: [14, 4], tail: 160, pulseSharp: 0.15, // the port opens fast (14 deg), the gas flows on
+    raspFloor: 0.3,                            // a little rasp even at idle
+    // zing: the clean, high rotary note, locked to the rotors. Harmonics of the firing
+    // frequency (rpm / 30), quiet at idle and strongest from about 6,500 rpm
+    zing: { harmonics: [[3, 1], [4, 0.8], [5, 0.45], [6, 0.3]], level: 0.55, from: 1500, to: 6500 },
     pump: 0.14, jitter: 0.03, idleJitter: 0.03, lope: [0.004, 0.002], scatter: 1,
     baseLope: 0.45,                            // even a stock 13B idles choppy
     // one strong brap per 1,080 deg (repeats every cycle, both halves the same)
     chop: [1.35, 1.2, 0.72, 0.8, 0.85, 0.75, 1.35, 1.2, 0.72, 0.8, 0.85, 0.75],
-    sizzle: 1.2, idleNoise: 3.0, tick: 0, intakeLag: 360, popMul: 1.0, hitTail: 70,
+    sizzle: 0.6, idleNoise: 2.0, tick: 0, intakeLag: 360, popMul: 1.0, hitTail: 70,
     subMin: 60,                                // 27 Hz firing at idle: the brap lives above it
     idleHitScale: 1.5,                         // pipes make a bigger difference at idle
     muff: [1100, 900, 0.1, 3200, 1600], body: [112, 5], drone: [170, 3.5],
     stumble: 0,                                // a rotary's brap is metronome-regular
     mid: [290, 6],                             // third pipe resonance heard on the reference
-    rasp: [1300, 0.2, 2.2], rumble: [300, 0.06, 1.0], intake: [600, 0.12, 0.25],
+    rasp: [1300, 0.2, 0.8], rumble: [300, 0.06, 1.0], intake: [600, 0.12, 0.25],
     level: 1.3, post: 0.62,                    // driven harder, then turned down: rounder thumps
   },
 };
@@ -177,6 +180,7 @@ export class M20Dsp {
     this.c = { rpm: 0, throttle: 0, ignition: 0, starter: 0, idleRpm: IDLE_RPM };
     this.X = { ...EXHAUSTS.stock };   // current exhaust voicing, glides to the chosen preset
     this.cycleN = 0;                  // engine cycles, for the every-other-cycle chop
+    this.zingAmp = 0;
     this.subHz = 28;
     this.onCycle = null;
     this.fs = fs;
@@ -459,6 +463,17 @@ export class M20Dsp {
       // low cut follows the exhaust: louder pipes trade sub mud for punch
       const subT = Math.max(X.sub, E.subMin || 0);
       if (Math.abs(subT - this.subHz) > 0.5) { this.subHz = subT; this.dcHp.set('hp', subT, 0.7, 0, fs); }
+      // zing (engines that define it): clean tones locked to the firing, rising with rpm
+      if (E.zing) {
+        const Z = E.zing;
+        const u = Math.min(1, Math.max(0, (rpm - Z.from) / (Z.to - Z.from)));
+        const target = ign * Z.level * (0.04 + 0.96 * u * u * (3 - 2 * u)) * (0.45 + 0.55 * thr) * (0.85 + 0.15 * X.open);
+        this.zingAmp += (target - this.zingAmp) * 0.002;
+        const fp = TAU * this.phase * (cyc / 180); // firing phase: one firing every 180 deg
+        let z = 0;
+        for (const [h, a] of Z.harmonics) z += a * Math.sin(h * fp);
+        y += z * this.zingAmp;
+      }
       y = this.dcHp.run(y);
       let o = Math.tanh(y * 0.38 * E.level * X.level) * 1.35 * (E.post || 1); // gentle: mostly linear, only peaks round off
       // soft knee above 0.9 so loud engines never clip the output
