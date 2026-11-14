@@ -6,7 +6,7 @@ import * as THREE from 'three';
 const RUN_SPEED = 9; // m/s across the road
 const CROSS = 26; // metres from one side to the other
 
-function deerModel() {
+export function deerModel() {
   const g = new THREE.Group();
   const coat = new THREE.MeshLambertMaterial({ color: 0x8a5a32, flatShading: true });
   const dark = new THREE.MeshLambertMaterial({ color: 0x3a2618, flatShading: true });

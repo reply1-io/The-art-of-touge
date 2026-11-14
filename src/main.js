@@ -29,6 +29,7 @@ import { TyreSmoke } from './render/smoke.js';
 import { SpeedLines } from './render/speedLines.js';
 import { Ambience } from './audio/ambience.js';
 import { Deer } from './world/deer.js';
+import { Wildlife } from './world/wildlife.js';
 import { Online } from './net/online.js';
 import { makeCode, cleanCode } from './net/p2p.js';
 import { HEADLIGHTS } from './config.js';
@@ -122,6 +123,7 @@ function applyTime() {
   sky.setTime(p, sunDir);
   smoke?.setTint({ day: 0xeeeef0, sunset: 0xf3c9b0, night: 0x7d8496 }[settings.time] ?? 0xeeeef0);
   mountain.setTime(p);
+  wildlife?.setTime(p);
   camera.updateProjectionMatrix();
 }
 
@@ -154,6 +156,7 @@ let passIndex = -1;
 const ambience = new Ambience(audio);
 const glintTint = new THREE.Color();
 let deer;
+let wildlife;
 let race;
 let online;
 const sparkP = new THREE.Vector3();
@@ -857,6 +860,7 @@ function frame(now) {
   carModel.updateFx(dt);
   online.update(dt, vehicle, controls, timePreset.lights);
   sparks.update(dt);
+  wildlife.update(dt, camera, run.hint);
   if (active || !running) smoke.update(active ? dt : 0, vehicle);
   if (active) ambience.update(dt, settings.time);
   // In-car view: cockpit on, arms follow the wheel, the shifter and the handbrake.
@@ -975,6 +979,8 @@ async function boot() {
     if (o.isMesh) o.castShadow = true;
   });
   deer = new Deer(scene, mountain.road, mountain.terrain);
+  wildlife = new Wildlife(scene, mountain.road, mountain.terrain);
+  wildlife.setTime(timePreset);
   online = new Online(scene, world, RAPIER);
   race = new Race({ scene, world, mountain, roadId: TRACKS[settings.map]?.stages && (settings.stage ?? -1) >= 0 ? `${settings.map}:${settings.stage}` : settings.map, wallet, toast, look: () => lookOf(tune) });
   race.onFinish = showResults;
@@ -1002,7 +1008,7 @@ async function boot() {
   }
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { get wildlifeDbg() { return wildlife; }, get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;
