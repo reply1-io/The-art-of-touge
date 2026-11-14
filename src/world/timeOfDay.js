@@ -15,7 +15,7 @@ export const TIMES = {
     skyMid: 0x76aee2,
     skyHorizon: 0xadc9e4,
     sunColor: 0xfff0d6,
-    sunIntensity: 4.4,
+    sunIntensity: 4.9,
     sunElevation: 20, // degrees: high enough to cast clear shadows, low enough to sit in view
     disc: 0xffffff,
     discSize: 46,
@@ -30,7 +30,7 @@ export const TIMES = {
     clouds: 0xffffff,
     cloudOpacity: 0.85,
     ranges: 0x8aa0b8,
-    flare: 0.8,
+    flare: 1.15,
     flareTint: [255, 244, 222],
   },
   sunset: {
@@ -48,7 +48,7 @@ export const TIMES = {
     skyMid: 0x9a5e8c,
     skyHorizon: 0xf2a070,
     sunColor: 0xffa860,
-    sunIntensity: 3.3,
+    sunIntensity: 3.8,
     sunElevation: 3.5,
     disc: 0xffe0a8,
     discSize: 58,
@@ -63,7 +63,7 @@ export const TIMES = {
     clouds: 0xffa982,
     cloudOpacity: 0.8,
     ranges: 0x6a4a6e,
-    flare: 1,
+    flare: 1.4,
     flareTint: [255, 190, 120],
   },
   night: {

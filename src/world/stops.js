@@ -66,7 +66,9 @@ function quietStretch(road, from, to, n, need) {
   return best;
 }
 
-export function stopsFor(road) {
+// opts.meetAtStart: the big car-meet lot at the start (a summit lookout) instead of a gas station;
+// opts.stationAt: metres along the road for the gas station in that case.
+export function stopsFor(road, opts = {}) {
   const zones = [];
   const free = (i0, i1, side) => zones.every((z) => z.side !== side || i1 < z.i0 - 20 || i0 > z.i1 + 20);
   const room = (i0, i1, side, need) => {
@@ -74,16 +76,24 @@ export function stopsFor(road) {
     return true;
   };
 
-  // Gas station: on the right-hand side where you start, just before the start line.
-  const s0 = 2;
-  const s1 = Math.max(s0 + 14, road.startIndex - 8);
-  const sSide = room(s0, s1, -1, 34) ? -1 : 1;
-  zones.push(new Zone('station', s0, s1, sSide, 24, 3, road));
+  if (opts.meetAtStart) {
+    // Car meet at the very start: a big lot on the outside of the road, looking out over the land.
+    zones.push(new Zone('show', 4, 44, opts.meetSide ?? -1, 24, 4, road));
+    const at = Math.round((opts.stationAt ?? road.length / 2) / 2);
+    const st = quietStretch(road, at - 60, at + 120, 20, 34);
+    if (st) zones.push(new Zone('station', st.i, st.i + 20, st.side, 24, 3, road));
+  } else {
+    // Gas station: on the right-hand side where you start, just before the start line.
+    const s0 = 2;
+    const s1 = Math.max(s0 + 14, road.startIndex - 8);
+    const sSide = room(s0, s1, -1, 34) ? -1 : 1;
+    zones.push(new Zone('station', s0, s1, sSide, 24, 3, road));
 
-  // Car-show lot halfway down: the quietest 80 m near the middle with room beside it.
-  const mid = Math.floor(road.count / 2);
-  const show = quietStretch(road, mid - 120, mid + 120, 40, 34);
-  if (show) zones.push(new Zone('show', show.i, show.i + 40, show.side, 22, 5, road));
+    // Car-show lot halfway down: the quietest 80 m near the middle with room beside it.
+    const mid = Math.floor(road.count / 2);
+    const show = quietStretch(road, mid - 120, mid + 120, 40, 34);
+    if (show) zones.push(new Zone('show', show.i, show.i + 40, show.side, 22, 5, road));
+  }
 
   // Small pull-offs on the outside of medium corners, about every 600 m.
   let last = -1e9;

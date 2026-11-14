@@ -52,7 +52,7 @@ async function botRun(id) {
   return { done: q.index >= road.finishIndex, t, railHits, s: q.s };
 }
 
-for (const id of ['akina', 'dragon']) {
+for (const id of ['dragon']) {
   test(`the rival bot drives ${id} top to bottom cleanly`, async () => {
     const r = await botRun(id);
     console.log(id, JSON.stringify(r));

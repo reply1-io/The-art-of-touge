@@ -5,7 +5,6 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { CAR } from './config.js';
 import { Vehicle } from './physics/vehicle.js';
 import { SoftBarrier } from './physics/barrier.js';
-import { MODES, MODE_LABELS } from './physics/transmission.js';
 import { CarModel } from './render/carModel.js';
 import { CameraRig } from './render/camera.js';
 import { VhsRenderer } from './render/vhs.js';
@@ -29,11 +28,13 @@ import { TyreSmoke } from './render/smoke.js';
 import { SpeedLines } from './render/speedLines.js';
 import { Ambience } from './audio/ambience.js';
 import { Deer } from './world/deer.js';
+import { Wildlife } from './world/wildlife.js';
 import { Online } from './net/online.js';
 import { makeCode, cleanCode } from './net/p2p.js';
 import { HEADLIGHTS } from './config.js';
 import { TuningPanel } from './ui/tuning.js';
 import { Shop } from './ui/shop.js';
+import { MapView } from './ui/mapView.js';
 import { loadSettings, saveSettings, loadTuning, saveTuning } from './settings.js';
 
 const DT = 1 / 60; // fixed physics step
@@ -114,7 +115,7 @@ function applyTime() {
   moon.intensity = p.sunIntensity;
   moon.position.copy(sunDir).multiplyScalar(100);
   // Night shadows from the moon are faint; the lamps carry the light.
-  moon.shadow.intensity = p.stars >= 0.9 ? 0.45 : 0.85;
+  moon.shadow.intensity = p.stars >= 0.9 ? 0.5 : 1;
   hemi.color.setHex(p.hemiSky);
   hemi.groundColor.setHex(p.hemiGround);
   hemi.intensity = p.hemiIntensity;
@@ -122,6 +123,7 @@ function applyTime() {
   sky.setTime(p, sunDir);
   smoke?.setTint({ day: 0xeeeef0, sunset: 0xf3c9b0, night: 0x7d8496 }[settings.time] ?? 0xeeeef0);
   mountain.setTime(p);
+  wildlife?.setTime(p);
   camera.updateProjectionMatrix();
 }
 
@@ -154,6 +156,7 @@ let passIndex = -1;
 const ambience = new Ambience(audio);
 const glintTint = new THREE.Color();
 let deer;
+let wildlife;
 let race;
 let online;
 const sparkP = new THREE.Vector3();
@@ -214,7 +217,9 @@ function renderChoices() {
     const key = box.dataset.setting;
     const options =
       key === 'mode'
-        ? MODES.filter((m) => m !== 'autoClutch').map((m) => [m, MODE_LABELS[m]])
+        ? [['auto', 'Automatic'], ['manual', 'Manual']]
+        : key === 'driveMode'
+        ? [['free', 'Free Roam'], ['touge', 'Touge']]
         : key === 'map'
           ? Object.entries(TRACKS).map(([id, t]) => [id, t.name])
           : key === 'time'
@@ -225,6 +230,8 @@ function renderChoices() {
           ? [[true, 'On'], [false, 'Off']]
           : key === 'steering'
             ? [['buttons', 'Buttons'], ['slider', 'Slider']]
+            : key === 'stage'
+            ? [[-1, 'Full route'], ...(TRACKS[settings.map]?.stages || []).map((st, k) => [k, `${k + 1}. ${st.name}`])]
             : key === 'money'
             ? [['career', 'Earn it'], ['unlimited', 'Unlimited']]
             : key === 'shifter'
@@ -242,7 +249,6 @@ function renderChoices() {
           toast('THE HOST PICKS THE ROAD AND TIME');
           return;
         }
-        // Switching road rebuilds the whole world: save and reload (taking your room with you).
         if (key === 'map' && settings.map !== value) {
           settings.map = value;
           saveSettings(settings);
@@ -271,6 +277,10 @@ function renderChoices() {
 }
 
 function applySettings() {
+  // Free Roam drives off from the picked road; Touge races down it.
+  const touge = settings.driveMode === 'touge';
+  $('btn-drive').classList.toggle('hidden', touge);
+  $('btn-race').classList.toggle('hidden', !touge);
   applyTime();
   updateTitleSub();
   rig.mode = settings.camera;
@@ -334,6 +344,7 @@ function setPaused(p) {
   if (p) {
     input.releaseAll();
     audio.suspend();
+    drawMaps();
   } else {
     audio.resume();
   }
@@ -371,6 +382,77 @@ $('btn-restart').addEventListener('click', () => {
   race?.abort();
   resetCar();
   setPaused(false);
+});
+
+// ---------- The map: pick a road and teleport there ----------
+// The roads of the map each have their own start and finish line; -1 is the whole route.
+function stageRoadId() {
+  return mountain.stage >= 0 ? `${settings.map}:${mountain.stage}` : settings.map;
+}
+function selectStage(k) {
+  settings.stage = k;
+  saveSettings(settings);
+  race?.abort();
+  mountain.setStage(k);
+  race.roadId = stageRoadId();
+  run.best = race.record?.best ?? null;
+  updateTitleSub();
+  drawMaps();
+}
+const maps = [];
+function drawMaps() {
+  for (const m of maps) {
+    m.selected = mountain.stage;
+    // In the pause menu the pin is the car; on the title screen it is where you will start.
+    const p = running && vehicle ? vehicle.body.translation() : null;
+    const s = mountain.spawn.pos;
+    m.pin = p ? [p.x, p.z] : [s[0], s[2]];
+    m.draw();
+  }
+}
+function setupMaps() {
+  for (const c of document.querySelectorAll('canvas.map')) maps.push(new MapView(c, mountain, askTeleport));
+  window.__maps = maps;
+  for (const el of document.querySelectorAll('.map-loading')) el.remove();
+  // Redraw once the pixel font has loaded so the names are measured in it.
+  document.fonts?.ready.then(() => {
+    for (const m of maps) m.base = null;
+    drawMaps();
+  });
+  drawMaps();
+}
+window.addEventListener('resize', () => setTimeout(drawMaps, 100));
+let teleportTo = -1;
+function askTeleport(k) {
+  const st = mountain.track.stages[k];
+  if (!st) return;
+  teleportTo = k;
+  const touge = settings.driveMode === 'touge';
+  const km = ((st.s1 - st.s0) / 1000).toFixed(1);
+  $('tp-title').textContent = touge ? `RACE ${st.name.toUpperCase()}?` : `TELEPORT TO ${st.name.toUpperCase()}?`;
+  $('tp-info').textContent = `${k + 1} of ${mountain.track.stages.length} · ${km} km · ${st.blurb}`;
+  $('btn-tp-go').textContent = touge ? 'RACE HERE' : 'TELEPORT';
+  for (const m of maps) {
+    m.selected = k;
+    m.draw();
+  }
+  $('teleport').classList.remove('hidden');
+}
+$('btn-tp-cancel').addEventListener('click', () => {
+  $('teleport').classList.add('hidden');
+  drawMaps();
+});
+$('btn-tp-go').addEventListener('click', () => {
+  $('teleport').classList.add('hidden');
+  selectStage(teleportTo);
+  if (settings.driveMode === 'touge') {
+    openRaceMenu();
+    return;
+  }
+  if (!running) enterGame();
+  resetCar();
+  setPaused(false);
+  toast(mountain.track.stages[teleportTo].name.toUpperCase(), 2);
 });
 
 // ---------- Race menu and results ----------
@@ -775,12 +857,14 @@ function titleCamera(dt) {
 }
 
 function updateTitleSub() {
-  const t = TRACKS[settings.map] || TRACKS.akina;
+  const t = TRACKS[settings.map] || TRACKS.world;
   const time = TIMES[settings.time] || TIMES.night;
   $('title-sub').innerHTML = '';
   const b = document.createElement('b');
   b.textContent = t.name;
-  $('title-sub').append(`${CAR.name} · `, b, ` · ${t.blurb} · ${time.name}`);
+  const st = t.stages && (settings.stage ?? -1) >= 0 ? t.stages[settings.stage] : null;
+  $('title-sub').append(`${CAR.name} · `, b, st ? ` · ${st.name}: ${st.blurb}` : ` · ${t.blurb}`, ` · ${time.name}`);
+  for (const f of document.querySelectorAll('.stage-field')) f.classList.toggle('hidden', !t.stages);
 }
 
 // ---------- Main loop ----------
@@ -847,6 +931,7 @@ function frame(now) {
   carModel.updateFx(dt);
   online.update(dt, vehicle, controls, timePreset.lights);
   sparks.update(dt);
+  wildlife.update(dt, camera, run.hint);
   if (active || !running) smoke.update(active ? dt : 0, vehicle);
   if (active) ambience.update(dt, settings.time);
   // In-car view: cockpit on, arms follow the wheel, the shifter and the handbrake.
@@ -936,7 +1021,7 @@ async function boot() {
   world.timestep = DT;
   $('loading').textContent = 'Building the mountain…';
   await new Promise((r) => setTimeout(r, 30));
-  mountain = new Mountain(world, scene, settings.map);
+  mountain = new Mountain(world, scene, settings.map, settings.stage ?? -1);
   vehicle = new Vehicle(world, CAR, tune, settings.mode);
   vehicle.surfaceOf = mountain.layout.surfaceOf;
   // Guardrails are a cushion, not a wall: see physics/barrier.js.
@@ -965,8 +1050,10 @@ async function boot() {
     if (o.isMesh) o.castShadow = true;
   });
   deer = new Deer(scene, mountain.road, mountain.terrain);
+  wildlife = new Wildlife(scene, mountain.road, mountain.terrain);
+  wildlife.setTime(timePreset);
   online = new Online(scene, world, RAPIER);
-  race = new Race({ scene, world, mountain, roadId: settings.map, wallet, toast, look: () => lookOf(tune) });
+  race = new Race({ scene, world, mountain, roadId: stageRoadId(), wallet, toast, look: () => lookOf(tune) });
   race.onFinish = showResults;
   run.best = race.record?.best ?? null;
   setupOnline();
@@ -981,6 +1068,7 @@ async function boot() {
   resetCar();
   applySettings();
   renderChoices();
+  setupMaps();
   $('loading').textContent = '';
   try {
     if (sessionStorage.getItem('touge.openShop')) {
@@ -992,7 +1080,7 @@ async function boot() {
   }
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { get wildlifeDbg() { return wildlife; }, get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;

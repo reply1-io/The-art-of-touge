@@ -68,17 +68,27 @@
       </div>
       <div class="panel">
         <div class="field">
-          <span class="label">Road</span>
-          <div class="choices" data-setting="map"></div>
+          <span class="label">Map <span class="map-hint">Tap a road to go there</span></span>
+          <div class="map-wrap"><canvas class="map" aria-label="Map of the mountain roads"></canvas><span class="map-loading">Drawing the map&hellip;</span></div>
         </div>
         <div class="field">
-          <span class="label">Time</span>
-          <div class="choices" data-setting="time"></div>
+          <span class="label">Driving mode</span>
+          <div class="choices" data-setting="driveMode"></div>
         </div>
         <div class="field">
           <span class="label">Transmission</span>
           <div class="choices" data-setting="mode"></div>
         </div>
+        <div class="field">
+          <span class="label">Time of day</span>
+          <div class="choices" data-setting="time"></div>
+        </div>
+        <div class="row">
+          <button type="button" id="btn-drive" class="big">DRIVE</button>
+          <button type="button" id="btn-race" class="big">RACE</button>
+          <button type="button" id="btn-shop" class="big ghost">TUNING SHOP</button>
+        </div>
+        <p class="hint" id="loading">Loading physics&hellip;</p>
         <div class="field">
           <span class="label">Money</span>
           <div class="choices" data-setting="money"></div>
@@ -102,29 +112,36 @@
             </div>
           </details>
         </div>
-        <div class="row">
-          <button type="button" id="btn-drive" class="big">FREE DRIVE</button>
-          <button type="button" id="btn-race" class="big">RACE</button>
-          <button type="button" id="btn-shop" class="big ghost">TUNING SHOP</button>
-        </div>
-        <p class="hint" id="loading">Loading physics&hellip;</p>
       </div>
     </section>
 
     <section id="pause" class="screen side hidden">
       <div class="panel">
         <h2>PAUSED <span class="title-money"></span></h2>
-        <div class="field">
-          <span class="label">Time</span>
-          <div class="choices" data-setting="time"></div>
+        <div class="row">
+          <button type="button" id="btn-resume" class="big">RESUME</button>
+          <button type="button" id="btn-recover" class="big ghost">BACK ON ROAD</button>
         </div>
         <div class="field">
-          <span class="label">Road</span>
-          <div class="choices" data-setting="map"></div>
+          <span class="label">Map <span class="map-hint">Tap a road to go there</span></span>
+          <div class="map-wrap"><canvas class="map" aria-label="Map of the mountain roads"></canvas><span class="map-loading">Drawing the map&hellip;</span></div>
+        </div>
+        <div class="field">
+          <span class="label">Driving mode</span>
+          <div class="choices" data-setting="driveMode"></div>
         </div>
         <div class="field">
           <span class="label">Transmission</span>
           <div class="choices" data-setting="mode"></div>
+        </div>
+        <div class="field">
+          <span class="label">Time of day</span>
+          <div class="choices" data-setting="time"></div>
+        </div>
+        <div class="row">
+          <button type="button" id="btn-restart" class="big ghost">BACK TO THE START</button>
+          <button type="button" id="btn-race2" class="big">RACE</button>
+          <button type="button" id="btn-shop2" class="big ghost">TUNING SHOP</button>
         </div>
         <div class="field online">
           <span class="label">Online</span>
@@ -157,15 +174,6 @@
           <span class="label">Shifter</span>
           <div class="choices" data-setting="shifter"></div>
         </div>
-        <div class="row">
-          <button type="button" id="btn-resume" class="big">RESUME</button>
-          <button type="button" id="btn-recover" class="big ghost">BACK ON ROAD</button>
-          <button type="button" id="btn-restart" class="big ghost">RESTART AT SUMMIT</button>
-        </div>
-        <div class="row">
-          <button type="button" id="btn-race2" class="big">RACE</button>
-          <button type="button" id="btn-shop2" class="big ghost">TUNING SHOP</button>
-        </div>
         <button type="button" id="btn-tuning" class="link">Dev tuning panel</button>
       </div>
     </section>
@@ -191,6 +199,17 @@
         <div class="row">
           <button type="button" id="btn-race-go" class="big">START</button>
           <button type="button" id="btn-race-back" class="big ghost">BACK</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="teleport" class="screen hidden">
+      <div class="panel">
+        <h2 id="tp-title">TELEPORT?</h2>
+        <p class="race-info" id="tp-info"></p>
+        <div class="row">
+          <button type="button" id="btn-tp-go" class="big">TELEPORT</button>
+          <button type="button" id="btn-tp-cancel" class="big ghost">CANCEL</button>
         </div>
       </div>
     </section>

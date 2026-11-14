@@ -13,7 +13,6 @@ const GHOST_DT = 0.1; // seconds between ghost samples
 
 // Prize money per road: time attack base (scaled by pace) and battle win / loss.
 const PRIZES = {
-  akina: { par: 255, base: 500, win: 1500, lose: 200 },
   dragon: { par: 540, base: 800, win: 2200, lose: 300 },
 };
 
@@ -67,7 +66,10 @@ export class Race {
   }
 
   get prize() {
-    return PRIZES[this.roadId] || PRIZES.akina;
+    if (PRIZES[this.roadId]) return PRIZES[this.roadId];
+    // Other routes and stages: scaled by the distance from start to finish.
+    const km = ((this.road.finishIndex - this.road.startIndex) * 2) / 1000;
+    return { par: km * 52, base: Math.round((km * 100) / 10) * 10, win: Math.round(km * 300 / 50) * 50, lose: Math.round(km * 40 / 10) * 10 };
   }
 
   // Begin a race. placePlayer(pose) puts the player's car on the grid.
