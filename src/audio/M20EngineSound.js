@@ -19,7 +19,7 @@
 // Browser rule: create/resume the AudioContext inside the click/tap handler,
 // before any await, or phones keep it silent.
 
-import { M20Dsp, Biquad, Delay, randn, crankRpm, exhaustName, CRANK_SECONDS, IDLE_RPM, ENGINES, EXHAUSTS, TAU } from './m20-dsp.js';
+import { M20Dsp, Biquad, Delay, randn, crankRpm, exhaustName, CRANK_SECONDS, IDLE_RPM, ENGINES, EXHAUSTS, TURBOS, TAU } from './m20-dsp.js';
 export { crankRpm, CRANK_SECONDS, IDLE_RPM, ENGINES, EXHAUSTS };
 
 function workletSource(dspSource) {
@@ -31,6 +31,7 @@ function workletSource(dspSource) {
         `const TAU = ${TAU};`,
         `const ENGINES = ${JSON.stringify(ENGINES)};`,
         `const EXHAUSTS = ${JSON.stringify(EXHAUSTS)};`,
+        `const TURBOS = ${JSON.stringify(TURBOS)};`,
         `const IDLE_RPM = ${IDLE_RPM};`,
         `const CRANK_SECONDS = ${CRANK_SECONDS};`,
         randn, crankRpm, exhaustName, Biquad, Delay, M20Dsp,
@@ -113,11 +114,12 @@ export class M20EngineSound {
   setExhaust(x) { this._send({ set: { exhaust: exhaustName(x) } }); }
 
   /**
-   * 48 mm turbo: whistle, air rush and compressor flutter on lift-off (no blow-off valve).
+   * Turbo: whistle, air rush and compressor flutter on lift-off (no blow-off valve).
+   * size: 'small' (48 mm) or 'big' (T3-size: deeper whistle, slower spool and flutter).
    * Boost (0..1) is modelled here unless you pass your own each frame with
    * setState({ boost }). engine.boost reads it back.
    */
-  setTurbo(on) { this._send({ set: { turbo: on ? 1 : 0 } }); }
+  setTurbo(on, size = 'small') { this._send({ set: { turbo: on ? 1 : 0, turboSize: size } }); }
 
   /** 'm20' (BMW straight-six) or 'ls3' (GM V8). Switches instantly, even while running. */
   setEngine(name) {

@@ -19,7 +19,8 @@
 // pumped air: weaker and duller. A proper lift-off from high revs can give a
 // couple of pops (more with a louder exhaust); limiter and shift cuts never do.
 //
-// Turbo (set({ turbo: 1 })): a 48 mm turbo with its own boost model (or the game's boost via
+// Turbo (set({ turbo: 1, turboSize: 'small' | 'big' })): a 48 mm turbo ('small') or a
+// T3-size one ('big', deeper and slower) with its own boost model (or the game's boost via
 // set({ boost })), a clean compressor whistle that follows the shaft speed (and keeps singing
 // as the shaft spins down after a lift), an air rush, and compressor flutter on lift-off
 // (no blow-off valve). Flutter and whistle tuned against a recording of a turbo car.
@@ -126,6 +127,13 @@ export const EXHAUSTS = {
 };
 
 /** 'stock' | 'street' | 'race', or a number 0 (stock) .. 1 (race) for older callers. */
+// Turbo sizes: whistle range (Hz at a still and a full-speed shaft), how fast the shaft spins
+// up and down (s), the boost model (rpm where boost starts, rpm to full, lag s), flutter rate.
+export const TURBOS = {
+  small: { fw: [2400, 7200], shaftUp: 0.3, shaftDown: 0.85, spool: 2200, range: 1200, lag: 0.3, flutter: [15, 8], whistle: 1 },
+  big:   { fw: [1800, 5800], shaftUp: 0.55, shaftDown: 1.3, spool: 3900, range: 1600, lag: 0.85, flutter: [11, 7], whistle: 0.85 },
+};
+
 export function exhaustName(x) {
   if (typeof x === 'string') return EXHAUSTS[x] ? x : 'stock';
   return x < 0.3 ? 'stock' : x < 0.8 ? 'street' : 'race';
@@ -190,6 +198,7 @@ export class M20Dsp {
     this.T = { on: 0, boost: 0, shaft: 0, armed: false, flut: 0, flutRate: 0, flutPh: 0,
                flutA: 1, whPh: 0, whPh2: 0, whAmp: 0 };
     this.tWhoosh = new Biquad();
+    this.cabin = new Biquad().set('lp', 20000, 0.7, 0, fs); this.cabinHz = 20000; // in-car muffling
     this.tFlut = new Biquad().set('bp', 900, 0.6, 0, fs);   // a broad, breathy chatter
     this.tFlutLo = new Biquad().set('lp', 450, 0.7, 0, fs);
     this.subHz = 28;
@@ -262,7 +271,7 @@ export class M20Dsp {
     const T = this.T, dt = n / this.fs;
     T.on += ((t.turbo ? 1 : 0) - T.on) * Math.min(1, dt / 0.15);
     if (T.on < 0.001 && !t.turbo) { T.boost = T.shaft = T.flut = 0; return; }
-    const r = this.rpmS;
+    const r = this.rpmS, Z = TURBOS[t.turboSize] || TURBOS.small;
     // a lift only counts once the throttle stays shut a moment: rev-limiter cuts (about
     // 0.07 s) keep the boost, a real lift or a gear change (0.2 s or more) lets it go
     T.closedT = c.throttle < 0.15 ? (T.closedT || 0) + dt : 0;
@@ -272,17 +281,18 @@ export class M20Dsp {
       T.boost = Math.min(1, Math.max(0, t.boost)); // the game's own boost
     } else {
       // 48 mm (GT2860-class): boost from about 2,200 rpm, full by about 3,400, short lag
-      const tgt = th * Math.min(1, Math.max(0, (r - 2200) / 1200));
-      const tau = tgt > T.boost ? 0.3 : th < 0.15 ? 0.12 : 0.25;
+      const tgt = th * Math.min(1, Math.max(0, (r - Z.spool) / Z.range));
+      const tau = tgt > T.boost ? Z.lag : th < 0.15 ? 0.12 : 0.25;
       T.boost += (tgt - T.boost) * Math.min(1, dt / tau);
     }
     const shaftT = Math.max(T.boost, (0.1 + 0.25 * th) * Math.min(1, r / 7000));
-    T.shaft += (shaftT - T.shaft) * Math.min(1, dt / (shaftT > T.shaft ? 0.3 : 0.85));
+    T.shaft += (shaftT - T.shaft) * Math.min(1, dt / (shaftT > T.shaft ? Z.shaftUp : Z.shaftDown));
+    T.Z = Z;
     // lift-off with boost: compressor flutter (no blow-off valve)
     if (th > 0.5) T.armed = true;
     if (T.armed && T.closedT >= 0.09) {
       T.armed = false;
-      if (T.boost > 0.15 && t.turbo) { T.flut = Math.min(1, 0.3 + T.boost); T.flutRate = 15 + 8 * T.boost; T.flutPh = 0; }
+      if (T.boost > 0.15 && t.turbo) { T.flut = Math.min(1, 0.3 + T.boost); T.flutRate = Z.flutter[0] + Z.flutter[1] * T.boost; T.flutPh = 0; }
     }
   }
 
@@ -506,15 +516,22 @@ export class M20Dsp {
       // low cut follows the exhaust: louder pipes trade sub mud for punch
       const subT = Math.max(X.sub, E.subMin || 0);
       if (Math.abs(subT - this.subHz) > 0.5) { this.subHz = subT; this.dcHp.set('hp', subT, 0.7, 0, fs); }
+      // in the car (set({ cabin: 1 })): the exhaust is heard through the bulkhead; the turbo
+      // (added below) is under the bonnet in front of you, so it stays clear
+      const cabT = 20000 - (20000 - 1100) * Math.min(1, Math.max(0, this.target.cabin || 0));
+      if (Math.abs(cabT - this.cabinHz) > 1) { this.cabinHz += (cabT - this.cabinHz) * 0.01; this.cabin.set('lp', this.cabinHz, 0.7, 0, fs); }
+      if (this.cabinHz < 19000) y = this.cabin.run(y);
+
       // turbo: a clean compressor whistle that follows the shaft (loud on throttle, still
       // singing as the shaft spins down after a lift), an air rush, and flutter on a lift
       const T = this.T;
       if (T.on > 0.001) {
-        const sh = T.shaft, fw = 2400 + 4800 * sh;   // a small turbo spins fast: up to about 7.2 kHz
+        const Z = T.Z || TURBOS.small;
+        const sh = T.shaft, fw = Z.fw[0] + (Z.fw[1] - Z.fw[0]) * sh; // small: up to about 7.2 kHz
         T.whPh += fw / fs; T.whPh -= Math.floor(T.whPh);
         T.whPh2 += fw * 2.01 / fs; T.whPh2 -= Math.floor(T.whPh2);
         T.whAmp += (Math.pow(sh, 1.5) * (0.55 + 0.45 * thr) - T.whAmp) * 0.0008;
-        let ty = (Math.sin(TAU * T.whPh) + 0.15 * Math.sin(TAU * T.whPh2)) * 0.55 * T.whAmp;
+        let ty = (Math.sin(TAU * T.whPh) + 0.15 * Math.sin(TAU * T.whPh2)) * 0.55 * Z.whistle * T.whAmp;
         ty += this.tWhoosh.run(randn()) * 0.4 * sh * sh * (0.2 + 0.8 * thr);
         if (T.flut > 0.0005) {
           T.flutRate *= 1 - 0.45 / fs;                // the chatter slows as the boost dies
