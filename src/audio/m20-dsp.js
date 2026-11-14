@@ -19,9 +19,10 @@
 // pumped air: weaker and duller. A proper lift-off from high revs can give a
 // couple of pops (more with a louder exhaust); limiter and shift cuts never do.
 //
-// Turbo (set({ turbo: 1 })): a 58 mm turbo with its own boost model (or the game's boost via
-// set({ boost })), compressor whistle and air rush that build with boost, and on lift-off a
-// blow-off valve, compressor flutter, or both (set({ turboLift: 'bov' | 'flutter' | 'both' })).
+// Turbo (set({ turbo: 1 })): a 48 mm turbo with its own boost model (or the game's boost via
+// set({ boost })), a clean compressor whistle that follows the shaft speed (and keeps singing
+// as the shaft spins down after a lift), an air rush, and compressor flutter on lift-off
+// (no blow-off valve). Flutter and whistle tuned against a recording of a turbo car.
 //
 // Exhausts are their own sound presets (EXHAUSTS): stock, street and race change the
 // muffler, rasp, rumble, resonances and drive, and the aftermarket ones add a heavy
@@ -186,11 +187,11 @@ export class M20Dsp {
     this.cycleN = 0;                  // engine cycles, for the every-other-cycle chop
     this.zingAmp = 0;
     // turbo state: boost and shaft speed 0..1, lift-off envelopes and oscillator phases
-    this.T = { on: 0, boost: 0, shaft: 0, armed: false, bov: 0, bovAtk: 1, flut: 0, flutRate: 0,
-               flutPh: 0, whPh: 0, whPh2: 0, bovPh: 0 };
-    this.tWhoosh = new Biquad(); this.tBov = new Biquad().set('bp', 2600, 0.7, 0, fs);
-    this.tBovHp = new Biquad().set('hp', 900, 0.7, 0, fs);
-    this.tFlut = new Biquad().set('bp', 520, 1.1, 0, fs);
+    this.T = { on: 0, boost: 0, shaft: 0, armed: false, flut: 0, flutRate: 0, flutPh: 0,
+               flutA: 1, whPh: 0, whPh2: 0, whAmp: 0 };
+    this.tWhoosh = new Biquad();
+    this.tFlut = new Biquad().set('bp', 900, 0.6, 0, fs);   // a broad, breathy chatter
+    this.tFlutLo = new Biquad().set('lp', 450, 0.7, 0, fs);
     this.subHz = 28;
     this.onCycle = null;
     this.fs = fs;
@@ -260,7 +261,7 @@ export class M20Dsp {
   _turbo(n, t, c) {
     const T = this.T, dt = n / this.fs;
     T.on += ((t.turbo ? 1 : 0) - T.on) * Math.min(1, dt / 0.15);
-    if (T.on < 0.001 && !t.turbo) { T.boost = T.shaft = T.bov = T.flut = 0; return; }
+    if (T.on < 0.001 && !t.turbo) { T.boost = T.shaft = T.flut = 0; return; }
     const r = this.rpmS;
     // a lift only counts once the throttle stays shut a moment: rev-limiter cuts (about
     // 0.07 s) keep the boost, a real lift or a gear change (0.2 s or more) lets it go
@@ -270,21 +271,18 @@ export class M20Dsp {
     if (typeof t.boost === 'number') {
       T.boost = Math.min(1, Math.max(0, t.boost)); // the game's own boost
     } else {
-      const tgt = th * Math.min(1, Math.max(0, (r - 2600) / 1700));
-      const tau = tgt > T.boost ? 0.5 : th < 0.15 ? 0.1 : 0.3;
+      // 48 mm (GT2860-class): boost from about 2,200 rpm, full by about 3,400, short lag
+      const tgt = th * Math.min(1, Math.max(0, (r - 2200) / 1200));
+      const tau = tgt > T.boost ? 0.3 : th < 0.15 ? 0.12 : 0.25;
       T.boost += (tgt - T.boost) * Math.min(1, dt / tau);
     }
     const shaftT = Math.max(T.boost, (0.1 + 0.25 * th) * Math.min(1, r / 7000));
-    T.shaft += (shaftT - T.shaft) * Math.min(1, dt / (shaftT > T.shaft ? 0.45 : 0.9));
-    // lift-off with boost: blow-off valve, flutter, or both
+    T.shaft += (shaftT - T.shaft) * Math.min(1, dt / (shaftT > T.shaft ? 0.3 : 0.85));
+    // lift-off with boost: compressor flutter (no blow-off valve)
     if (th > 0.5) T.armed = true;
     if (T.armed && T.closedT >= 0.09) {
       T.armed = false;
-      if (T.boost > 0.15 && t.turbo) {
-        const lift = t.turboLift || 'both';
-        if (lift !== 'flutter') { T.bov = Math.min(1, 0.35 + T.boost); T.bovAtk = 0; T.bovPh = 0; }
-        if (lift !== 'bov') { T.flut = (lift === 'both' ? 0.55 : 1) * Math.min(1, 0.3 + T.boost); T.flutRate = 17 + 9 * T.boost; T.flutPh = 0; }
-      }
+      if (T.boost > 0.15 && t.turbo) { T.flut = Math.min(1, 0.3 + T.boost); T.flutRate = 15 + 8 * T.boost; T.flutPh = 0; }
     }
   }
 
@@ -508,27 +506,25 @@ export class M20Dsp {
       // low cut follows the exhaust: louder pipes trade sub mud for punch
       const subT = Math.max(X.sub, E.subMin || 0);
       if (Math.abs(subT - this.subHz) > 0.5) { this.subHz = subT; this.dcHp.set('hp', subT, 0.7, 0, fs); }
-      // turbo: compressor whistle + air rush with the shaft, then BOV and flutter on a lift
+      // turbo: a clean compressor whistle that follows the shaft (loud on throttle, still
+      // singing as the shaft spins down after a lift), an air rush, and flutter on a lift
       const T = this.T;
       if (T.on > 0.001) {
-        const sh = T.shaft, fw = 1700 + 5200 * sh;
+        const sh = T.shaft, fw = 2400 + 4800 * sh;   // a small turbo spins fast: up to about 7.2 kHz
         T.whPh += fw / fs; T.whPh -= Math.floor(T.whPh);
-        T.whPh2 += fw * 2.03 / fs; T.whPh2 -= Math.floor(T.whPh2);
-        let ty = (Math.sin(TAU * T.whPh) + 0.3 * Math.sin(TAU * T.whPh2)) * 0.22 * sh * sh * (0.35 + 0.65 * thr);
-        ty += this.tWhoosh.run(randn()) * 0.7 * sh * sh * (0.2 + 0.8 * thr);
-        if (T.bov > 0.0005) {
-          T.bovAtk = Math.min(1, T.bovAtk + 1 / (0.006 * fs));
-          const a = T.bov * T.bovAtk;
-          T.bovPh += fw * (0.35 + 0.65 * T.bov) / fs; T.bovPh -= Math.floor(T.bovPh); // falling whistle
-          ty += (this.tBovHp.run(this.tBov.run(randn())) * 4.5 + Math.sin(TAU * T.bovPh) * 0.25) * a;
-          T.bov *= 1 - 1 / ((0.18 + 0.32 * T.bov) * fs);
-        }
+        T.whPh2 += fw * 2.01 / fs; T.whPh2 -= Math.floor(T.whPh2);
+        T.whAmp += (Math.pow(sh, 1.5) * (0.55 + 0.45 * thr) - T.whAmp) * 0.0008;
+        let ty = (Math.sin(TAU * T.whPh) + 0.15 * Math.sin(TAU * T.whPh2)) * 0.55 * T.whAmp;
+        ty += this.tWhoosh.run(randn()) * 0.4 * sh * sh * (0.2 + 0.8 * thr);
         if (T.flut > 0.0005) {
-          T.flutRate *= 1 - 0.55 / fs;                // the chatter slows as the boost dies
+          T.flutRate *= 1 - 0.45 / fs;                // the chatter slows as the boost dies
           T.flutPh += T.flutRate / fs;
-          const g = Math.pow(0.5 + 0.5 * Math.cos(TAU * T.flutPh), 6);
-          ty += this.tFlut.run(randn()) * g * T.flut * 20;
-          T.flut *= 1 - 1 / (0.42 * fs);
+          if (T.flutPh >= 1) { T.flutPh -= 1; T.flutA = 0.8 + 0.4 * Math.random(); } // no two pulses alike
+          // smooth swells, not hard gates: it dips about 12 dB between pulses
+          const g = 0.4 + 0.6 * Math.pow(0.5 + 0.5 * Math.cos(TAU * T.flutPh), 2);
+          const n = randn();
+          ty += (this.tFlut.run(n) * 1 + this.tFlutLo.run(n) * 0.6) * g * T.flutA * T.flut * 5;
+          T.flut *= 1 - 1 / (0.55 * fs);
         }
         y += ty * T.on;
       }

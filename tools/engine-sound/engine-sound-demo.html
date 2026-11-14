@@ -145,14 +145,7 @@ input[type=range] { width: 100%; accent-color: var(--needle); }
         <div class="row"><span class="seglabel">Turbo</span>
           <div class="seg" role="group" aria-label="Turbo">
             <button id="tOff" aria-pressed="true">Off</button>
-            <button id="tOn" aria-pressed="false">58 mm</button>
-          </div>
-        </div>
-        <div class="row" id="liftRow" hidden><span class="seglabel">Lift-off</span>
-          <div class="seg" role="group" aria-label="Lift-off sound">
-            <button id="lBov" aria-pressed="false">BOV</button>
-            <button id="lFlut" aria-pressed="false">Flutter</button>
-            <button id="lBoth" aria-pressed="true">Both</button>
+            <button id="tOn" aria-pressed="false">48 mm</button>
           </div>
         </div>
         <div class="row"><span class="seglabel">Exhaust</span>
@@ -264,7 +257,7 @@ async function ensureEngine() {
   engine.connect(out);
   engine.onCycle = (c) => { lastCycle = c; };
   engine.setExhaust(exhaust);
-  engine.setTurbo(turbo, lift);
+  engine.setTurbo(turbo);
 }
 
 $('btnStart').onclick = async () => {
@@ -366,18 +359,13 @@ $('mDrive').onclick = () => setMode('drive');
 $('mManual').onclick = () => setMode('manual');
 let exhaust = 'stock';
 // ---------- turbo ----------
-let turbo = false, lift = 'both';
+let turbo = false; // 48 mm: whistle, air rush, flutter on lift-off
 function setTurboUi() {
   $('tOff').setAttribute('aria-pressed', String(!turbo)); $('tOn').setAttribute('aria-pressed', String(turbo));
-  for (const [id, k] of [['lBov', 'bov'], ['lFlut', 'flutter'], ['lBoth', 'both']]) $(id).setAttribute('aria-pressed', String(k === lift));
-  $('liftRow').hidden = !turbo;
-  engine?.setTurbo(turbo, lift);
+  engine?.setTurbo(turbo);
 }
 $('tOff').onclick = () => { turbo = false; setTurboUi(); };
 $('tOn').onclick = () => { turbo = true; setTurboUi(); };
-$('lBov').onclick = () => { lift = 'bov'; setTurboUi(); };
-$('lFlut').onclick = () => { lift = 'flutter'; setTurboUi(); };
-$('lBoth').onclick = () => { lift = 'both'; setTurboUi(); };
 const boostNow = () => (turbo && engine ? engine.boost || 0 : 0);
 function setExhaust(name) {
   exhaust = name;
@@ -538,7 +526,7 @@ function frame(now) {
   $('roRpm').textContent = Math.round(sim.rpm / 10) * 10;
   $('roGear').textContent = mode === 'drive' && state === 'running' ? (sim.shift > 0 ? '–' : sim.gear) : 'N';
   $('roSpeed').textContent = Math.round(sim.v * 3.6);
-  $('roBoost').textContent = turbo ? (boostNow() * 20).toFixed(1) : '–'; // about 20 psi at full boost
+  $('roBoost').textContent = turbo ? (boostNow() * 15).toFixed(1) : '–'; // about 15 psi at full boost
   drawScope();
   requestAnimationFrame(frame);
 }

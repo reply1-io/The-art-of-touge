@@ -8,7 +8,7 @@
 //   // every frame from your car sim:
 //   engine.setRpm(car.rpm);
 //   engine.setThrottle(car.throttle);  // 0..1; 0 above idle = overrun (fuel cut)
-//   engine.setTurbo(true, 'both');     // 58 mm turbo: spool, blow-off valve, flutter
+//   engine.setTurbo(true);             // 48 mm turbo: whistle, spool, flutter on lift-off
 //   engine.setExhaust('street');       // 'stock' | 'street' | 'race'
 //   engine.stop();
 //
@@ -113,11 +113,11 @@ export class M20EngineSound {
   setExhaust(x) { this._send({ set: { exhaust: exhaustName(x) } }); }
 
   /**
-   * 58 mm turbo. on: true/false. lift: what you hear when you lift off with boost:
-   * 'bov' (blow-off valve), 'flutter' (compressor surge) or 'both'. Boost (0..1) is modelled
-   * here unless you pass your own each frame with setState({ boost }). engine.boost reads it.
+   * 48 mm turbo: whistle, air rush and compressor flutter on lift-off (no blow-off valve).
+   * Boost (0..1) is modelled here unless you pass your own each frame with
+   * setState({ boost }). engine.boost reads it back.
    */
-  setTurbo(on, lift = 'both') { this._send({ set: { turbo: on ? 1 : 0, turboLift: lift } }); }
+  setTurbo(on) { this._send({ set: { turbo: on ? 1 : 0 } }); }
 
   /** 'm20' (BMW straight-six) or 'ls3' (GM V8). Switches instantly, even while running. */
   setEngine(name) {
