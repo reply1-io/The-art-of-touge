@@ -2,8 +2,9 @@
 import './styles.css';
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { CAR } from './config.js';
+import { CAR, partsSetup } from './config.js';
 import { Vehicle } from './physics/vehicle.js';
+import { Engine } from './physics/engine.js';
 import { SoftBarrier } from './physics/barrier.js';
 import { CarModel } from './render/carModel.js';
 import { CameraRig } from './render/camera.js';
@@ -623,6 +624,52 @@ shop.onCar = (id) => {
   }
   location.reload();
 };
+// ---------- Revving the car in the workshop ----------
+// The car's engine on its own (out of gear), driven by the rev button and heard through the same
+// engine sound as on the road, with whatever intake, turbo and exhaust are fitted.
+let revCar = null;
+const revExhaust = new ExhaustEvents();
+shop.onRev = () => {
+  if (!revCar) {
+    const engine = new Engine(CAR.engine);
+    revCar = { engine, trans: { gear: 0, grindTimer: 0, coupling: 0 }, throttlePedal: 0, brakePedal: 0, speed: 0, forwardSpeed: 0, wheels: [] };
+  }
+  const p = partsSetup(tune);
+  revCar.engine.turbo = p.turbo;
+  revCar.engine.intake = p.intake;
+  audio.start();
+  audio.setMuted(!settings.sound);
+  audio.resume();
+};
+function shopEngine(dt) {
+  if (!revCar) return;
+  const e = revCar.engine;
+  const thr = shop.revHeld ? 1 : 0;
+  revCar.throttlePedal = thr;
+  const n = Math.max(1, Math.ceil(dt * 240));
+  for (let k = 0; k < n; k++) {
+    const h = dt / n;
+    e.updateBoost(h, thr);
+    e.integrate(e.torque(thr), h);
+    e.checkStall(false);
+  }
+  const ev = revExhaust.update(revCar, dt, tune.exhaust);
+  audio.setExhaust(tune.exhaust || 'stock');
+  audio.setParts(tune.intake || 'stock', tune.turbo || 'none');
+  audio.update(revCar, dt, ev);
+  // Race exhaust: flames off the limiter and when you lift.
+  if (tune.exhaust === 'race') {
+    if (ev.lift) shop.car.flame(1);
+    if (ev.limiter) shop.car.flame(0.6);
+  }
+}
+shop.onClose = () => {
+  // Leaving the workshop: the engine you were revving falls quiet.
+  revCar = null;
+  shop.revHeld = false;
+  if (!running || paused) audio.suspend();
+};
+
 // An engine swap changes the car's engine for the whole session: reload, straight back into the shop.
 shop.onEngine = () => {
   saveTuning(tune);
@@ -1171,6 +1218,7 @@ function frame(now) {
   // The tuning shop has the screen: draw the garage and the turntable instead of the road.
   if (shop.isOpen) {
     shop.update(dt);
+    shopEngine(dt);
     vhs.render(shop.scene, shop.camera, now / 1000);
     flare.draw(dt, camera, sunDir, 0, [0, 0, 0], false);
     hud.draw(null);
@@ -1310,7 +1358,7 @@ async function boot() {
   }
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { get onRoad() { return onRoad; }, get wildlifeDbg() { return wildlife; }, get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { get revCar() { return revCar; }, get onRoad() { return onRoad; }, get wildlifeDbg() { return wildlife; }, get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;

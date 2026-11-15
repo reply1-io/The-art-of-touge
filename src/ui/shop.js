@@ -1,4 +1,4 @@
-// Tuning shop: the car on a turntable in a garage, with tabs for wheels, tyres, suspension and
+// Tuning shop: the car in a home workshop, with tabs for wheels, tyres, suspension and
 // drivetrain. Every change shows on the car straight away (wheels, sidewalls, camber and ride
 // height are all visible), applies to the physics, and is saved on the device.
 import * as THREE from 'three';
@@ -80,101 +80,261 @@ function textTexture(lines, w, h, draw) {
   return t;
 }
 
+// Someone's home workshop: a single-car garage with a bare concrete floor, block walls, a
+// workbench and pegboard of tools, shelves of parts, a rolling tool chest, an engine on a stand and
+// strip lights overhead. The car just sits on the floor; the camera walks round it.
 function buildGarage(scene) {
-  scene.background = new THREE.Color(0x0d0f14);
-  scene.fog = new THREE.Fog(0x0d0f14, 9, 26);
-  scene.add(new THREE.HemisphereLight(0x8a96b8, 0x1a1712, 1.1));
-  const key = new THREE.SpotLight(0xffe9c8, 260, 30, 0.75, 0.6, 1.2);
-  key.position.set(2.5, 7, 4);
-  key.target.position.set(0, 0, 0);
-  scene.add(key, key.target);
-  const rim = new THREE.DirectionalLight(0x7fb0ff, 0.9);
-  rim.position.set(-5, 3, -6);
-  scene.add(rim);
-  const fill = new THREE.DirectionalLight(0xffb36b, 0.5);
-  fill.position.set(-6, 2, 5);
-  scene.add(fill);
+  scene.background = new THREE.Color(0x15130f);
+  scene.fog = new THREE.Fog(0x15130f, 12, 30);
+  const lambert = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, ...extra });
+  const box = (w, h, d, mat, x, y, z, ry = 0) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z);
+    m.rotation.y = ry;
+    scene.add(m);
+    return m;
+  };
+  const W = 8; // half width of the room (x)
+  const D = 7; // half depth (z)
+  const H = 3.6; // ceiling height
 
-  // Concrete floor with expansion joints.
-  const floorTex = textTexture(null, 256, 256, (g) => {
-    g.fillStyle = '#2a2b2e';
-    g.fillRect(0, 0, 256, 256);
-    for (let i = 0; i < 2600; i++) {
-      const v = 34 + Math.random() * 18;
-      g.fillStyle = `rgb(${v},${v},${v + 2})`;
-      g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+  // Light: warm fill from the strip lights, a cooler spill from the open door.
+  scene.add(new THREE.HemisphereLight(0xfff1d8, 0x2a241c, 0.9));
+  const key = new THREE.PointLight(0xfff0d0, 26, 14, 1.3);
+  key.position.set(0.5, H - 0.3, 0.6);
+  scene.add(key);
+  const fill = new THREE.PointLight(0xffe3b0, 10, 10, 1.4);
+  fill.position.set(-3.6, H - 0.4, -3);
+  scene.add(fill);
+  const door = new THREE.DirectionalLight(0xa8c4ff, 0.7);
+  door.position.set(6, 3, 8);
+  scene.add(door);
+
+  // Concrete floor: speckled, with expansion joints and oil stains where cars have stood.
+  const floorTex = textTexture(null, 512, 512, (g) => {
+    g.fillStyle = '#55524c';
+    g.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 9000; i++) {
+      const v = 70 + Math.random() * 30;
+      g.fillStyle = `rgb(${v},${v - 3},${v - 8})`;
+      g.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
     }
-    g.fillStyle = '#18191b';
-    g.fillRect(0, 0, 256, 3);
-    g.fillRect(0, 0, 3, 256);
+    for (let i = 0; i < 7; i++) {
+      const x = 120 + Math.random() * 270;
+      const y = 120 + Math.random() * 270;
+      const r = 18 + Math.random() * 46;
+      const grd = g.createRadialGradient(x, y, 2, x, y, r);
+      grd.addColorStop(0, 'rgba(18,16,14,0.65)');
+      grd.addColorStop(1, 'rgba(18,16,14,0)');
+      g.fillStyle = grd;
+      g.beginPath();
+      g.arc(x, y, r, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.fillStyle = '#3a3833';
+    g.fillRect(0, 255, 512, 3);
+    g.fillRect(255, 0, 3, 512);
   });
-  floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
-  floorTex.repeat.set(8, 8);
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshLambertMaterial({ map: floorTex }));
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W * 2, D * 2), lambert(0xffffff, { map: floorTex }));
   floor.rotation.x = -Math.PI / 2;
   scene.add(floor);
 
-  // Turntable: a dark steel disc with a ring of amber lights around its edge.
-  const table = new THREE.Group();
-  const discTex = textTexture(null, 256, 256, (g) => {
-    g.fillStyle = '#1b1c20';
+  // Painted block walls.
+  const blockTex = textTexture(null, 256, 256, (g) => {
+    g.fillStyle = '#8d8a80';
     g.fillRect(0, 0, 256, 256);
-    g.strokeStyle = '#2c2e33';
-    g.lineWidth = 3;
-    for (let r = 20; r < 128; r += 18) {
-      g.beginPath();
-      g.arc(128, 128, r, 0, Math.PI * 2);
-      g.stroke();
+    for (let i = 0; i < 2500; i++) {
+      const v = 125 + Math.random() * 25;
+      g.fillStyle = `rgb(${v},${v - 2},${v - 8})`;
+      g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
     }
-    g.strokeStyle = '#ffb000';
-    g.lineWidth = 2;
-    for (let i = 0; i < 2; i++) {
-      g.beginPath();
-      g.moveTo(128, 128);
-      g.lineTo(128 + Math.cos(i * Math.PI) * 126, 128 + Math.sin(i * Math.PI) * 126);
-      g.stroke();
+    g.fillStyle = '#6c695f';
+    for (let row = 0; row < 8; row++) {
+      g.fillRect(0, row * 32, 256, 3);
+      for (let c = 0; c < 4; c++) g.fillRect(c * 64 + (row % 2) * 32, row * 32, 3, 32);
     }
+    // A grubby band along the bottom.
+    const grd = g.createLinearGradient(0, 200, 0, 256);
+    grd.addColorStop(0, 'rgba(40,36,30,0)');
+    grd.addColorStop(1, 'rgba(40,36,30,0.25)');
+    g.fillStyle = grd;
+    g.fillRect(0, 0, 256, 256);
   });
-  const disc = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.5, 0.08, 48), [
-    new THREE.MeshLambertMaterial({ color: 0x24262b }),
-    new THREE.MeshLambertMaterial({ map: discTex }),
-    new THREE.MeshLambertMaterial({ color: 0x24262b }),
-  ]);
-  disc.position.y = 0.04;
-  table.add(disc);
-  const ledMat = new THREE.MeshBasicMaterial({ color: 0xffa21a });
-  const led = new THREE.BoxGeometry(0.12, 0.03, 0.05);
-  for (let i = 0; i < 40; i++) {
-    const a = (i / 40) * Math.PI * 2;
-    const m = new THREE.Mesh(led, ledMat);
-    m.position.set(Math.cos(a) * 3.47, 0.07, Math.sin(a) * 3.47);
-    m.rotation.y = -a;
-    table.add(m);
-  }
-  scene.add(table);
+  blockTex.wrapS = blockTex.wrapT = THREE.RepeatWrapping;
+  const wallMat = (rx) => {
+    const t = blockTex.clone();
+    t.needsUpdate = true;
+    t.repeat.set(rx, 1.4);
+    return lambert(0xffffff, { map: t });
+  };
+  const back = new THREE.Mesh(new THREE.PlaneGeometry(W * 2, H), wallMat(4));
+  back.position.set(0, H / 2, -D);
+  const left = new THREE.Mesh(new THREE.PlaneGeometry(D * 2, H), wallMat(3.6));
+  left.position.set(-W, H / 2, 0);
+  left.rotation.y = Math.PI / 2;
+  const right = new THREE.Mesh(new THREE.PlaneGeometry(D * 2, H), wallMat(3.6));
+  right.position.set(W, H / 2, 0);
+  right.rotation.y = -Math.PI / 2;
+  const front = new THREE.Mesh(new THREE.PlaneGeometry(W * 2, H), wallMat(4));
+  front.position.set(0, H / 2, D);
+  front.rotation.y = Math.PI;
+  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(W * 2, D * 2), lambert(0x3b3833));
+  ceiling.position.y = H;
+  ceiling.rotation.x = Math.PI / 2;
+  scene.add(back, left, right, front, ceiling);
+  // Exposed roof beams.
+  const beamMat = lambert(0x5c4632);
+  for (const z of [-3.6, -1.2, 1.2, 3.6]) box(W * 2, 0.18, 0.14, beamMat, 0, H - 0.09, z);
 
-  // Back wall: corrugated roller shutters, a tool board and a neon sign.
+  // The roller door on the right wall, half open, with daylight under it.
   const shutterTex = textTexture(null, 64, 128, (g) => {
-    g.fillStyle = '#4a4e56';
+    g.fillStyle = '#9da3a8';
     g.fillRect(0, 0, 64, 128);
     for (let y = 0; y < 128; y += 8) {
-      g.fillStyle = '#3a3d44';
+      g.fillStyle = '#7d8388';
       g.fillRect(0, y, 64, 3);
-      g.fillStyle = '#5a5e67';
+      g.fillStyle = '#b8bdc1';
       g.fillRect(0, y + 3, 64, 1);
     }
   });
   shutterTex.wrapS = shutterTex.wrapT = THREE.RepeatWrapping;
   shutterTex.repeat.set(3, 2);
-  const wallMat = new THREE.MeshLambertMaterial({ color: 0x2a2c31 });
-  const back = new THREE.Mesh(new THREE.PlaneGeometry(40, 9), wallMat);
-  back.position.set(0, 4.5, -7.5);
-  scene.add(back);
-  for (const x of [-5.2, 5.2]) {
-    const sh = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 4.2), new THREE.MeshLambertMaterial({ map: shutterTex }));
-    sh.position.set(x, 2.1, -7.45);
-    scene.add(sh);
+  const shutter = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.9), lambert(0xffffff, { map: shutterTex }));
+  shutter.position.set(W - 0.02, H - 0.95, 0.8);
+  shutter.rotation.y = -Math.PI / 2;
+  const daylight = new THREE.Mesh(new THREE.PlaneGeometry(5, H - 1.9), new THREE.MeshBasicMaterial({ color: 0xc9dcf2 }));
+  daylight.position.set(W - 0.03, (H - 1.9) / 2, 0.8);
+  daylight.rotation.y = -Math.PI / 2;
+  scene.add(shutter, daylight);
+
+  // Strip lights.
+  const tubeMat = new THREE.MeshBasicMaterial({ color: 0xfff6e0 });
+  for (const [x, z] of [[0.5, 0.6], [-3.6, -3]]) {
+    box(1.5, 0.08, 0.16, lambert(0x2b2b2b), x, H - 0.25, z);
+    box(1.4, 0.05, 0.08, tubeMat, x, H - 0.31, z);
   }
+
+  // Workbench along the back wall, with a vice, a pegboard of tools above it and a strip light.
+  const wood = lambert(0x8a6338);
+  const steel = lambert(0x4a4d52);
+  box(3.6, 0.08, 0.8, wood, -2.2, 0.92, -D + 0.45);
+  box(3.4, 0.05, 0.7, wood, -2.2, 0.25, -D + 0.45);
+  for (const x of [-3.9, -0.5]) for (const z of [-D + 0.12, -D + 0.78]) box(0.07, 0.92, 0.07, steel, x, 0.46, z);
+  box(0.22, 0.16, 0.18, lambert(0x2d4f8a), -3.4, 1.04, -D + 0.3); // vice
+  box(0.5, 0.12, 0.3, lambert(0xb42a20), -1.6, 1.02, -D + 0.4); // a small toolbox on the bench
+  box(0.3, 0.3, 0.25, lambert(0xd9c27a), -0.9, 1.11, -D + 0.45); // a box of parts
+  const pegTex = textTexture(null, 512, 256, (g) => {
+    g.fillStyle = '#b08a5c';
+    g.fillRect(0, 0, 512, 256);
+    g.fillStyle = '#7f6240';
+    for (let y = 10; y < 256; y += 16) for (let x = 10; x < 512; x += 16) g.fillRect(x, y, 3, 3);
+    // Tool outlines: spanners, a hammer, screwdrivers, a saw, pliers.
+    g.fillStyle = '#2b2d31';
+    for (let k = 0; k < 9; k++) {
+      const x = 30 + k * 26;
+      g.fillRect(x, 40, 7, 90 + (k % 3) * 14);
+      g.beginPath();
+      g.arc(x + 3.5, 40, 9, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.fillStyle = '#a32a22';
+    for (let k = 0; k < 5; k++) g.fillRect(300 + k * 22, 50, 10, 70);
+    g.fillStyle = '#2b2d31';
+    for (let k = 0; k < 5; k++) g.fillRect(303 + k * 22, 120, 4, 50);
+    g.fillRect(420, 40, 18, 90);
+    g.fillRect(400, 40, 58, 18);
+    g.fillStyle = '#c9ccd1';
+    g.beginPath();
+    g.moveTo(40, 190);
+    g.lineTo(230, 190);
+    g.lineTo(230, 222);
+    g.lineTo(40, 205);
+    g.fill();
+  });
+  const peg = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 1.25), lambert(0xffffff, { map: pegTex }));
+  peg.position.set(-2.2, 1.85, -D + 0.02);
+  scene.add(peg);
+
+  // Shelving on the left wall: tyres, oil, boxes of parts.
+  const shelfMat = lambert(0x6d7076);
+  for (const y of [0.45, 1.2, 1.95]) box(0.55, 0.04, 3.2, shelfMat, -W + 0.3, y, 0.6);
+  for (const z of [-0.95, 2.15]) for (const x of [-W + 0.05, -W + 0.55]) box(0.04, 2.1, 0.04, shelfMat, x, 1.05, z);
+  const tyreGeo = new THREE.TorusGeometry(0.3, 0.11, 6, 14);
+  const tyreMat = lambert(0x161618);
+  for (let k = 0; k < 4; k++) {
+    const t = new THREE.Mesh(tyreGeo, tyreMat);
+    t.position.set(-W + 0.32, 0.88, -0.5 + k * 0.62);
+    t.rotation.y = Math.PI / 2;
+    scene.add(t);
+  }
+  const colours = [0xd6382c, 0x2f6fbe, 0xe0b23a, 0x3d8a4a, 0xdedede];
+  for (let k = 0; k < 9; k++) box(0.3, 0.22 + (k % 3) * 0.06, 0.26, lambert(colours[k % colours.length]), -W + 0.3, 1.33 + (k % 3) * 0.03, -0.6 + k * 0.33);
+  for (let k = 0; k < 6; k++) box(0.42, 0.3, 0.4, lambert(0xa4875a), -W + 0.3, 2.13, -0.4 + k * 0.48);
+  for (let k = 0; k < 5; k++) {
+    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.26, 8), lambert(k % 2 ? 0x1f5aa0 : 0xd8a21d));
+    can.position.set(-W + 0.3, 0.6, -0.6 + k * 0.25);
+    scene.add(can);
+  }
+
+  // A red rolling tool chest, an engine on a stand, a floor jack and a stack of tyres.
+  const red = lambert(0xb3241c);
+  box(1.0, 1.05, 0.55, red, 2.6, 0.55, -D + 0.4);
+  box(1.0, 0.45, 0.55, red, 2.6, 1.32, -D + 0.4);
+  for (let k = 0; k < 6; k++) box(0.9, 0.02, 0.01, lambert(0xcfd2d6), 2.6, 0.2 + k * 0.17, -D + 0.68);
+  const engStand = new THREE.Group();
+  engStand.add(new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.52, 0.42), lambert(0x6f6a62)));
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.16, 0.36), lambert(0x9a9da2));
+  head.position.y = 0.34;
+  engStand.add(head);
+  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.7, 6), red);
+  leg.position.y = -0.55;
+  engStand.add(leg);
+  const foot = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.05, 0.08), red);
+  foot.position.y = -0.9;
+  engStand.add(foot);
+  engStand.position.set(4.6, 0.95, -3.4);
+  engStand.rotation.y = -0.5;
+  scene.add(engStand);
+  const jack = new THREE.Group();
+  jack.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.8), red));
+  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.1, 6), steel);
+  handle.rotation.x = 1.0;
+  handle.position.set(0, 0.35, 0.75);
+  jack.add(handle);
+  jack.position.set(3.4, 0.08, 2.9);
+  jack.rotation.y = 0.6;
+  scene.add(jack);
+  for (let k = 0; k < 4; k++) {
+    const t = new THREE.Mesh(tyreGeo, tyreMat);
+    t.rotation.x = Math.PI / 2;
+    t.position.set(-4.7, 0.11 + k * 0.22, 4.4);
+    scene.add(t);
+  }
+
+  // A poster and a sign on the walls.
+  const poster = textTexture(null, 256, 360, (g) => {
+    g.fillStyle = '#e9e1cc';
+    g.fillRect(0, 0, 256, 360);
+    g.fillStyle = '#c8241d';
+    g.fillRect(16, 16, 224, 160);
+    g.fillStyle = '#111';
+    g.font = 'bold 40px sans-serif';
+    g.textAlign = 'center';
+    g.fillText('TOUGE', 128, 230);
+    g.font = '22px sans-serif';
+    g.fillText('NIGHT RUN', 128, 268);
+    g.fillStyle = '#e9e1cc';
+    g.beginPath();
+    g.moveTo(30, 160);
+    g.lineTo(110, 70);
+    g.lineTo(150, 110);
+    g.lineTo(190, 60);
+    g.lineTo(230, 160);
+    g.fill();
+  });
+  const post = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.98), lambert(0xffffff, { map: poster }));
+  post.position.set(1.0, 1.9, -D + 0.02);
+  scene.add(post);
   const sign = textTexture(null, 512, 128, (g) => {
     g.clearRect(0, 0, 512, 128);
     g.font = '80px VT323, monospace';
@@ -185,23 +345,15 @@ function buildGarage(scene) {
     g.fillStyle = '#ffd38a';
     g.fillText('TOUGE GARAGE', 256, 66);
   });
-  const neon = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.25), new THREE.MeshBasicMaterial({ map: sign, transparent: true, fog: false }));
-  neon.position.set(0, 5.1, -7.4);
+  const neon = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.65), new THREE.MeshBasicMaterial({ map: sign, transparent: true, fog: false }));
+  neon.position.set(-W + 0.02, 2.75, 0.6);
+  neon.rotation.y = Math.PI / 2;
   scene.add(neon);
-  // Tyre stacks and a tool chest to fill the corners.
-  const tyreGeo = new THREE.TorusGeometry(0.32, 0.12, 6, 14);
-  tyreGeo.rotateX(Math.PI / 2);
-  const tyreMat = new THREE.MeshLambertMaterial({ color: 0x141416 });
-  for (const [x, z, n] of [[-6.4, -5.6, 5], [-5.6, -6.2, 3], [6.6, -4.6, 4]]) {
-    for (let k = 0; k < n; k++) {
-      const t = new THREE.Mesh(tyreGeo, tyreMat);
-      t.position.set(x, 0.12 + k * 0.24, z);
-      scene.add(t);
-    }
-  }
-  const chest = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, 0.6), new THREE.MeshLambertMaterial({ color: 0xa3241f }));
-  chest.position.set(5.6, 0.55, -6.6);
-  scene.add(chest);
+
+  // The car stands in the middle of the floor.
+  const table = new THREE.Group();
+  table.position.set(0, -0.08, 0.2); // (the car's own height sits it on the floor)
+  scene.add(table);
   return table;
 }
 
@@ -215,12 +367,15 @@ export class Shop {
     this.isOpen = false;
     this.scene = new THREE.Scene();
     this.table = buildGarage(this.scene);
-    this.camera = new THREE.PerspectiveCamera(34, 1, 0.1, 80);
+    this.camera = new THREE.PerspectiveCamera(52, 1, 0.1, 80);
     this.car = new CarModel(CAR);
     this.table.add(this.car.root);
+    // The camera walks round the car: which way it looks from, how high, and how far back.
     this.yaw = -2.4; // front three-quarter view
-    this.spin = 0; // the table only turns when you drag it
+    this.pitch = 0.22;
+    this.dist = 6.4;
     this.dragging = false;
+    this.revHeld = false; // the rev button is held down
     this.fake = {
       mountY: CAR.wheelMountY,
       wheels: [
@@ -241,13 +396,14 @@ export class Shop {
   }
 
   close() {
+    this.revHeld = false;
     this.el.classList.add('hidden');
     document.body.classList.remove('in-shop');
     this.isOpen = false;
     this.onClose?.();
   }
 
-  // Size the turntable view so the car sits in the open space left of the panel.
+  // Size the view so the car sits in the open space left of the panel.
   resize(w, h) {
     this.camera.aspect = w / Math.max(1, h);
     const panel = Math.min(w * 0.56, 520);
@@ -255,13 +411,18 @@ export class Shop {
     this.camera.updateProjectionMatrix();
   }
 
-  // Turn the table, settle the car on its springs, and aim the camera.
+  // Aim the camera at the car from where you have walked to, staying inside the workshop.
   update(dt) {
-    if (!this.dragging) this.yaw += this.spin * dt;
     this.car.updateFx(dt);
-    this.table.rotation.y = this.yaw;
-    this.camera.position.set(0, 2.2, 10.5);
-    this.camera.lookAt(0, 0.45, 0);
+    const target = new THREE.Vector3(0, 0.55, 0.2);
+    const dir = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch));
+    // Walls at x = ±8 and z = ±7: pull the camera in rather than through them.
+    let d = this.dist;
+    if (Math.abs(dir.x) > 1e-3) d = Math.min(d, (7.5 - Math.sign(dir.x) * target.x) / Math.abs(dir.x));
+    if (Math.abs(dir.z) > 1e-3) d = Math.min(d, (6.5 - Math.sign(dir.z) * target.z) / Math.abs(dir.z));
+    d = Math.max(2.6, Math.min(d, (3.3 - target.y) / Math.max(1e-3, dir.y)));
+    this.camera.position.copy(target).addScaledVector(dir, d);
+    this.camera.lookAt(target);
   }
 
   #applyCar() {
@@ -944,26 +1105,77 @@ export class Shop {
     const el = this.el;
     el.innerHTML = '';
 
-    // Turntable stage: drag to turn the car.
+    // The workshop view: drag to walk round the car, pinch (or scroll) to step in and out.
     const stage = document.createElement('div');
     stage.className = 'shop-stage';
-    let lastX = 0;
+    const pts = new Map();
+    let pinch = 0;
     stage.addEventListener('pointerdown', (e) => {
-      this.dragging = true;
-      lastX = e.clientX;
+      if (e.target.closest('.shop-rev')) return;
+      pts.set(e.pointerId, [e.clientX, e.clientY]);
       stage.setPointerCapture(e.pointerId);
+      this.dragging = true;
+      if (pts.size === 2) {
+        const [a, b] = [...pts.values()];
+        pinch = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      }
     });
     stage.addEventListener('pointermove', (e) => {
-      if (!this.dragging) return;
-      this.yaw += (e.clientX - lastX) * 0.012;
-      lastX = e.clientX;
+      const last = pts.get(e.pointerId);
+      if (!last) return;
+      const now = [e.clientX, e.clientY];
+      pts.set(e.pointerId, now);
+      if (pts.size === 2) {
+        const [a, b] = [...pts.values()];
+        const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+        if (pinch > 0) this.dist = Math.max(3, Math.min(9, this.dist * (pinch / d)));
+        pinch = d;
+        return;
+      }
+      this.yaw -= (now[0] - last[0]) * 0.008;
+      this.pitch = Math.max(0.03, Math.min(1.1, this.pitch + (now[1] - last[1]) * 0.006));
     });
-    const up = () => (this.dragging = false);
+    const up = (e) => {
+      pts.delete(e.pointerId);
+      pinch = 0;
+      this.dragging = pts.size > 0;
+    };
     stage.addEventListener('pointerup', up);
     stage.addEventListener('pointercancel', up);
+    stage.addEventListener(
+      'wheel',
+      (e) => {
+        e.preventDefault();
+        this.dist = Math.max(3, Math.min(9, this.dist * (1 + Math.sign(e.deltaY) * 0.08)));
+      },
+      { passive: false },
+    );
+    // Hold to rev the engine.
+    const rev = document.createElement('button');
+    rev.type = 'button';
+    rev.className = 'shop-rev';
+    rev.setAttribute('aria-label', 'Hold to rev the engine');
+    rev.innerHTML = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 22a11 11 0 1 1 22 0" /><path d="M16 22l6-8" /><circle cx="16" cy="22" r="2" /></svg><span>REV</span>';
+    const revOn = (e) => {
+      e.preventDefault();
+      rev.setPointerCapture?.(e.pointerId);
+      this.revHeld = true;
+      rev.classList.add('on');
+      this.onRev?.();
+    };
+    const revOff = () => {
+      this.revHeld = false;
+      rev.classList.remove('on');
+    };
+    rev.addEventListener('pointerdown', revOn);
+    rev.addEventListener('pointerup', revOff);
+    rev.addEventListener('pointercancel', revOff);
+    rev.addEventListener('lostpointercapture', revOff);
+    rev.addEventListener('contextmenu', (e) => e.preventDefault());
+    stage.append(rev);
     const title = document.createElement('div');
     title.className = 'shop-car';
-    title.innerHTML = '<b></b><span>Drag to turn</span>';
+    title.innerHTML = '<b></b><span>Drag to look around · pinch to zoom</span>';
     title.querySelector('b').textContent = CAR.name;
     this.readoutEl = document.createElement('div');
     this.readoutEl.className = 'shop-readout';

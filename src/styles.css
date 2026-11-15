@@ -1445,3 +1445,47 @@ body.menu-open #vhs {
   margin-top: 8px;
   font-size: 22px;
 }
+
+/* Hold-to-rev button in the corner of the workshop view. */
+.shop-rev {
+  position: absolute;
+  right: 14px;
+  bottom: calc(12px + var(--sb));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 66px;
+  height: 66px;
+  justify-content: center;
+  border-radius: 50%;
+  border: 3px solid #ffa04a;
+  background: rgba(6, 6, 8, 0.6);
+  color: #ffb066;
+  font: 400 15px 'VT323', ui-monospace, monospace;
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 6px rgba(255, 140, 26, 0.9);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.shop-rev svg {
+  width: 30px;
+  height: 30px;
+  fill: none;
+  stroke: #ffa04a;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
+.shop-rev.on {
+  background: #ffa04a;
+  color: #111;
+  text-shadow: none;
+}
+
+.shop-rev.on svg {
+  stroke: #111;
+}
