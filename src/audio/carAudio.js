@@ -102,7 +102,7 @@ export class CarAudio {
     this.m20Bus.gain.value = 0.62;
     this.m20Cabin.connect(this.m20Bus).connect(this.master);
     this.crankT = 0;
-    M20EngineSound.create(ctx, { dspSource: m20DspSource, engine: ENGINE_SOUND[CAR.id] || 'm20' })
+    M20EngineSound.create(ctx, { dspSource: m20DspSource, engine: CAR.sound || ENGINE_SOUND[CAR.id] || 'm20' })
       .then((m20) => {
         m20.connect(this.m20Cabin);
         const idle = CAR.engine.idleRpm;

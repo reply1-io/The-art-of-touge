@@ -143,15 +143,18 @@ export class Transmission {
 
   #autoShift(throttle, engineRpm, inputRpm) {
     if (this.drive !== 'D' || this.shiftTimer > 0 || this.gear < 1) return;
-    const up = 2800 + 3400 * clamp(throttle, 0, 1);
-    const down = 1500 + 2300 * clamp(throttle, 0, 1);
+    // Shift points scale with the engine's redline (set for the E30's 6,500 rpm six), so a
+    // high-revving engine is held in its power band.
+    const k = (this.spec.engine?.redline ?? 6500) / 6500;
+    const up = (2800 + 3400 * clamp(throttle, 0, 1)) * k;
+    const down = (1500 + 2300 * clamp(throttle, 0, 1)) * k;
     const last = this.gears.length;
     if (engineRpm > up && this.gear < last && this.coupling > 0.9) {
       this.gear++;
       this.shiftTimer = 0.28;
     } else if (engineRpm < down && this.gear > 1) {
       const next = (Math.abs(inputRpm) * this.ratio(this.gear - 1)) / this.ratio(this.gear);
-      if (next < 5900) {
+      if (next < 5900 * k) {
         this.gear--;
         this.shiftTimer = 0.28;
       }

@@ -1145,14 +1145,17 @@ body.in-menu #vhs-play {
   letter-spacing: 0.06em;
 }
 
-.shop-card em.price {
+.shop-card em.price,
+.swap-head em.price {
   color: #7fe08a;
 }
 
-.shop-card em.owned {
+.shop-card em.owned,
+.swap-head em.owned {
   color: var(--dim);
 }
 
+.swap-head em.pricey,
 .shop-card em.pricey,
 .shop-chips button.pricey small {
   color: #ff6a5a;
@@ -1319,4 +1322,126 @@ canvas.map {
 /* Menus up: hold the VHS flicker still (one less full-screen layer changing every frame). */
 body.menu-open #vhs {
   animation: none;
+}
+
+/* ---------- Engine swaps ---------- */
+.swap-now {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px;
+  border: 3px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+  font-family: 'VT323', ui-monospace, monospace;
+}
+
+.swap-now span {
+  font-size: 15px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.swap-now b {
+  font-weight: 400;
+  font-size: 24px;
+  color: var(--accent);
+}
+
+.swap-now small {
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.swap-open {
+  width: 100%;
+}
+
+.swap-back {
+  margin: 0 0 8px;
+  font: 400 18px 'VT323', ui-monospace, monospace;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  padding: 2px 0;
+}
+
+.swap-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.swap-card {
+  padding: 10px 12px;
+  border: 3px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+  font-family: 'VT323', ui-monospace, monospace;
+  color: var(--ink);
+}
+
+.swap-card.sel {
+  border-color: var(--accent);
+}
+
+.swap-card.soon {
+  opacity: 0.72;
+}
+
+.swap-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.swap-head strong {
+  font-weight: 400;
+  font-size: 24px;
+  color: #fff;
+}
+
+.swap-head em {
+  font-style: normal;
+  font-size: 17px;
+  white-space: nowrap;
+}
+
+.swap-head em.soon {
+  color: #8fb4ff;
+}
+
+.swap-donor {
+  font-size: 17px;
+  color: var(--accent);
+}
+
+.swap-specs {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1px 12px;
+  margin: 6px 0;
+  font-size: 17px;
+}
+
+.swap-specs dt {
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.swap-specs dd {
+  margin: 0;
+}
+
+.swap-card p {
+  margin: 4px 0 0;
+  font-size: 17px;
+  line-height: 1.1;
+  color: var(--dim);
+}
+
+.swap-card .big {
+  width: 100%;
+  margin-top: 8px;
+  font-size: 22px;
 }
