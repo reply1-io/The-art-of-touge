@@ -242,6 +242,13 @@ export class M20Dsp {
     this.X = { ...EXHAUSTS.stock };   // current exhaust voicing, glides to the chosen preset
     this.cycleN = 0;                  // engine cycles, for the every-other-cycle chop
     this.zingAmp = 0;
+    // naturalness: a slow random drift of the engine speed (a real idle control hunts at
+    // random, not on a regular wave), and a small outdoor 'room': ground and nearby reflections
+    this.wander = 0; this.wanderT = 0;
+    this.refl = new Delay(4096); this.reflLp = new Biquad().set('lp', 3500, 0.7, 0, fs);
+    this.ap = [113, 337, 541, 773].map((n) => ({ d: new Delay(n + 1), n }));
+    this.roomLp = new Biquad().set('lp', 2800, 0.7, 0, fs); this.roomHp = new Biquad().set('hp', 120, 0.7, 0, fs);
+    this.envF = 0;
     // turbo state: boost and shaft speed 0..1, lift-off envelopes and oscillator phases
     this.T = { on: 0, boost: 0, shaft: 0, armed: false, flut: 0, flutRate: 0, flutPh: 0,
                flutA: 1, whPh: 0, whPh2: 0, whAmp: 0, poof: 0, poofAtk: 1 };
@@ -453,6 +460,10 @@ export class M20Dsp {
       // slow idle wobble fades out; it would only add a vague drift under the rhythm
       const lope = Math.max(X.lope, E.baseLope || 0) * nearIdle;
       rpm *= 1 + nearIdle * (1 - X.lope) * (E.lope[0] * Math.sin(TAU * 1.13 * this.t) + E.lope[1] * Math.sin(TAU * 0.41 * this.t));
+      // random drift (slowly varying noise), larger at idle, small under load
+      this.wanderT += (randn() - this.wanderT) * 0.0006;
+      this.wander += (this.wanderT - this.wander) * 0.0004;
+      rpm *= 1 + this.wander * (0.25 + 0.75 * nearIdle); // about +-1% at idle, less under load
       if (st > 0) rpm *= 1 - 0.35 * st * Math.max(0, Math.cos(TAU * this.phase * ncyl));
       rpm = Math.max(0, rpm);
       this.phase += rpm / 60 / revs / fs;    // 2 revolutions per cycle (3 for the rotary)
@@ -476,7 +487,7 @@ export class M20Dsp {
         if (xc < this.lastX[k]) { // this cylinder's exhaust valve just opened: new cycle for it
           // no two combustions are the same; this scatter is what turns buzz into rumble
           // a cammed idle is choppy but regular: less random scatter, more pattern
-          const j = E.jitter + E.idleJitter * nearIdle * (1 - 0.6 * lope) + 0.03 * (1 - ign);
+          const j = E.jitter + 0.04 + E.idleJitter * nearIdle * (1 - 0.6 * lope) + 0.03 * (1 - ign); // +0.04: no two firings alike
           this.jit[k] = Math.max(0.3, 1 + j * randn());
           this.tjit[k] = (3.5 + 1.5 * lope) * (E.scatter ?? 1) * randn();
           // choppy idle: a pattern over two engine cycles (a stumble, then a hard hit),
@@ -550,7 +561,7 @@ export class M20Dsp {
       if (E.mid) y = this.mid.run(y);
 
       // rumble: gas turbulence in the pipe, fills the gaps between the harmonics
-      y += this.rumbleLp.run(this.rumbleBp.run(randn() * hit)) * (0.3 * (1 - 0.75 * lope) * E.idleNoise + 1.5 * thr) * X.rumble * E.rumble[2];
+      y += this.rumbleLp.run(this.rumbleBp.run(randn() * hit)) * (0.45 * (1 - 0.75 * lope) * E.idleNoise + 1.5 * thr) * X.rumble * E.rumble[2];
 
       // rasp: turbulence that rides on each pulse, grows with rpm and load
       // at idle the loud pipes' rasp stays low (it reads as hiss); it opens up with load
@@ -634,9 +645,18 @@ export class M20Dsp {
         const fp = TAU * this.phase * ncyl;       // firing phase: ncyl firings per cycle
         let z = 0;
         for (const [h, a] of Z.harmonics) z += a * Math.sin(h * fp);
-        y += z * this.zingAmp;
+        // pulse a little with the actual firings, so it is part of the engine, not an organ note
+        this.envF += (env - this.envF) * 0.02;
+        y += z * this.zingAmp * (0.75 + 0.25 * Math.min(1.5, this.envF * 2));
       }
       y = this.dcHp.run(y);
+      // outdoor room: a ground reflection (~3 ms) and nearby surfaces (7, 13 ms), plus a short,
+      // soft diffuse tail; quiet, but it takes away the dry, in-the-box sound
+      this.refl.write(y);
+      let wet = this.reflLp.run(this.refl.read(fs * 0.0029) * 0.45 + this.refl.read(fs * 0.0073) * 0.28 + this.refl.read(fs * 0.013) * 0.2);
+      let dif = this.roomHp.run(this.roomLp.run(this.refl.read(fs * 0.019)));
+      for (const a of this.ap) { const dl = a.d.read(a.n - 1); const v = dif + 0.6 * dl; a.d.write(v); dif = dl - 0.6 * v; }
+      y = y * 0.85 + wet * 0.5 + dif * 0.22;
       let o = Math.tanh(y * 0.38 * E.level * X.level) * 1.35 * (E.post || 1); // gentle: mostly linear, only peaks round off
       // soft knee above 0.9 so loud engines never clip the output
       if (o > 0.9) o = 0.9 + 0.1 * Math.tanh((o - 0.9) / 0.1);
