@@ -5,7 +5,7 @@ import { worldRoute, STAGES, heightAt, CELL, planLinks } from './worldMap.js';
 import { stopsFor } from './stops.js';
 
 const WORLD = worldRoute(15319);
-export const LINK_SEED = 116; // picked for the most links that pass linkOk
+export const LINK_SEED = 137; // picked for the most links that pass linkOk
 // The stage a distance along the world route belongs to.
 export function stageAt(s) {
   let k = 0;
@@ -57,22 +57,58 @@ export const TRACKS = {
 
 // Link roads: short twisty roads joining the loop to itself, each a Road of its own whose ends meet
 // the loop's tarmac edge at the junctions. from/to: which of the eleven roads each end is on.
-function worldLinks(road) {
+export function worldLinks(road, seed = LINK_SEED) {
   const zones = stopsFor(road, TRACKS.world.stopsOpts);
   const avoid = (i) => zones.some((z) => i > z.i0 - 18 && i < z.i1 + 18) || i < 60 || i > road.count - 60;
   const PAV = road.w.PAVED + 0.3;
-  return planLinks(road, WORLD, avoid, 10, LINK_SEED).map((l) => {
+  return planLinks(road, WORLD, avoid, 10, seed).map((l) => {
     const ya = road.pointAt(l.a, l.sideA * PAV)[1];
     const yb = road.pointAt(l.b, l.sideB * PAV)[1];
-    return { ...l, road: new Road(l.pts, 0, { world: true, heightAt, ends: [ya, yb] }), from: stageAt(l.a * 2), to: stageAt(l.b * 2) };
+    const r = new Road(l.pts, 0, { world: true, heightAt, ends: [ya, yb] });
+    meetLoop(road, r, 0, l.a);
+    meetLoop(road, r, r.count - 1, l.b);
+    return { ...l, road: r, from: stageAt(l.a * 2), to: stageAt(l.b * 2) };
   }).filter((l) => linkOk(l.road));
+}
+
+// Where a link road joins the loop its end lies across the loop's tarmac edge, so it must tilt the
+// way the loop's surface runs there (the loop climbs or drops along its length, which is across the
+// link). Set the link's banking at that end to match, easing back to its own over about 12 m;
+// otherwise one corner of the junction stands proud of the loop like a kerb.
+function meetLoop(road, r, end, i) {
+  const q = {};
+  const at = (lat) => {
+    const p = r.pointAt(end, lat);
+    road.query(p[0], p[2], i, q);
+    return q.height;
+  };
+  const want = Math.atan((at(3) - at(-3)) / 6);
+  const dir = end === 0 ? 1 : -1;
+  for (let k = 0; k <= 6; k++) {
+    const j = end + dir * k;
+    const f = k / 6;
+    r.bank[j] = want * (1 - f * f * (3 - 2 * f)) + r.bank[j] * f * f * (3 - 2 * f);
+  }
+  // Its height, too, runs out along the line of the loop's (banked) surface for the last 16 m, so
+  // the link never dips below the loop's verge where it comes in.
+  for (let k = 1; k <= 8; k++) {
+    const j = end + dir * k;
+    const p = r.pointAt(j, 0);
+    road.query(p[0], p[2], i, q);
+    const f = k / 8;
+    const w = f * f * (3 - 2 * f);
+    r.y[j] = q.height * (1 - w) + r.y[j] * w;
+  }
+  for (let j = 1; j < r.count; j++) r.grade[j] = (r.y[j - 1] - r.y[j]) / 2;
 }
 
 // A link has to be as drivable as the loop: no steeper, no tighter.
 export function linkOk(r) {
   let minR = Infinity;
   for (let i = 3; i < r.count - 3; i++) minR = Math.min(minR, 1 / Math.max(1e-6, Math.abs(r.kappa[i])));
-  return Math.max(...r.grade.map(Math.abs)) < 0.135 && minR > 10;
+  // Within 16 m of a junction it may climb as steeply as the loop is banked there (up to 20%).
+  const steep = (j) => (j < 8 || j > r.count - 9 ? 0.2 : 0.135);
+  return r.grade.every((g, j) => Math.abs(g) < steep(j)) && minR > 10;
 }
 
 // Lakes and ponds: a lake in each cell the route misses, ponds in the corners between cells where
@@ -127,5 +163,8 @@ function worldLakes(road, terrain) {
       }
     }
   });
+  // The water reaches 30 m past each lake's edge (to meet the shore), so keep its surface well
+  // below every road that passes within reach: the loop and the link roads alike.
+  for (const lk of out) lk.level = Math.min(lk.level, near(lk.x, lk.z, lk.r + 40).low - 3.5);
   return out;
 }

@@ -111,17 +111,18 @@ export class Road {
       zs[i] = world[j][1] + (world[j + 1][1] - world[j][1]) * f;
     }
     // Light smoothing removes tracing jitter without opening up the hairpins.
+    // On a loop, smoothing wraps round the join: a stretch of each end is laid onto the other, so the
+    // two ends (the same place) come out the same.
+    const PADN = 40;
+    const wrapSmooth = (a, w, passes) => {
+      const ext = new Float64Array(n + 2 * PADN);
+      for (let i = 0; i < ext.length; i++) ext[i] = a[(((i - PADN) % (n - 1)) + (n - 1)) % (n - 1)];
+      return smooth(ext, w, passes).slice(PADN, PADN + n);
+    };
+    const sm = (a, w, passes = 1) => (loop ? wrapSmooth(a, w, passes) : smooth(a, w, passes));
     if (loop) {
-      // Smooth round the join as well: wrap a stretch of each end onto the other.
-      const PADN = 20;
-      const wrapSmooth = (a) => {
-        const ext = new Float64Array(n + 2 * PADN);
-        for (let i = 0; i < ext.length; i++) ext[i] = a[(i - PADN + 2 * (n - 1)) % (n - 1)];
-        const sm = smooth(ext, 5, 2);
-        return sm.slice(PADN, PADN + n);
-      };
-      xs = wrapSmooth(xs);
-      zs = wrapSmooth(zs);
+      xs = wrapSmooth(xs, 5, 2);
+      zs = wrapSmooth(zs, 5, 2);
     } else {
       const ex = [xs[0], zs[0], xs[n - 1], zs[n - 1]];
       xs = smooth(xs, 5, 2);
@@ -150,13 +151,15 @@ export class Road {
       const b = loop && i === n - 1 ? 1 : Math.min(n - 1, i + 1);
       this.heading[i] = Math.atan2(xs[b] - xs[a], zs[b] - zs[a]);
     }
-    for (let i = 1; i < n - 1; i++) {
-      let d = this.heading[i + 1] - this.heading[i - 1];
+    for (let i = loop ? 0 : 1; i < (loop ? n : n - 1); i++) {
+      const a = loop && i === 0 ? n - 2 : i - 1;
+      const b = loop && i === n - 1 ? 1 : i + 1;
+      let d = this.heading[b] - this.heading[a];
       while (d > Math.PI) d -= 2 * Math.PI;
       while (d < -Math.PI) d += 2 * Math.PI;
       kappaRaw[i] = d / (2 * STEP);
     }
-    this.kappa = smooth(kappaRaw, 3);
+    this.kappa = sm(kappaRaw, 3);
 
     // ---- Elevation: rolling crests and dips, steep plunges through the twisty parts, the odd short
     // climb, flat at the lake and in town ----
@@ -215,7 +218,7 @@ export class Road {
 
     // ---- Banking: corners lean hard into the turn, hairpins most of all (up to about 12 degrees) ----
     const bankRaw = this.kappa.map((k) => clamp(-k * 3.4, -0.21, 0.21));
-    this.bank = smooth(bankRaw, 13, 2);
+    this.bank = sm(bankRaw, 13, 2);
 
     // ---- Drainage gutters on the inside of a few medium corners ----
     this.gutterLeft = new Float64Array(n);

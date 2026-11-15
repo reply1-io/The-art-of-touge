@@ -162,3 +162,29 @@ test('the loop has no ends: a car rolls across the join at the car meet', async 
   }
   assert.ok(q.index > 5 && q.index < 60, `stuck at sample ${q.index} of ${road.count}`);
 });
+
+test('no ledges: nothing stands proud of the tarmac anywhere on the loop or a link road', async () => {
+  await RAPIER.init();
+  const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+  buildMountainPhysics(world, road, terrain, links);
+  world.step();
+  const bad = [];
+  for (const [name, r] of [['loop', road], ...links.map((l, k) => [`link ${k}`, l.road])]) {
+    for (let i = 0; i < r.count; i++) {
+      for (let lat = -r.w.PAVED; lat <= r.w.PAVED + 0.01; lat += 0.7) {
+        const p = r.pointAt(i, lat);
+        const hit = world.castRay(new RAPIER.Ray({ x: p[0], y: p[1] + 3, z: p[2] }, { x: 0, y: -1, z: 0 }), 6, true);
+        if (hit && p[1] + 3 - hit.timeOfImpact > p[1] + 0.12) bad.push(`${name} at ${i * 2} m`);
+      }
+    }
+  }
+  assert.deepEqual(bad.slice(0, 5), []);
+});
+
+test('lake water never reaches a road', () => {
+  for (const lk of terrain.lakes) {
+    for (let i = 0; i < terrain.road.count; i++) {
+      if (Math.hypot(terrain.road.x[i] - lk.x, terrain.road.z[i] - lk.z) < lk.r + 32) assert.ok(terrain.road.y[i] > lk.level + 1, 'a road runs under the water');
+    }
+  }
+});
