@@ -57,6 +57,28 @@ export const ENGINES = {
     rasp: [1200, 0.15, 1.0], rumble: [260, 0.06, 1.0], intake: [420, 0.08, 0.10],
     level: 1.0,
   },
+  jz2: {
+    // Toyota 2JZ-GTE run N/A: 3.0 L square (86 x 86 mm) straight-six, same 1-5-3-6-2-4 order
+    // as the M20 but bigger, smoother and higher revving, with the clean metallic howl the
+    // 2JZ is known for (a resonance near 640 Hz plus a zing on the firing harmonics).
+    label: 'Toyota 2JZ-GTE 3.0 straight-six (N/A)',
+    firing: [1, 5, 3, 6, 2, 4],
+    angles: [0, 120, 240, 360, 480, 600],
+    bank: [0, 1, 0, 1, 0, 1],                 // GTE manifold split 1-3 / 4-6
+    cylGain: [1.0, 0.96, 1.03, 0.98, 1.02, 0.95], // a smooth, well-balanced six
+    cylTiming: [0, 0.8, -0.6, 1, -0.4, 0.5],
+    idleRpm: 700, redline: 6800, crankFlare: 1300, starterRatio: 11,
+    dual: false,
+    header: [0.0019, 0.0021], pipe: [3.4, 3.4], pipeRefl: 0.48, // more even runners: smoother
+    width: [32, 9], pump: 0.1, jitter: 0.05, idleJitter: 0.05, lope: [0.004, 0.002],
+    chop: [1.1, 1, 0.85, 0.3, 0.45, 1.5, 1.05, 1, 1.1, 1, 1, 1.05],
+    sizzle: 1.0, idleNoise: 0.8,
+    muff: [480, 800, 0.11, 1800, 1400], body: [105, 5], drone: [260, 1.5],
+    mid: [640, 3],                             // the metallic ring of a revving 2JZ
+    zing: { harmonics: [[3, 1], [4, 0.6], [6, 0.35]], level: 0.16, from: 2500, to: 6800 },
+    rasp: [1500, 0.16, 0.8], rumble: [240, 0.06, 0.9], intake: [450, 0.09, 0.12],
+    level: 0.8,
+  },
   ls3: {
     label: 'GM LS3 6.2 V8',
     firing: [1, 8, 7, 2, 6, 5, 4, 3],
@@ -558,7 +580,7 @@ export class M20Dsp {
         const u = Math.min(1, Math.max(0, (rpm - Z.from) / (Z.to - Z.from)));
         const target = ign * Z.level * (0.04 + 0.96 * u * u * (3 - 2 * u)) * (0.45 + 0.55 * thr) * (0.85 + 0.15 * X.open);
         this.zingAmp += (target - this.zingAmp) * 0.002;
-        const fp = TAU * this.phase * (cyc / 180); // firing phase: one firing every 180 deg
+        const fp = TAU * this.phase * ncyl;       // firing phase: ncyl firings per cycle
         let z = 0;
         for (const [h, a] of Z.harmonics) z += a * Math.sin(h * fp);
         y += z * this.zingAmp;

@@ -125,6 +125,7 @@ input[type=range] { width: 100%; accent-color: var(--needle); }
         <div class="row"><span class="seglabel">Engine</span>
           <div class="seg" role="group" aria-label="Engine">
             <button id="gM20" aria-pressed="true">M20 six</button>
+            <button id="gJZ" aria-pressed="false">2JZ six</button>
             <button id="gLS3" aria-pressed="false">LS3 V8</button>
             <button id="gROT" aria-pressed="false">13B rotary</button>
           </div>
@@ -208,6 +209,14 @@ const CARS = {
     noteH: 'Why it sounds like a six',
     noteP: 'Each cylinder fires every 120° of crank, so the main pitch is rpm ÷ 20 (40 Hz at idle, 325 Hz at the limiter). Small differences between cylinders add the half-order rumble a perfectly even buzz would lack.',
     peakNm: 222, peakRpm: 4300, spread: 5200, mass: 1230, freeRev: 8500,
+  },
+  jz2: {
+    eyebrow: 'Toyota 2JZ-GTE, run N/A · 3.0 straight-six · 86 x 86 mm', title: '2JZ Engine Sound',
+    intro: 'No recordings are used. A square 3.0 L straight-six firing 1-5-3-6-2-4, its two manifold halves into one pipe, with the clean metallic howl a 2JZ makes as it revs out. Press Start, then hold the gas.',
+    bankA: 'Cylinders 1-3', bankB: 'Cylinders 4-6',
+    noteH: 'Why it howls',
+    noteP: 'Like the M20 it fires every 120°, so the main pitch is rpm ÷ 20. But the 2JZ is bigger, smoother and more even, and as it revs its 3rd, 4th and 6th harmonics ring out with a metallic edge near 640 Hz: the 2JZ howl.',
+    peakNm: 285, peakRpm: 4800, spread: 5500, mass: 1450, freeRev: 9000,
   },
   rotary13b: {
     eyebrow: 'Mazda RX-7 FC · 13B two-rotor Wankel · 160 hp', title: '13B Rotary Sound',
@@ -382,6 +391,7 @@ function setEngineChoice(name) {
   REDLINE = E.redline; IDLE = E.idleRpm; MASS = C.mass;
   $('gM20').setAttribute('aria-pressed', String(name === 'm20'));
   $('gLS3').setAttribute('aria-pressed', String(name === 'ls3'));
+  $('gJZ').setAttribute('aria-pressed', String(name === 'jz2'));
   $('gROT').setAttribute('aria-pressed', String(name === 'rotary13b'));
   MAXDIAL = E.redline > 6900 ? 8000 : 7000;
   $('scopeTitle').textContent = (E.cycleDeg || 720) === 720
@@ -396,6 +406,7 @@ function setEngineChoice(name) {
 }
 $('gM20').onclick = () => setEngineChoice('m20');
 $('gLS3').onclick = () => setEngineChoice('ls3');
+$('gJZ').onclick = () => setEngineChoice('jz2');
 $('gROT').onclick = () => setEngineChoice('rotary13b');
 
 // ---------- pedals: pointer + keyboard ----------
