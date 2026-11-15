@@ -23,5 +23,5 @@ test('engine swaps: every swap lists its specs and the car it comes from; the ro
     }
     assert.ok(Math.abs(best - r.hp) / r.hp < 0.05, `${id}: peak ${best.toFixed(0)} hp vs ${r.hp}`);
   }
-  for (const id of ['1jz', 'ls3', 'k24', 'rb25', 'm50', 'sr20']) assert.ok(ENGINE_SWAPS[id], `${id} listed`);
+  for (const id of ['1jz', '4age', 'ls3', 'k24', 'rb25', 'm50', 'sr20']) assert.ok(ENGINE_SWAPS[id], `${id} listed`);
 });
