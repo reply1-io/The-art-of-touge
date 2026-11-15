@@ -452,19 +452,21 @@ function randn() { // cheap gaussian-ish
 // stack resonance, and a rush of air that rides on each intake stroke. An engine can override
 // any of these with its own `itb: {...}`.
 const ITB = {
-  w: 0.11,        // pulse width, as a share of the firing interval (narrower = brighter)
-  r: 0.6,        // the reflected pulse half a firing later; near 1 the firing note itself
+  w: 0.07,        // pulse width, as a share of the firing interval (narrower = brighter)
+  r: 0.45,        // the reflected pulse half a firing later; near 1 the firing note itself
                   // cancels and the stacks sing on twice (and three times) the firing note
-  stack: [280, 1.5, 6],    // trumpet + runner resonance: Hz, Q, dB (picks out whichever
+  stack: [220, 1.5, 6],    // trumpet + runner resonance: Hz, Q, dB (picks out whichever
                           // firing harmonic is near it: 2x and 3x at idle, 2x up the revs)
   toneLp: 2500,    // upper limit of the honk: on the throttle it is round, not airy
-  tone: 1.7,      // honk level
+  tone: 2.0,      // honk level
   air: 1.8,       // induction air under load
   airBand: [500, 3500],
   hiss: 0.42,      // suction hiss past the nearly shut butterflies (idle, blips, overrun)
   hissBand: [700, 7000],
   idle: 0.6,      // how much honk is left with the throttles shut
-  duck: 1.8,      // how much of the exhaust the stacks cover up under load
+  duck: 1.2,      // how much of the exhaust the stacks cover up under load
+  uneven: 0.7,      // cylinder-to-cylinder differences in the stacks: a lumpy, grumpy beat
+  jitter: 0.22,   // stroke-to-stroke variation
 };
 
 class M20Dsp {
@@ -762,7 +764,8 @@ class M20Dsp {
             this.popBudget--;
           }
           this.tickEnv = 1;
-          this.itbJ[k] = Math.max(0.4, 1 + 0.12 * randn());
+          // every stack breathes a little differently (fixed), and no two strokes are alike
+          this.itbJ[k] = Math.max(0.3, (1 + (this.I?.uneven ?? 0) * (E.cylGain[k] - 1) * 6) * (1 + (this.I?.jitter ?? 0.12) * randn()));
         }
         this.lastX[k] = xc;
         let x = xc - this.tjit[k];
