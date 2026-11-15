@@ -652,9 +652,10 @@ export class CarAudio {
     const inCar = this.interior ? 1 : 0;
     this.intakeGain.gain.setTargetAtTime(running ? load * 0.12 * clamp(rpm / 6000, 0.2, 1) * (1 + inCar) * (this.m20 ? 0.5 : 1) : 0, t, 0.04);
     // Induction roar: louder with ITBs, louder still from inside the car.
-    const indLevel = { stock: 0.04, pod: 0.22, itb: 0.18 }[this.intake || 'stock'] * (1 + inCar * 1.4);
+    // (with the engine synth, ITBs are part of it: their stacks are synthesized with the engine)
+    const indLevel = { stock: 0.04, pod: 0.22, itb: this.m20 ? 0.04 : 0.18 }[this.intake || 'stock'] * (1 + inCar * 1.4);
     // ITB grumble: strongest at low and middle revs and on the throttle, louder in the car.
-    const isItb = this.intake === 'itb' && running;
+    const isItb = this.intake === 'itb' && running && !this.m20;
     this.itb.frequency.setTargetAtTime(f / 2, t, 0.015);
     this.itb2.frequency.setTargetAtTime(f / 4, t, 0.015);
     this.itbLfo.frequency.setTargetAtTime(f / 8, t, 0.02);
@@ -705,6 +706,7 @@ export class CarAudio {
         ignition: running && !cranking ? 1 : 0,
         starter: cranking ? 1 : 0,
         exhaust: this.exhaust || 'stock', // street/race: rowdier voice and a lopey idle
+        intake: this.intake || 'stock',   // 'itb': the stacks' howl and induction air
         cabin: inCar,
         idleRpm: e.spec?.idleRpm ?? 760,
         // turbo: the synth's whistle, air rush and lift-off flutter follow the game's boost

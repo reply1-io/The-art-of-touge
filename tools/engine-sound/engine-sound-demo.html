@@ -149,6 +149,12 @@ input[type=range] { width: 100%; accent-color: var(--needle); }
             <button id="tOn" aria-pressed="false">48 mm</button>
           </div>
         </div>
+        <div class="row"><span class="seglabel">Intake</span>
+          <div class="seg" role="group" aria-label="Intake">
+            <button id="iStock" aria-pressed="true">Stock</button>
+            <button id="iItb" aria-pressed="false">ITBs</button>
+          </div>
+        </div>
         <div class="row"><span class="seglabel">Exhaust</span>
           <div class="seg" role="group" aria-label="Exhaust">
             <button id="eStock" aria-pressed="true">Stock</button>
@@ -274,6 +280,7 @@ async function ensureEngine() {
   engine.connect(out);
   engine.onCycle = (c) => { lastCycle = c; };
   engine.setExhaust(exhaust);
+  engine.setIntake(intake);
   engine.setTurbo(turbo);
 }
 
@@ -375,6 +382,7 @@ $('mFree').onclick = () => setMode('free');
 $('mDrive').onclick = () => setMode('drive');
 $('mManual').onclick = () => setMode('manual');
 let exhaust = 'stock';
+let intake = 'stock';
 // ---------- turbo ----------
 let turbo = false; // 48 mm: whistle, air rush, flutter on lift-off
 function setTurboUi() {
@@ -396,6 +404,13 @@ function setExhaust(name) {
 $('eStock').onclick = () => setExhaust('stock');
 $('eStreet').onclick = () => setExhaust('street');
 $('eRace').onclick = () => setExhaust('race');
+function setIntake(name) {
+  intake = name;
+  for (const [id, k] of [['iStock', 'stock'], ['iItb', 'itb']]) $(id).setAttribute('aria-pressed', String(k === name));
+  engine?.setIntake(name);
+}
+$('iStock').onclick = () => setIntake('stock');
+$('iItb').onclick = () => setIntake('itb');
 
 function setEngineChoice(name) {
   eng = name;
