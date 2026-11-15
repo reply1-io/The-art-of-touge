@@ -249,7 +249,7 @@ export class M20Dsp {
     this.ap = [113, 337, 541, 773].map((n) => ({ d: new Delay(n + 1), n }));
     this.roomLp = new Biquad().set('lp', 2800, 0.7, 0, fs); this.roomHp = new Biquad().set('hp', 120, 0.7, 0, fs);
     this.envF = 0;
-    this.roarLp = new Biquad().set('lp', 1800, 0.6, 0, fs);   // exhaust flow roar (before the muffler)
+    this.roarLp = new Biquad().set('lp', 3400, 0.6, 0, fs);   // exhaust flow roar (before the muffler)
     this.intakeRoar = new Biquad(); this.zj = 0;
     // turbo state: boost and shaft speed 0..1, lift-off envelopes and oscillator phases
     this.T = { on: 0, boost: 0, shaft: 0, armed: false, flut: 0, flutRate: 0, flutPh: 0,
@@ -428,13 +428,14 @@ export class M20Dsp {
     const thr0 = C.throttle, rpm0 = C.rpm, X = this.X;
     if (this.coef++ % 4 === 0) {
       const E = this.E, m = E.muff, open = X.open * (1 - 0.22 * this.T.on); // the turbine muffles a bit
-      this.muffLp.set('lp', (m[0] + m[1] * thr0 + rpm0 * m[2]) * open, 0.6, 0, fs);
+      // the muffler lets more through as the revs rise: a higher-pitched note up top, idle as before
+      this.muffLp.set('lp', (m[0] + m[1] * thr0 + rpm0 * m[2] * 1.5) * open, 0.6, 0, fs);
       this.tWhoosh.set('bp', 1100 + 3200 * this.T.shaft, 1.3, 0, fs);
       if (this.T.on > 0.001) { // the whistle's airy band follows the shaft
         const Zw = this.T.Z || TURBOS.small, fwB = Zw.fw[0] + (Zw.fw[1] - Zw.fw[0]) * this.T.shaft;
         this.tWhNoise.set('bp', fwB, 30, 0, fs); this.tWhNoise2.set('bp', fwB, 30, 0, fs);
       }
-      this.muffLp2.set('lp', (m[3] + m[4] * thr0) * open, 0.5, 0, fs);
+      this.muffLp2.set('lp', (m[3] + m[4] * thr0 + rpm0 * 0.18) * open, 0.5, 0, fs);
       this.body.set('pk', E.body[0], 1.1, E.body[1] + X.bodyDb, fs);
       this.drone.set('pk', E.drone[0] * X.droneHz, 1.6, E.drone[1] + X.droneDb, fs);
       if (E.mid) this.mid.set('pk', E.mid[0], 1.4, E.mid[1], fs);
