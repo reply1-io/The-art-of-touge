@@ -582,7 +582,8 @@ export class Shop {
       ready: true,
       factory: true,
     };
-    for (const [id, sw] of [['stock', stockCard], ...Object.entries(ENGINE_SWAPS)]) {
+    // (A car's own engine is the factory card, not a swap: no 13B swap into an RX-7.)
+    for (const [id, sw] of [['stock', stockCard], ...Object.entries(ENGINE_SWAPS).filter(([, w]) => w.code !== BASE_CAR.engineName)]) {
       const card = document.createElement('div');
       card.className = 'swap-card' + (id === fitted ? ' sel' : '') + (sw.ready ? '' : ' soon');
       const head = document.createElement('div');
