@@ -275,13 +275,28 @@ function stored(key) {
 }
 // The car you drive, picked in the tuning shop, as it left the factory.
 export const BASE_CAR = CARS[stored('touge.settings.v4')?.car] || E30;
+
+// Each car keeps its own tuning and builds. Saves from before that (one setup shared by every car)
+// go to whichever car is loaded first, and the other cars start from stock.
+const LEGACY = { tuning: 'touge.tuning.v3', builds: 'touge.builds.v1' };
+export function carKey(kind, id = BASE_CAR.id) {
+  return `touge.${kind}.v4.${id}`;
+}
+// The saved data of `kind` for this car, falling back to the old shared save if this car may claim it.
+export function carSave(kind, id = BASE_CAR.id) {
+  const own = stored(carKey(kind, id));
+  if (own) return own;
+  const claim = stored('touge.legacyClaim') || {};
+  if (claim[kind] && claim[kind] !== id) return null;
+  return stored(LEGACY[kind]);
+}
 // ...and with any engine swap fitted.
 function withSwap(car, id) {
   const sw = ENGINE_SWAPS[id];
   if (!sw?.ready || !sw.engine || sw.code === car.engineName) return car;
   return { ...car, engine: { ...sw.engine }, mass: car.mass + sw.kg - car.engineKg, engineName: sw.code, sound: sw.sound, swap: id };
 }
-export const CAR = withSwap(BASE_CAR, stored('touge.tuning.v3')?.engine);
+export const CAR = withSwap(BASE_CAR, carSave('tuning')?.engine);
 
 // Tyre compounds (tuning shop).
 //   mu         peak friction on dry asphalt
@@ -363,7 +378,7 @@ export const TUNABLE_DEFAULTS = {
   handbrake: 'stock',
   angleKit: 'stock',
   weight: 'stock',
-  paint: '#efeee6',
+  paint: '#' + CAR.paint.toString(16).padStart(6, '0'), // the car's factory colour
   headlights: 'white',
   taillights: 'red',
   numbers: false,

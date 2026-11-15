@@ -1,8 +1,7 @@
 // Player settings and tuning values, saved on the device.
-import { TUNABLE_DEFAULTS } from './config.js';
+import { TUNABLE_DEFAULTS, BASE_CAR, carKey, carSave } from './config.js';
 
 const KEY = 'touge.settings.v4';
-const TUNE_KEY = 'touge.tuning.v3';
 
 const DEFAULTS = {
   mode: 'manual', // 'manual' | 'autoClutch' | 'auto'
@@ -46,23 +45,33 @@ export function saveSettings(s) {
   write(KEY, s);
 }
 
+// Tuning and builds are kept per car. The first car to load claims any old shared save
+// (see carSave), so another car never picks up the same setup.
+function claim(kind) {
+  const c = read('touge.legacyClaim');
+  if (!c[kind]) write('touge.legacyClaim', { ...c, [kind]: BASE_CAR.id });
+}
+
 export function loadTuning() {
-  return { ...TUNABLE_DEFAULTS, ...read(TUNE_KEY) };
+  const t = carSave('tuning');
+  claim('tuning');
+  return { ...TUNABLE_DEFAULTS, ...(t || {}) };
 }
 
 export function saveTuning(t) {
-  write(TUNE_KEY, t);
+  claim('tuning');
+  write(carKey('tuning'), t);
 }
 
-// Saved builds: three named slots, each a copy of the tuning-shop setup.
-const BUILDS_KEY = 'touge.builds.v1';
-
+// Saved builds: three named slots per car, each a copy of the tuning-shop setup.
 export function loadBuilds() {
-  const b = read(BUILDS_KEY);
+  const b = carSave('builds') || {};
+  claim('builds');
   const slots = Array.isArray(b.slots) ? b.slots : [];
   return [0, 1, 2].map((i) => (slots[i] && typeof slots[i] === 'object' ? slots[i] : null));
 }
 
 export function saveBuilds(slots) {
-  write(BUILDS_KEY, { slots });
+  claim('builds');
+  write(carKey('builds'), { slots });
 }

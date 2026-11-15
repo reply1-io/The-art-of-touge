@@ -451,7 +451,7 @@ export class Shop {
         card.addEventListener('click', () => c.id !== CAR.id && this.onCar?.(c.id));
         row.append(card);
       }
-      return [this.#section('Your cars', row, this.#hint('Switching car reloads the game. Your parts and paint come with you.'))];
+      return [this.#section('Your cars', row, this.#hint('Switching car reloads the game. Each car keeps its own parts, paint and builds.'))];
     }
     if (this.tab === 'interior') {
       return [this.#section('Seats', this.#cards(SEATS, 'seats')), this.#section('Weight reduction', this.#cards(WEIGHTS, 'weight'))];
