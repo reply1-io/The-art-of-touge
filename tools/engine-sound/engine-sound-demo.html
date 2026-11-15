@@ -125,6 +125,7 @@ input[type=range] { width: 100%; accent-color: var(--needle); }
         <div class="row"><span class="seglabel">Engine</span>
           <div class="seg" role="group" aria-label="Engine">
             <button id="gM20" aria-pressed="true">M20 six</button>
+            <button id="gJZ" aria-pressed="false">1JZ six</button>
             <button id="gLS3" aria-pressed="false">LS3 V8</button>
             <button id="gROT" aria-pressed="false">13B rotary</button>
           </div>
@@ -208,6 +209,22 @@ const CARS = {
     noteH: 'Why it sounds like a six',
     noteP: 'Each cylinder fires every 120° of crank, so the main pitch is rpm ÷ 20 (40 Hz at idle, 325 Hz at the limiter). Small differences between cylinders add the half-order rumble a perfectly even buzz would lack.',
     peakNm: 222, peakRpm: 4300, spread: 5200, mass: 1230, freeRev: 8500,
+  },
+  jz1: {
+    eyebrow: 'Toyota 1JZ-GTE · 2.5 straight-six · 86 x 71.5 mm', title: '1JZ Engine Sound',
+    intro: 'No recordings are used. An oversquare 2.5 L straight-six firing 1-5-3-6-2-4 that revs quick and high, with the 1JZ scream: higher and raspier than a 2JZ. The factory turbo is always on: a light spool and a soft poof when you lift. 48 mm swaps in a bigger turbo with flutter. Press Start, then hold the gas.',
+    bankA: 'Cylinders 1-3', bankB: 'Cylinders 4-6',
+    noteH: 'Why it screams',
+    noteP: 'It fires every 120°, so the main pitch is rpm ÷ 20, like any straight-six. Its short stroke lets it rev to 7,000 and its pulses are sharp, so the higher harmonics come in early and ring near 780 Hz: a higher, raspier scream than the 2JZ.',
+    peakNm: 250, peakRpm: 4800, spread: 5500, mass: 1400, freeRev: 10000,
+  },
+  jz2: {
+    eyebrow: 'Toyota 2JZ-GTE, run N/A · 3.0 straight-six · 86 x 86 mm', title: '2JZ Engine Sound',
+    intro: 'No recordings are used. A square 3.0 L straight-six firing 1-5-3-6-2-4, its two manifold halves into one pipe, with the clean metallic howl a 2JZ makes as it revs out. Press Start, then hold the gas.',
+    bankA: 'Cylinders 1-3', bankB: 'Cylinders 4-6',
+    noteH: 'Why it howls',
+    noteP: 'Like the M20 it fires every 120°, so the main pitch is rpm ÷ 20. But the 2JZ is bigger, smoother and more even, and as it revs its 3rd, 4th and 6th harmonics ring out with a metallic edge near 640 Hz: the 2JZ howl.',
+    peakNm: 285, peakRpm: 4800, spread: 5500, mass: 1450, freeRev: 9000,
   },
   rotary13b: {
     eyebrow: 'Mazda RX-7 FC · 13B two-rotor Wankel · 160 hp', title: '13B Rotary Sound',
@@ -366,7 +383,11 @@ function setTurboUi() {
 }
 $('tOff').onclick = () => { turbo = false; setTurboUi(); };
 $('tOn').onclick = () => { turbo = true; setTurboUi(); };
-const boostNow = () => (turbo && engine ? engine.boost || 0 : 0);
+// boost from the fitted turbo: the 48 mm switch, or an engine's factory turbo (the 1JZ)
+const hasTurbo = () => turbo || !!ENGINES[eng].factoryTurbo;
+const boostNow = () => (hasTurbo() && engine ? engine.boost || 0 : 0);
+const boostPsi = () => (turbo ? 15 : 10);   // 48 mm about 15 psi, a factory turbo about 10
+const boostGain = () => (turbo ? 0.6 : 0.35);
 function setExhaust(name) {
   exhaust = name;
   for (const [id, k] of [['eStock', 'stock'], ['eStreet', 'street'], ['eRace', 'race']]) $(id).setAttribute('aria-pressed', String(k === name));
@@ -382,6 +403,7 @@ function setEngineChoice(name) {
   REDLINE = E.redline; IDLE = E.idleRpm; MASS = C.mass;
   $('gM20').setAttribute('aria-pressed', String(name === 'm20'));
   $('gLS3').setAttribute('aria-pressed', String(name === 'ls3'));
+  $('gJZ').setAttribute('aria-pressed', String(name === 'jz1'));
   $('gROT').setAttribute('aria-pressed', String(name === 'rotary13b'));
   MAXDIAL = E.redline > 6900 ? 8000 : 7000;
   $('scopeTitle').textContent = (E.cycleDeg || 720) === 720
@@ -396,6 +418,7 @@ function setEngineChoice(name) {
 }
 $('gM20').onclick = () => setEngineChoice('m20');
 $('gLS3').onclick = () => setEngineChoice('ls3');
+$('gJZ').onclick = () => setEngineChoice('jz1');
 $('gROT').onclick = () => setEngineChoice('rotary13b');
 
 // ---------- pedals: pointer + keyboard ----------
@@ -433,7 +456,7 @@ function step(dt) {
   sim.thr = sim.cut > 0 ? 0 : sim.blip > 0 ? Math.max(0.75, sim.thrIn) : sim.shift > 0 ? 0 : sim.thrIn;
 
   if (mode === 'free' || sim.gear === 0) {
-    let a = sim.thr * (torque(sim.rpm) * (1 + 0.6 * boostNow()) / CARS[eng].peakNm) * CARS[eng].freeRev - (250 + (sim.rpm - IDLE) * 0.75);
+    let a = sim.thr * (torque(sim.rpm) * (1 + boostGain() * boostNow()) / CARS[eng].peakNm) * CARS[eng].freeRev - (250 + (sim.rpm - IDLE) * 0.75);
     if (sim.rpm < IDLE) a += (IDLE - sim.rpm) * 6;
     sim.rpm += a * dt;
     return;
@@ -443,7 +466,7 @@ function step(dt) {
   else if (sim.shift > 0) sim.rpm += (wr - sim.rpm) * Math.min(1, dt * 9);
   else if (g === 1 && wr < 1400) sim.rpm += (Math.max(IDLE + 500 + sim.thr * 2600, wr) - sim.rpm) * Math.min(1, dt * 6);
   else sim.rpm += (Math.max(wr, gearMode === 'manual' ? IDLE * 0.85 : 0) - sim.rpm) * Math.min(1, dt * 20); // too high a gear: it lugs
-  const drive = sim.shift > 0 ? 0 : sim.thr * torque(sim.rpm) * (1 + 0.6 * boostNow()) * GEARS[g - 1] * FINAL * 0.9 / TYRE_R; // clutch in while shifting
+  const drive = sim.shift > 0 ? 0 : sim.thr * torque(sim.rpm) * (1 + boostGain() * boostNow()) * GEARS[g - 1] * FINAL * 0.9 / TYRE_R; // clutch in while shifting
   const resist = 0.42 * sim.v * sim.v + (sim.v > 0.1 ? 180 : 0) + sim.brake * 9500 + (sim.thr ? 0 : sim.rpm * 0.12);
   sim.v = Math.max(0, sim.v + (drive - resist) / MASS * dt);
   if (gearMode === 'auto') {
@@ -526,7 +549,7 @@ function frame(now) {
   $('roRpm').textContent = Math.round(sim.rpm / 10) * 10;
   $('roGear').textContent = mode === 'drive' && state === 'running' ? (sim.shift > 0 ? '–' : sim.gear) : 'N';
   $('roSpeed').textContent = Math.round(sim.v * 3.6);
-  $('roBoost').textContent = turbo ? (boostNow() * 15).toFixed(1) : '–'; // about 15 psi at full boost
+  $('roBoost').textContent = hasTurbo() ? (boostNow() * boostPsi()).toFixed(1) : '–';
   drawScope();
   requestAnimationFrame(frame);
 }
