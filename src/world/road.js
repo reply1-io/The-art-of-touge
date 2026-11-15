@@ -6,6 +6,8 @@
 
 
 export const STEP = 2; // metres between centreline samples
+// Samples either side of a junction kept clear of rails and walls.
+export const JUNCTION = 8;
 export const HALF = 3.4; // half the lane width, out to the white edge lines (two narrow lanes)
 export const PAVED = 4.2; // edge of the asphalt: a paved shoulder about half a car wide past the line
 export const SHOULDER = 5.4; // end of the gravel shoulder
@@ -84,7 +86,7 @@ export class Road {
   // points: map pixels scaled to targetLength, or (opts.world) world metres used as they are.
   // opts.gradeBase / opts.twistGain shape the elevation profile.
   constructor(points, targetLength = 5000, opts = {}) {
-    const { world: inMetres = false, gradeBase = 0.058, twistGain = 1.1, width = 'wide', gradeAt = null, heightAt = null, loop = false } = opts;
+    const { world: inMetres = false, gradeBase = 0.058, twistGain = 1.1, width = 'wide', gradeAt = null, heightAt = null, loop = false, ends = null } = opts;
     this.w = WIDTHS[width] || WIDTHS.wide;
     // ---- Plan view: spline, scale to length, resample at STEP ----
     const dense = inMetres ? points : catmullRom(points);
@@ -96,12 +98,13 @@ export class Road {
     for (let i = 1; i < world.length; i++) cum.push(cum[i - 1] + Math.hypot(world[i][0] - world[i - 1][0], world[i][1] - world[i - 1][1]));
     const total = cum[cum.length - 1];
     // A loop takes a sample right on its end so the two ends meet.
-    const n = loop ? Math.round(total / STEP) + 1 : Math.floor(total / STEP) + 1;
+    const exact = loop || !!ends; // loops and link roads need to end exactly where they are put
+    const n = exact ? Math.round(total / STEP) + 1 : Math.floor(total / STEP) + 1;
     let xs = new Float64Array(n);
     let zs = new Float64Array(n);
     let j = 0;
     for (let i = 0; i < n; i++) {
-      const s = loop ? (i * total) / (n - 1) : i * STEP;
+      const s = exact ? (i * total) / (n - 1) : i * STEP;
       while (j < cum.length - 2 && cum[j + 1] < s) j++;
       const f = Math.min(1, (s - cum[j]) / Math.max(1e-9, cum[j + 1] - cum[j]));
       xs[i] = world[j][0] + (world[j + 1][0] - world[j][0]) * f;
@@ -120,8 +123,19 @@ export class Road {
       xs = wrapSmooth(xs);
       zs = wrapSmooth(zs);
     } else {
+      const ex = [xs[0], zs[0], xs[n - 1], zs[n - 1]];
       xs = smooth(xs, 5, 2);
       zs = smooth(zs, 5, 2);
+      // A link road keeps its two end points exactly, easing back into the smoothed line.
+      if (ends) {
+        for (let k = 0; k < 4; k++) {
+          const f = 1 - k / 4;
+          xs[k] += (ex[0] - xs[k]) * f;
+          zs[k] += (ex[1] - zs[k]) * f;
+          xs[n - 1 - k] += (ex[2] - xs[n - 1 - k]) * f;
+          zs[n - 1 - k] += (ex[3] - zs[n - 1 - k]) * f;
+        }
+      }
     }
 
     this.count = n;
@@ -187,6 +201,14 @@ export class Road {
     let bottom = this.y[n - 1];
     if (heightAt) for (let i = 0; i < n; i++) bottom = Math.min(bottom, this.y[i]);
     for (let i = 0; i < n; i++) this.y[i] -= bottom;
+    // ends: [y0, y1] heights the two ends must meet (a link road joining another road), shared out
+    // along the road.
+    if (ends) {
+      const e0 = ends[0] - this.y[0];
+      const e1 = ends[1] - this.y[n - 1];
+      for (let i = 0; i < n; i++) this.y[i] += e0 + ((e1 - e0) * i) / (n - 1);
+      for (let i = 1; i < n; i++) this.grade[i] = (this.y[i - 1] - this.y[i]) / STEP;
+    }
     // The highest point of the road (the summit end of a downhill pass).
     this.top = heightAt ? Math.max(...this.y) : this.y[0];
     this.loop = loop;
@@ -350,7 +372,9 @@ export class Road {
       const pz = this.z[i] + lz * d;
       let hit = false;
       this.forEachNear(px, pz, margin + 2, (k) => {
-        if (hit || Math.abs(k - i) < 25) return;
+        // (On a loop, count the gap the short way round.)
+        const gap = this.loop ? Math.min(Math.abs(k - i), this.count - Math.abs(k - i)) : Math.abs(k - i);
+        if (hit || gap < 25) return;
         if ((px - this.x[k]) ** 2 + (pz - this.z[k]) ** 2 < margin * margin) hit = true;
       });
       if (hit) return d;

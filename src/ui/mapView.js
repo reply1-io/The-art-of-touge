@@ -224,6 +224,25 @@ export class MapView {
     };
     g.lineJoin = 'round';
     g.lineCap = 'round';
+    // Link roads first (thinner, dashed pale line), then the loop over them.
+    for (const l of this.mountain.links || []) {
+      const lr = l.road;
+      g.beginPath();
+      for (let i = 0; i < lr.count; i++) {
+        const [x, y] = this.toPx(lr.x[i], lr.z[i]);
+        if (i) g.lineTo(x, y);
+        else g.moveTo(x, y);
+      }
+      g.strokeStyle = 'rgba(20, 20, 18, 0.85)';
+      g.lineWidth = 3.6 * dpr;
+      g.setLineDash([]);
+      g.stroke();
+      g.strokeStyle = '#d9cfa8';
+      g.lineWidth = 1.5 * dpr;
+      g.setLineDash([3 * dpr, 2 * dpr]);
+      g.stroke();
+      g.setLineDash([]);
+    }
     path(g, 0, r.count - 1);
     g.strokeStyle = 'rgba(20, 20, 18, 0.85)';
     g.lineWidth = 4.5 * dpr;

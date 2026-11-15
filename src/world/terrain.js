@@ -7,6 +7,7 @@
 
 import { HALF, VERGE, STEP } from './road.js';
 import { stopsFor, ZONE_INNER } from './stops.js';
+import { RoadSet } from './roadSet.js';
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const smoothstep = (a, b, x) => {
@@ -55,8 +56,13 @@ export function ridged(x, z, scales, seed = 0) {
 export class Terrain {
   // lakes: optional (road) => [{ x, z, r, level }] in place of the lake behind the start;
   // peak: optional { x, z, r, rise } cone that tops out the mountain the road circles.
-  constructor(road, { cell = 4, margin = 260, relief = 110, lakes = null, peak = null, stops = {}, level = false, town = null } = {}) {
+  // links: other roads joining this one ([{ road, a, b }]); the ground is shaped round them too.
+  constructor(main, { cell = 4, margin = 260, relief = 110, lakes = null, peak = null, stops = {}, level = false, town = null, links = [] } = {}) {
+    // `road` is every road (the loop and its links); `this.main` is the loop itself, which the
+    // lots, the town and the lake placement follow.
+    const road = links.length ? new RoadSet(main, links) : main;
     this.road = road;
+    this.main = main;
     this.cell = cell;
     let minX = Infinity;
     let maxX = -Infinity;
@@ -116,7 +122,7 @@ export class Terrain {
     // Features: the lake behind the summit start and the town around the finish.
     const h0 = road.heading[0];
     this.lakes = lakes
-      ? lakes(road, this)
+      ? lakes(main, this)
       : [
           {
             x: road.x[0] - Math.sin(h0) * 120 + Math.cos(h0) * 50,
@@ -128,8 +134,8 @@ export class Terrain {
     this.lake = this.lakes[0] || { x: 1e9, z: 1e9, r: 0, level: 0 };
     this.peak = peak;
     // The town: at the end of the road, or where `town` ({ i, r }) puts it.
-    const f = town ? town.i : road.count - 1;
-    this.town = { i: f, x: road.x[f], z: road.z[f], r: town?.r ?? 140, level: road.y[f] - 0.3 };
+    const f = town ? town.i : main.count - 1;
+    this.town = { i: f, x: main.x[f], z: main.z[f], r: town?.r ?? 140, level: main.y[f] - 0.3 };
 
     // Coarse distance to the road (chamfer transform on a 16 m grid). Far from the road the land
     // rises into wooded ridges and falls into valleys; near it, nothing changes.
@@ -137,7 +143,7 @@ export class Terrain {
     this.#buildFarDistance();
 
     // Pull-offs, the gas station and the car-show lot: the ground is levelled under them.
-    this.zones = stopsFor(road, stops);
+    this.zones = stopsFor(main, stops);
 
     this.heights = new Float32Array(this.nx * this.nz);
     this.roadDist = new Float32Array(this.nx * this.nz);
@@ -333,7 +339,8 @@ export class Terrain {
 
   // Level the ground just under a zone's surface, blending back to the hillside around it.
   #levelZones(x, z, i, h) {
-    const road = this.road;
+    const road = this.main;
+    if (i >= road.count) return h; // beside a link road: no lots there
     const hd = road.heading[i];
     const lat = (x - road.x[i]) * Math.cos(hd) - (z - road.z[i]) * Math.sin(hd);
     const side = lat >= 0 ? 1 : -1;
@@ -376,7 +383,7 @@ export class Terrain {
 
   // Which sides of road sample i drop away (guardrail) or rise (cut): +1 rises, -1 drops, 0 neither.
   sideProfile(i, side) {
-    const road = this.road;
+    const road = this.main;
     const [x, , z] = road.pointAt(i, side * 22);
     const dh = this.natural(x, z) - road.y[i];
     return dh > 2.5 ? 1 : dh < -2.5 ? -1 : 0;

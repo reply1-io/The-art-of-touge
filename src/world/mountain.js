@@ -1,7 +1,7 @@
 // The mountain's visuals: road (chunked for culling), terrain tiles, guardrails, streetlights at the
 // hairpins, cedar forest, the summit lake, the town at the bottom, and start / finish lines.
 import * as THREE from 'three';
-import { crossSection, STEP } from './road.js';
+import { crossSection, STEP, JUNCTION } from './road.js';
 import { TRACKS } from './tracks.js';
 import { Terrain, noise2 } from './terrain.js';
 import { buildMountainPhysics } from './mountainPhysics.js';
@@ -199,10 +199,13 @@ export class Mountain {
     this.road = this.track.road();
     this.full = { start: this.road.startIndex, finish: this.road.finishIndex };
     this.stage = -1;
-    this.terrain = new Terrain(this.road, { margin: this.road.length > 6000 ? 180 : 260, relief: this.track.relief ?? 110, lakes: this.track.lakes, peak: this.track.peak?.(this.road), stops: this.track.stopsOpts || {}, level: !!this.track.world, town: this.track.town?.(this.road) });
-    this.layout = buildMountainPhysics(world, this.road, this.terrain);
+    // Link roads off the loop: junctions where you can turn off.
+    this.links = this.track.links?.(this.road) ?? [];
+    this.terrain = new Terrain(this.road, { links: this.links, margin: this.road.length > 6000 ? 180 : 260, relief: this.track.relief ?? 110, lakes: this.track.lakes, peak: this.track.peak?.(this.road), stops: this.track.stopsOpts || {}, level: !!this.track.world, town: this.track.town?.(this.road) });
+    this.layout = buildMountainPhysics(world, this.road, this.terrain, this.links);
     this.chunks = []; // { group, x, z, r }
     this.#buildRoad();
+    for (const l of this.links) this.#buildRoad(l.road, true);
     this.#buildTerrain();
     this.#buildRails();
     this.#buildStreetlights();
@@ -210,6 +213,7 @@ export class Mountain {
     this.#buildRoadside();
     this.#buildLandmarks();
     this.#buildRoadSigns();
+    this.#buildJunctionSigns();
     this.#buildStops();
     this.#buildLake();
     this.#buildTown();
@@ -281,6 +285,72 @@ export class Mountain {
     });
   }
 
+  // A green direction sign before each junction: which road the turning leads to, with an arrow.
+  #buildJunctionSigns() {
+    const road = this.road;
+    const stages = this.track.stages || [];
+    const postMat = new THREE.MeshLambertMaterial({ color: 0x9aa0a6 });
+    const backMat = new THREE.MeshLambertMaterial({ color: 0x5d636a });
+    const post = new THREE.CylinderGeometry(0.07, 0.07, 2.9, 6);
+    post.translate(0, 1.45, 0);
+    for (const l of this.links) {
+      for (const [i, side, to] of [
+        [l.a, l.sideA, l.to],
+        [l.b, l.sideB, l.from],
+      ]) {
+        const name = stages[to]?.name || 'Link road';
+        // One sign for each direction of travel, 30 m before the turning, on the turning's side
+        // for one and across the road for the other.
+        for (const dir of [1, -1]) {
+          const k = i - dir * 15;
+          if (k < 2 || k > road.count - 3) continue;
+          const c = document.createElement('canvas');
+          c.width = 256;
+          c.height = 96;
+          const g = c.getContext('2d');
+          g.fillStyle = '#1f7a45';
+          g.fillRect(0, 0, 256, 96);
+          g.strokeStyle = '#f2f4f7';
+          g.lineWidth = 5;
+          g.strokeRect(6, 6, 244, 84);
+          g.fillStyle = '#f2f4f7';
+          // Which way to turn, as the driver sees it: the junction is on the left of the road (as
+          // the loop runs) when side is +1; driving the other way it is on the right.
+          const left = side * dir > 0;
+          g.font = 'bold 46px sans-serif';
+          g.textAlign = 'center';
+          g.fillText(left ? '\u2190' : '\u2192', left ? 36 : 220, 64);
+          let size = 28;
+          g.font = `bold ${size}px sans-serif`;
+          while (g.measureText(name).width > 170 && size > 14) g.font = `bold ${--size}px sans-serif`;
+          g.fillText(name, left ? 144 : 112, 58);
+          g.font = 'bold 14px sans-serif';
+          g.fillText('LINK ROAD', left ? 144 : 112, 80);
+          const tex = new THREE.CanvasTexture(c);
+          tex.colorSpace = THREE.SRGBColorSpace;
+          const face = new THREE.MeshLambertMaterial({ map: tex });
+          const board = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1, 0.07), [backMat, backMat, backMat, backMat, face, backMat]);
+          board.position.y = 2.9;
+          const p0 = new THREE.Mesh(post, postMat);
+          const p1 = new THREE.Mesh(post, postMat);
+          p0.position.set(-0.9, 0, -0.05);
+          p1.position.set(0.9, 0, -0.05);
+          const grp = new THREE.Group();
+          grp.add(board, p0, p1);
+          // On the driver's left (Japan drives on the left).
+          const l2 = dir * (road.w.RAIL + 1.6);
+          const p = road.pointAt(k, l2);
+          grp.position.set(p[0], Math.min(p[1], this.terrain.heightAt(p[0], p[2])) - 0.1, p[2]);
+          grp.rotation.y = road.heading[k] + (dir > 0 ? Math.PI : 0) - 0.2 * dir;
+          grp.traverse((o) => {
+            if (o.isMesh) o.castShadow = true;
+          });
+          this.#addChunk(grp, p[0], p[2], 6);
+        }
+      }
+    }
+  }
+
   // True when (x, z) is on, or within `pad` metres of, a pull-off or lot next to sample i.
   #onLot(x, z, i, pad) {
     const road = this.road;
@@ -298,6 +368,11 @@ export class Mountain {
   // True when sample i on `side` is inside (or within `pad` samples of) a pull-off or lot.
   inZone(i, side, pad = 3) {
     for (const z of this.terrain.zones) if (z.side === side && i >= z.i0 - pad && i <= z.i1 + pad) return true;
+    // A junction is kept clear the same way.
+    for (const l of this.links ?? []) {
+      if (l.sideA === side && Math.abs(i - l.a) <= JUNCTION + pad) return true;
+      if (l.sideB === side && Math.abs(i - l.b) <= JUNCTION + pad) return true;
+    }
     return false;
   }
 
@@ -645,8 +720,7 @@ export class Mountain {
   }
 
   // A pose back on the road near sample i (for recovering a stuck or rolled car).
-  recoverAt(i) {
-    const r = this.road;
+  recoverAt(i, r = this.road) {
     const k = Math.max(4, Math.min(r.count - 10, i));
     const p = r.pointAt(k, -r.w.LANE);
     return { pos: [p[0], p[1] + 0.8, p[2]], yaw: r.heading[k], index: k };
@@ -658,10 +732,11 @@ export class Mountain {
     this.chunks.push({ group, x, z, r, ground: kind === 'ground' });
   }
 
-  #buildRoad() {
-    const road = this.road;
-    const asphaltMat = new THREE.MeshLambertMaterial({ map: asphaltTexture(road.w) });
-    const edgeMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+  // lift: a link road, drawn over the loop's verge where it joins.
+  #buildRoad(road = this.road, lift = false) {
+    const over = lift ? { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 } : {};
+    const asphaltMat = new THREE.MeshLambertMaterial({ map: asphaltTexture(road.w), ...over });
+    const edgeMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, ...over });
     const xs = crossSection(road, 0);
     const asphaltCols = xs.map((c, k) => (c[2] === 'asphalt' ? k : -1)).filter((k) => k >= 0);
     for (let i0 = 0; i0 < road.count - 1; i0 += ROAD_CHUNK) {
@@ -891,11 +966,13 @@ export class Mountain {
       for (let x = t.x0 + 10; x < t.x0 + (t.nx - 1) * t.cell - 10; x += step) {
         const jx = x + (noise2(x * 0.7, z * 0.3) - 0.5) * 6;
         const jz = z + (noise2(x * 0.3, z * 0.7) - 0.5) * 6;
-        const near = t.nearestRoad(jx, jz, 60);
-        if (near.d < 9.5 || near.d > 58) continue;
+        const near0 = t.nearestRoad(jx, jz, 60);
+        if (near0.d < 9.5 || near0.d > 58) continue;
+        // Near a link road, group with the loop at its junction.
+        const near = { d: near0.d, i: t.road.mainIdx ? t.road.mainIdx[near0.i] : near0.i };
         if (this.#onLot(jx, jz, near.i, 5)) continue;
         // Here and there the trees open up on the downhill side: a view out over the valley.
-        if (near.d < 46 && t.natural(jx, jz) < road.y[near.i] - 4 && noise2(near.i / 70, 3.3) > 0.55) {
+        if (near.d < 46 && t.natural(jx, jz) < t.road.y[near0.i] - 4 && noise2(near.i / 70, 3.3) > 0.55) {
           if (noise2(jx * 0.8, jz * 0.8) > 0.7) bucket(near.i).bushes.push([jx, t.heightAt(jx, jz) - 0.3, jz, 0.8 + noise2(jx, jz)]);
           continue;
         }
@@ -1258,7 +1335,7 @@ export class Mountain {
       const dpt = 6 + noise2(1, k) * 6;
       const h = 4 + Math.round(noise2(k, k) * 2) * 3;
       const y = t.heightAt(x, z);
-      const yaw = near.i >= 0 ? road.heading[near.i] : 0;
+      const yaw = near.i >= 0 ? t.road.heading[near.i] : 0;
       const box = new THREE.BoxGeometry(w, h, dpt);
       const uv = box.getAttribute('uv');
       for (let v = 0; v < uv.count; v++) uv.setXY(v, uv.getX(v) * (w / 6), uv.getY(v) * (h / 4));

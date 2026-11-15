@@ -11,17 +11,20 @@ export class MiniMap {
     this.mountain = mountain;
     this.ready = false;
     this.tick = 0;
-    // Draw the big map a moment after start-up, so it does not hold up the first frames.
-    setTimeout(() => {
-      this.view = new MapView(document.createElement('canvas'), mountain, null);
-      this.view.drawStatic(1400, 1400, 1.6);
-      this.ready = true;
-    }, 400);
+  }
+
+  // The big map is drawn the first time it is needed (once you are driving), not while the menus
+  // are up and you are tapping through them.
+  #prepare() {
+    this.view = new MapView(document.createElement('canvas'), this.mountain, null);
+    this.view.drawStatic(1400, 1400, 1.6);
+    this.ready = true;
   }
 
   // x, z: the car; heading: which way it faces (radians, as the road uses them).
   update(x, z, heading) {
-    if (!this.ready || this.canvas.offsetParent === null) return;
+    if (this.canvas.offsetParent === null) return;
+    if (!this.ready) this.#prepare();
     // About 20 times a second is plenty.
     if (this.tick++ % 3) return;
     const c = this.canvas;

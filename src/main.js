@@ -179,6 +179,11 @@ let shifter;
 let tuning;
 let running = false;
 let paused = false;
+// Lighter rendering behind the menus (see setMenuQuality).
+let lastMenuDraw = 0;
+let menuFrames = 0;
+let pausedFrameDrawn = false;
+let menuQuality = false;
 let accumulator = 0;
 let last = performance.now();
 let fps = 60;
@@ -291,8 +296,9 @@ function applySettings() {
   audio.setMuted(!settings.sound);
   vhs.strength = settings.vhs ? 0.45 : 0;
   // Picture: 'sharp' renders at screen resolution, 'retro' at half (chunky pixels).
-  vhs.pixelSize = settings.picture === 'retro' ? 2 : 1;
+  vhs.pixelSize = menuQuality || settings.picture === 'retro' ? 2 : 1;
   vhs.setSize(window.innerWidth, window.innerHeight);
+  pausedFrameDrawn = false; // redraw the frozen picture with the new look
   $('vhs').classList.toggle('off', !settings.vhs);
   $('controls').dataset.steering = settings.steering;
   shifter?.setMode(settings.shifter);
@@ -309,6 +315,7 @@ function applySettings() {
 }
 
 function placeCar(pose) {
+  onRoad.link = -1;
   vehicle.reset(pose.pos, pose.yaw);
   if (vehicle.mode === 'auto') vehicle.trans.setDrive('D', 0);
   shifter.setGear(vehicle.trans.gear);
@@ -321,6 +328,7 @@ function placeCar(pose) {
 
 // Back to the summit start line.
 function resetCar() {
+  onRoad.link = -1;
   placeCar(mountain.spawn);
   drift.reset();
   run.phase = 'ready';
@@ -329,6 +337,18 @@ function resetCar() {
 
 // Back on the road where you are (stuck, rolled or off the road). Cancels a timed run.
 function recoverCar() {
+  if (onRoad.link >= 0) {
+    // Back onto the link road you were on.
+    const l = mountain.links[onRoad.link];
+    const pose = mountain.recoverAt(onRoad.hint - 3, l.road);
+    const keep = run.hint;
+    const k = onRoad.link;
+    placeCar(pose);
+    run.hint = keep;
+    onRoad.link = k;
+    onRoad.hint = pose.index;
+    return;
+  }
   placeCar(mountain.recoverAt(run.hint - 5));
   if (race?.active) {
     race.recovered();
@@ -345,6 +365,7 @@ function setPaused(p) {
   paused = p;
   $('pause').classList.toggle('hidden', !p);
   document.body.classList.toggle('paused', p);
+  pausedFrameDrawn = false;
   if (p) {
     input.releaseAll();
     audio.suspend();
@@ -650,10 +671,63 @@ function capturePose() {
 }
 
 // ---------- Downhill time attack: start line to finish line ----------
-function updateRun(dt) {
+// ---------- Which road the car is on: the loop, or one of the link roads ----------
+// onRoad.link: -1 on the loop, else which link; onRoad.hint: last sample on that link.
+const onRoad = { link: -1, hint: 0 };
+const linkQ = {};
+function locate() {
   const p = vehicle.body.translation();
+  const keep = run.hint;
   mountain.road.query(p.x, p.z, run.hint, roadQ);
+  const links = mountain.links;
+  const r = mountain.road;
+  if (onRoad.link >= 0) {
+    // On a link: back onto the loop once the loop is the nearer road.
+    const l = links[onRoad.link];
+    l.road.query(p.x, p.z, onRoad.hint, linkQ);
+    onRoad.hint = linkQ.index;
+    const atEnd = linkQ.index <= 2 || linkQ.index >= l.road.count - 3;
+    if (atEnd && Math.abs(roadQ.lateral) < Math.abs(linkQ.lateral) + 2 && Math.abs(roadQ.lateral) < r.w.PAVED + 1.5) {
+      onRoad.link = -1;
+      bannerStage = -1; // show the road you come out on
+    } else {
+      run.hint = keep;
+      return;
+    }
+  } else if (Math.abs(roadQ.lateral) > r.w.PAVED) {
+    // Off the side of the loop: turning onto a link?
+    for (let k = 0; k < links.length; k++) {
+      const l = links[k];
+      for (const [i, end] of [
+        [l.a, 0],
+        [l.b, l.road.count - 1],
+      ]) {
+        if (Math.min(Math.abs(roadQ.index - i), r.count - Math.abs(roadQ.index - i)) > 20) continue;
+        l.road.query(p.x, p.z, end, linkQ);
+        if (Math.abs(linkQ.lateral) < Math.abs(roadQ.lateral) && Math.abs(linkQ.lateral) < l.road.w.PAVED + 1) {
+          onRoad.link = k;
+          onRoad.hint = linkQ.index;
+          linkBanner(l, end === 0);
+          // A timed run or race follows the loop: turning off ends it.
+          if (race?.active) {
+            race.abort();
+            toast('OFF COURSE: RACE OVER', 2.5);
+          } else if (run.phase === 'running') {
+            run.phase = 'ready';
+            run.time = 0;
+            toast('OFF COURSE: RUN CANCELLED', 2);
+          }
+          run.hint = keep;
+          return;
+        }
+      }
+    }
+  }
   run.hint = roadQ.index;
+}
+
+function updateRun(dt) {
+  if (onRoad.link >= 0) return;
   const r = mountain.road;
   const start = r.startIndex * 2;
   const finish = r.finishIndex * 2;
@@ -717,6 +791,19 @@ function roadBanner(s) {
   el.classList.add('show');
   clearTimeout(bannerTimer);
   bannerTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+// Turning onto a link road: where it goes.
+function linkBanner(l, fromA) {
+  const stages = mountain.track.stages || [];
+  const to = stages[fromA ? l.to : l.from];
+  const el = $('road-banner');
+  el.querySelector('small').textContent = 'JUNCTION';
+  el.querySelector('b').textContent = 'LINK ROAD';
+  el.querySelector('span').textContent = `${Math.round(l.road.length)} m to ${to?.name ?? 'the loop'}`;
+  el.classList.add('show');
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(() => el.classList.remove('show'), 3000);
 }
 
 // ---------- Pass-by whooshes: rail posts and roadside posts rushing past ----------
@@ -958,6 +1045,22 @@ function updateTitleSub() {
 }
 
 // ---------- Main loop ----------
+// ---------- Lighter rendering behind the menus ----------
+function isMenuOpen() {
+  if (!running || paused) return true;
+  for (const id of ['race', 'teleport', 'results']) if (!$(id).classList.contains('hidden')) return true;
+  return false;
+}
+function setMenuQuality(on) {
+  if (on === menuQuality) return;
+  menuQuality = on;
+  // Half resolution and on-demand shadows while a menu is up; full quality while driving.
+  vhs.pixelSize = on ? 2 : settings.picture === 'retro' ? 2 : 1;
+  vhs.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.autoUpdate = !on;
+  renderer.shadowMap.needsUpdate = true;
+}
+
 function frame(now) {
   requestAnimationFrame(frame);
   let dt = (now - last) / 1000;
@@ -986,11 +1089,9 @@ function frame(now) {
       steps++;
     }
     if (steps === MAX_STEPS) accumulator = 0;
+    locate();
     if (race.active) {
-      const p = vehicle.body.translation();
-      mountain.road.query(p.x, p.z, run.hint, roadQ);
-      run.hint = roadQ.index;
-      roadBanner(roadQ.s);
+      if (onRoad.link < 0) roadBanner(roadQ.s);
     } else updateRun(dt);
     {
       const p = vehicle.body.translation();
@@ -1043,6 +1144,19 @@ function frame(now) {
   $('start').classList.toggle('hidden', vehicle.engine.running);
   $('clutch').style.setProperty('--engaged', `${Math.round((1 - vehicle.trans.coupling) * 100)}%`);
 
+  // Menus open: the road behind them is only backdrop, so spend as little on it as possible and
+  // keep the phone free to respond to taps. Paused, the picture is frozen; on the title and race
+  // screens it is drawn about 20 times a second at half resolution, shadows refreshed now and then.
+  const menu = isMenuOpen();
+  document.body.classList.toggle('menu-open', menu);
+  setMenuQuality(menu && !shop.isOpen);
+  if (menu && !shop.isOpen) {
+    if (paused && pausedFrameDrawn) return;
+    if (!paused && now - lastMenuDraw < 50) return;
+    lastMenuDraw = now;
+    renderer.shadowMap.needsUpdate = menuFrames++ % 6 === 0;
+  }
+
   // The tuning shop has the screen: draw the garage and the turntable instead of the road.
   if (shop.isOpen) {
     shop.update(dt);
@@ -1080,6 +1194,7 @@ function frame(now) {
     sunVisible = !world.castRay(ray, 900, true, undefined, undefined, undefined, vehicle.body) && !behindRange(camera.position);
   }
   flare.draw(dt, camera, sunDir, timePreset.flare, timePreset.flareTint, sunVisible);
+  if (paused) pausedFrameDrawn = true;
   // The sun glinting off the paint (needs the sun in the sky and not hidden by the mountain).
   glintTint.setRGB(...timePreset.flareTint.map((c) => c / 255));
   let sunOnCar = false;
@@ -1124,6 +1239,7 @@ async function boot() {
   // Guardrails are a cushion, not a wall: see physics/barrier.js.
   const railQ = {};
   barrier = new SoftBarrier((x, z, out) => {
+    if (onRoad.link >= 0) return false; // link roads have no rails
     const r = mountain.road;
     r.query(x, z, run.hint, railQ);
     const side = railQ.lateral > 0 ? 1 : -1;
@@ -1180,7 +1296,7 @@ async function boot() {
   }
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { get wildlifeDbg() { return wildlife; }, get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { get onRoad() { return onRoad; }, get wildlifeDbg() { return wildlife; }, get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;

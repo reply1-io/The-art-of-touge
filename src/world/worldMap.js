@@ -275,5 +275,174 @@ function tryRoute(seed) {
   }
   // Cells the route missed, for lakes.
   const empty = holes.map(([i, j]) => [i * CELL, j * CELL]);
-  return { pts, starts, length: s, empty, seed };
+  return { pts, starts, length: s, empty, seed, cells: path, wps: wps.slice(0, -1) };
+}
+
+// ---------- Link roads: junctions off the loop ----------
+// Where two parts of the loop pass close by each other (70-190 m apart) but are far apart along
+// the road, a short twisty road can join them: turn off at a junction on one and come out on the
+// other. Each link starts and ends square to the loop, at the edge of its tarmac, on a gentle bit
+// of road, and gets switchbacks if it has a lot of height to make up.
+//
+// road: the loop as built (Road). avoid(i): true where the loop has a lot or pull-off that a
+// junction must not cut into. Returns [{ pts, a, b, sideA, sideB }]: the link's points (world
+// metres) and the loop samples and sides it leaves from and joins.
+export function planLinks(road, W, avoid = () => false, count = 8, seed = 7) {
+  const rand = mulberry(seed);
+  const PAV = road.w.PAVED + 0.3;
+  const n = road.count;
+  // Junction spots: gentle bits of road clear of lots, gutters and the meet.
+  const flatAt = (i) => {
+    if (i < 60 || i > n - 60 || avoid(i)) return false;
+    for (let j = i - 3; j <= i + 3; j++) if (Math.abs(road.kappa[j]) > 1 / 28 || road.gutterLeft[j] || road.gutterRight[j]) return false;
+    return true;
+  };
+  const spots = [];
+  for (let i = 60; i < n - 60; i += 5) if (flatAt(i)) spots.push(i);
+  // Is the straight line between two points clear of the loop (away from its ends)?
+  const lineClear = (ax, az, bx, bz) => {
+    const L = Math.hypot(bx - ax, bz - az);
+    for (let d = 22; d < L - 22; d += 6) {
+      const px = ax + ((bx - ax) * d) / L;
+      const pz = az + ((bz - az) * d) / L;
+      let hit = false;
+      road.forEachNear(px, pz, 20, (k) => {
+        if (!hit && Math.hypot(road.x[k] - px, road.z[k] - pz) < 18) hit = true;
+      });
+      if (hit) return false;
+    }
+    return true;
+  };
+  const pairs = [];
+  for (const i of spots) {
+    const hi = road.heading[i];
+    road.forEachNear(road.x[i], road.z[i], 190, (j) => {
+      if (j <= i || !flatAt(j)) return;
+      const along = Math.min(j - i, n - (j - i));
+      if (along < 300) return;
+      const dx = road.x[j] - road.x[i];
+      const dz = road.z[j] - road.z[i];
+      const D = Math.hypot(dx, dz);
+      if (D < 70 || D > 190) return;
+      // Square to the road at both ends.
+      const si = (dx * Math.cos(hi) - dz * Math.sin(hi)) / D;
+      const hj = road.heading[j];
+      const sj = (-dx * Math.cos(hj) + dz * Math.sin(hj)) / D;
+      if (Math.abs(si) < 0.6 || Math.abs(sj) < 0.6) return;
+      const dy = Math.abs(road.y[j] - road.y[i]);
+      if (dy / D > 0.3) return;
+      if (!lineClear(road.x[i], road.z[i], road.x[j], road.z[j])) return;
+      pairs.push({ i, j, sideA: Math.sign(si), sideB: Math.sign(sj), score: Math.abs(si) + Math.abs(sj) - Math.abs(D - 120) / 120 - dy / D + rand() * 0.6 });
+    });
+  }
+  pairs.sort((p, q) => q.score - p.score);
+  const usedAt = [];
+  const links = [];
+  const wrap = (a) => {
+    while (a > Math.PI) a -= 2 * Math.PI;
+    while (a < -Math.PI) a += 2 * Math.PI;
+    return a;
+  };
+  const farFromUsed = (i) => usedAt.every((u) => Math.min(Math.abs(u - i), n - Math.abs(u - i)) > 120);
+  for (const pr of pairs) {
+    if (links.length >= count) break;
+    if (!farFromUsed(pr.i) || !farFromUsed(pr.j)) continue;
+    const A = { i: pr.i, side: pr.sideA };
+    const B = { i: pr.j, side: pr.sideB };
+    const pa = road.pointAt(A.i, A.side * PAV);
+    const pb = road.pointAt(B.i, B.side * PAV);
+    // Heading straight out from the loop at A; arriving straight in at B.
+    const hA = road.heading[A.i] + (A.side * Math.PI) / 2;
+    const hB = road.heading[B.i] + (B.side * Math.PI) / 2 + Math.PI;
+    const pts = [[pa[0], pa[2]]];
+    let x = pa[0];
+    let z = pa[2];
+    let h = hA;
+    const step = (len, k) => {
+      for (let d = 0; d < len; d++) {
+        h += k;
+        x += Math.sin(h);
+        z += Math.cos(h);
+        pts.push([x, z]);
+      }
+    };
+    step(12, 0);
+    // Steep between the two ends? Switchbacks first, to make the road long enough to climb gently.
+    const need = Math.abs(road.y[B.i] - road.y[A.i]) / 0.085 + 30;
+    const extra = need - (12 + Math.hypot(pb[0] - x, pb[2] - z) * 1.25);
+    if (extra > 0) {
+      const W = 28; // the switchbacks reach this far either side of the line from A to B
+      const r = 14;
+      const ux = (pb[0] - x) / Math.hypot(pb[0] - x, pb[2] - z);
+      const uz = (pb[2] - z) / Math.hypot(pb[0] - x, pb[2] - z);
+      const ox = x;
+      const oz = z;
+      const lateral = () => (x - ox) * uz - (z - oz) * ux;
+      const dirU = Math.atan2(ux, uz);
+      let sgn = 1;
+      // Face across the line, then run back and forth, a hairpin at each end.
+      const want = dirU + (sgn * Math.PI) / 2;
+      const dd = wrap(want - h);
+      const n0 = Math.max(1, Math.round(Math.abs(dd) * 14));
+      step(n0, dd / n0);
+      let got = 0;
+      for (let pin = 0; pin < 10 && got < extra; pin++) {
+        const run = Math.max(6, Math.round(Math.abs(sgn * W - lateral())));
+        step(run, 0);
+        const tx = Math.cos(h);
+        const tz = -Math.sin(h);
+        const turn = tx * ux + tz * uz > 0 ? 1 : -1;
+        step(Math.round(Math.PI * r), turn / r);
+        got += run + Math.PI * r - 2 * r;
+        sgn = -sgn;
+      }
+      step(Math.max(6, Math.round(Math.abs(lateral()))), 0);
+    }
+    let side = 1;
+    let guard = 0;
+    while (Math.hypot(pb[0] - x, pb[2] - z) > 65 && guard++ < 60) {
+      const base = Math.atan2(pb[0] - x, pb[2] - z);
+      if (rand() < 0.8) side = -side;
+      const radius = 22 + rand() * 30;
+      let angle = (25 + rand() * 60) * DEG;
+      const dev = wrap(h - base);
+      const lim = 55 * DEG;
+      if (Math.abs(dev + side * angle) > lim) {
+        if (Math.abs(dev - side * angle) <= lim) side = -side;
+        else angle = Math.max(0.2, lim - Math.abs(dev));
+        if (Math.abs(dev + side * angle) > lim) side = -Math.sign(dev) || 1;
+      }
+      step(Math.max(4, Math.round(Math.min(angle * radius, 40))), side / radius);
+      step(Math.round(rand() * 8), 0);
+    }
+    if (guard >= 60) continue;
+    // Into the loop at B along a smooth curve.
+    const d = Math.hypot(pb[0] - x, pb[2] - z);
+    const c = d * 0.42;
+    const P = [[x, z], [x + Math.sin(h) * c, z + Math.cos(h) * c], [pb[0] - Math.sin(hB) * c, pb[2] - Math.cos(hB) * c], [pb[0], pb[2]]];
+    const m = Math.ceil(d * 1.3);
+    for (let q = 1; q <= m; q++) {
+      const t = q / m;
+      const u = 1 - t;
+      pts.push([0, 1].map((e) => u * u * u * P[0][e] + 3 * u * u * t * P[1][e] + 3 * u * t * t * P[2][e] + t * t * t * P[3][e]));
+    }
+    // Keep away from the loop (apart from near its two ends) and from the other links.
+    let ok = true;
+    const len = pts.length;
+    for (let q = 0; q < len && ok; q += 3) {
+      const [px, pz] = pts[q];
+      const nearEnd = Math.min(q, len - 1 - q);
+      const clear = nearEnd < 18 ? 0 : nearEnd < 36 ? 11 : 22;
+      if (clear) {
+        road.forEachNear(px, pz, clear + 2, (i) => {
+          if (ok && Math.hypot(road.x[i] - px, road.z[i] - pz) < clear) ok = false;
+        });
+      }
+      for (const o of links) for (let r = 0; r < o.pts.length && ok; r += 4) if (Math.hypot(o.pts[r][0] - px, o.pts[r][1] - pz) < 40) ok = false;
+    }
+    if (!ok) continue;
+    usedAt.push(A.i, B.i);
+    links.push({ pts, a: A.i, b: B.i, sideA: A.side, sideB: B.side });
+  }
+  return links;
 }

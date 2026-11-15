@@ -9,7 +9,8 @@ import { buildMountainPhysics } from '../src/world/mountainPhysics.js';
 // The Kaido Mountain map, built the way the game builds it.
 const track = TRACKS.world;
 const road = track.road();
-const terrain = new Terrain(road, { margin: 180, relief: track.relief, lakes: track.lakes, peak: track.peak(road), stops: track.stopsOpts, level: true, town: track.town(road) });
+const links = track.links(road);
+const terrain = new Terrain(road, { links, margin: 180, relief: track.relief, lakes: track.lakes, peak: track.peak(road), stops: track.stopsOpts, level: true, town: track.town(road) });
 
 test('Kaido Mountain is about 13 km of road across a mountain', () => {
   assert.ok(road.length > 12000 && road.length < 16000, `length ${road.length}`);
@@ -67,7 +68,7 @@ test('the terrain never pokes through the road', () => {
 test('no barrier blocks the road', async () => {
   await RAPIER.init();
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
-  buildMountainPhysics(world, road, terrain);
+  buildMountainPhysics(world, road, terrain, links);
   world.step();
   const shape = new RAPIER.Cuboid(0.8, 0.5, 0.3);
   let blocked = 0;
@@ -82,4 +83,82 @@ test('no barrier blocks the road', async () => {
     }
   }
   assert.equal(blocked, 0);
+});
+
+test('junctions: link roads join the loop at the edge of its tarmac, level with it', () => {
+  assert.ok(links.length >= 4, `${links.length} links`);
+  const PAV = road.w.PAVED + 0.3;
+  for (const l of links) {
+    const r = l.road;
+    for (const [i, side, k] of [
+      [l.a, l.sideA, 0],
+      [l.b, l.sideB, r.count - 1],
+    ]) {
+      const p = road.pointAt(i, side * PAV);
+      assert.ok(Math.hypot(p[0] - r.x[k], p[2] - r.z[k]) < 1.5, 'link meets the loop');
+      assert.ok(Math.abs(p[1] - r.y[k]) < 0.15, `step of ${(p[1] - r.y[k]).toFixed(2)} m at a junction`);
+    }
+    // The ground stays under the link road.
+    for (let i = 0; i < r.count; i++) {
+      for (const lat of [-HALF, 0, HALF]) {
+        const [x, y, z] = r.pointAt(i, lat);
+        assert.ok(terrain.heightAt(x, z) < y + 0.05, `terrain above a link road at ${i * 2} m`);
+      }
+    }
+  }
+});
+
+test('junctions: nothing solid stands across a link road or its junctions', async () => {
+  await RAPIER.init();
+  const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+  buildMountainPhysics(world, road, terrain, links);
+  world.step();
+  const shape = new RAPIER.Cuboid(0.8, 0.5, 0.3);
+  let blocked = 0;
+  for (const l of links) {
+    const r = l.road;
+    for (let i = 0; i < r.count; i += 2) {
+      for (const lat of [-1.5, 0, 1.5]) {
+        const p = r.pointAt(i, lat, 0.9);
+        const h = r.heading[i];
+        world.intersectionsWithShape({ x: p[0], y: p[1], z: p[2] }, { x: 0, y: Math.sin(h / 2), z: 0, w: Math.cos(h / 2) }, shape, (c) => {
+          if (c.shape.type === RAPIER.ShapeType.Cuboid) blocked++;
+          return true;
+        });
+      }
+    }
+  }
+  assert.equal(blocked, 0);
+});
+
+test('the loop has no ends: a car rolls across the join at the car meet', async () => {
+  await RAPIER.init();
+  const { Vehicle } = await import('../src/physics/vehicle.js');
+  const { CAR, TUNABLE_DEFAULTS } = await import('../src/config.js');
+  const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+  world.timestep = 1 / 60;
+  buildMountainPhysics(world, road, terrain, links);
+  const car = new Vehicle(world, CAR, { ...TUNABLE_DEFAULTS }, 'auto');
+  const i0 = road.count - 25;
+  const p = road.pointAt(i0, -road.w.LANE);
+  car.reset([p[0], p[1] + 0.8, p[2]], road.heading[i0]);
+  car.trans.setDrive('D', 0);
+  const q = {};
+  let hint = i0;
+  for (let t = 0; t < 20; t += 1 / 60) {
+    const pos = car.body.translation();
+    road.query(pos.x, pos.z, hint, q);
+    hint = q.index;
+    const la = (q.index + 6) % (road.count - 1);
+    const [tx, , tz] = road.pointAt(la, -road.w.LANE);
+    const r = car.body.rotation();
+    const yaw = Math.atan2(2 * (r.w * r.y + r.x * r.z), 1 - 2 * (r.y * r.y + r.x * r.x));
+    let err = Math.atan2(tx - pos.x, tz - pos.z) - yaw;
+    while (err > Math.PI) err -= 2 * Math.PI;
+    while (err < -Math.PI) err += 2 * Math.PI;
+    car.step(1 / 60, { throttle: car.speed < 9 ? 0.6 : 0, brake: 0, handbrake: 0, clutch: false, steer: Math.max(-1, Math.min(1, -err * 2)) });
+    world.step();
+    if (q.index > 5 && q.index < 60) break;
+  }
+  assert.ok(q.index > 5 && q.index < 60, `stuck at sample ${q.index} of ${road.count}`);
 });

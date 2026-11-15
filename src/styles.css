@@ -1315,3 +1315,8 @@ canvas.map {
   font-size: 17px;
   letter-spacing: 0.06em;
 }
+
+/* Menus up: hold the VHS flicker still (one less full-screen layer changing every frame). */
+body.menu-open #vhs {
+  animation: none;
+}
