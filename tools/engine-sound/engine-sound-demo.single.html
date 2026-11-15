@@ -445,6 +445,7 @@ class M20Dsp {
     this.T = { on: 0, boost: 0, shaft: 0, armed: false, flut: 0, flutRate: 0, flutPh: 0,
                flutA: 1, whPh: 0, whPh2: 0, whAmp: 0, poof: 0, poofAtk: 1 };
     this.tWhoosh = new Biquad();
+    this.tWhNoise = new Biquad(); this.tWhNoise2 = new Biquad(); // airy part of the whistle
     this.cabin = new Biquad().set('lp', 20000, 0.7, 0, fs); this.cabinHz = 20000; // in-car muffling
     this.tFlut = new Biquad().set('bp', 900, 0.6, 0, fs);   // a broad, breathy chatter
     this.tFlutLo = new Biquad().set('lp', 450, 0.7, 0, fs);
@@ -619,6 +620,10 @@ class M20Dsp {
       const E = this.E, m = E.muff, open = X.open * (1 - 0.22 * this.T.on); // the turbine muffles a bit
       this.muffLp.set('lp', (m[0] + m[1] * thr0 + rpm0 * m[2]) * open, 0.6, 0, fs);
       this.tWhoosh.set('bp', 1100 + 3200 * this.T.shaft, 1.3, 0, fs);
+      if (this.T.on > 0.001) { // the whistle's airy band follows the shaft
+        const Zw = this.T.Z || TURBOS.small, fwB = Zw.fw[0] + (Zw.fw[1] - Zw.fw[0]) * this.T.shaft;
+        this.tWhNoise.set('bp', fwB, 30, 0, fs); this.tWhNoise2.set('bp', fwB, 30, 0, fs);
+      }
       this.muffLp2.set('lp', (m[3] + m[4] * thr0) * open, 0.5, 0, fs);
       this.body.set('pk', E.body[0], 1.1, E.body[1] + X.bodyDb, fs);
       this.drone.set('pk', E.drone[0] * X.droneHz, 1.6, E.drone[1] + X.droneDb, fs);
@@ -788,11 +793,18 @@ class M20Dsp {
       const T = this.T;
       if (T.on > 0.001) {
         const Z = T.Z || TURBOS.small;
-        const sh = T.shaft, fw = Z.fw[0] + (Z.fw[1] - Z.fw[0]) * sh; // small: up to about 7.2 kHz
+        const sh = T.shaft;
+        // a real compressor whistle wavers a little; a perfectly steady sine sounds electronic
+        const wob = 1 + 0.004 * Math.sin(TAU * 5.3 * this.t) + 0.003 * Math.sin(TAU * 2.1 * this.t + 1) + 0.002 * randn();
+        const fw = (Z.fw[0] + (Z.fw[1] - Z.fw[0]) * sh) * wob; // small: up to about 7.2 kHz
         T.whPh += fw / fs; T.whPh -= Math.floor(T.whPh);
         T.whPh2 += fw * 2.01 / fs; T.whPh2 -= Math.floor(T.whPh2);
-        T.whAmp += (Math.pow(sh, 1.5) * (0.55 + 0.45 * thr) - T.whAmp) * 0.0008;
-        let ty = (Math.sin(TAU * T.whPh) + 0.15 * Math.sin(TAU * T.whPh2)) * 0.55 * Z.whistle * T.whAmp;
+        // a factory turbo only whistles on real boost; an aftermarket one with shaft speed
+        const wt = Z.lift === 'poof' ? T.boost * T.boost : Math.pow(sh, 1.5);
+        T.whAmp += (wt * (0.55 + 0.45 * thr) - T.whAmp) * 0.0008;
+        const tone = (Math.sin(TAU * T.whPh) + 0.15 * Math.sin(TAU * T.whPh2)) * 0.6;
+        const air = this.tWhNoise2.run(this.tWhNoise.run(randn())) * 9; // narrow band of rushing air
+        let ty = (tone + air) * 0.55 * Z.whistle * T.whAmp;
         ty += this.tWhoosh.run(randn()) * 0.4 * (Z.rush ?? 1) * sh * sh * (0.2 + 0.8 * thr);
         if (T.poof > 0.0005) {
           T.poofAtk = Math.min(1, (T.poofAtk || 0) + 1 / (0.012 * fs)); // soft 12 ms onset
