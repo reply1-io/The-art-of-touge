@@ -179,6 +179,11 @@ let shifter;
 let tuning;
 let running = false;
 let paused = false;
+// Lighter rendering behind the menus (see setMenuQuality).
+let lastMenuDraw = 0;
+let menuFrames = 0;
+let pausedFrameDrawn = false;
+let menuQuality = false;
 let accumulator = 0;
 let last = performance.now();
 let fps = 60;
@@ -291,8 +296,9 @@ function applySettings() {
   audio.setMuted(!settings.sound);
   vhs.strength = settings.vhs ? 0.45 : 0;
   // Picture: 'sharp' renders at screen resolution, 'retro' at half (chunky pixels).
-  vhs.pixelSize = settings.picture === 'retro' ? 2 : 1;
+  vhs.pixelSize = menuQuality || settings.picture === 'retro' ? 2 : 1;
   vhs.setSize(window.innerWidth, window.innerHeight);
+  pausedFrameDrawn = false; // redraw the frozen picture with the new look
   $('vhs').classList.toggle('off', !settings.vhs);
   $('controls').dataset.steering = settings.steering;
   shifter?.setMode(settings.shifter);
@@ -359,6 +365,7 @@ function setPaused(p) {
   paused = p;
   $('pause').classList.toggle('hidden', !p);
   document.body.classList.toggle('paused', p);
+  pausedFrameDrawn = false;
   if (p) {
     input.releaseAll();
     audio.suspend();
@@ -1038,6 +1045,22 @@ function updateTitleSub() {
 }
 
 // ---------- Main loop ----------
+// ---------- Lighter rendering behind the menus ----------
+function isMenuOpen() {
+  if (!running || paused) return true;
+  for (const id of ['race', 'teleport', 'results']) if (!$(id).classList.contains('hidden')) return true;
+  return false;
+}
+function setMenuQuality(on) {
+  if (on === menuQuality) return;
+  menuQuality = on;
+  // Half resolution and on-demand shadows while a menu is up; full quality while driving.
+  vhs.pixelSize = on ? 2 : settings.picture === 'retro' ? 2 : 1;
+  vhs.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.autoUpdate = !on;
+  renderer.shadowMap.needsUpdate = true;
+}
+
 function frame(now) {
   requestAnimationFrame(frame);
   let dt = (now - last) / 1000;
@@ -1121,6 +1144,19 @@ function frame(now) {
   $('start').classList.toggle('hidden', vehicle.engine.running);
   $('clutch').style.setProperty('--engaged', `${Math.round((1 - vehicle.trans.coupling) * 100)}%`);
 
+  // Menus open: the road behind them is only backdrop, so spend as little on it as possible and
+  // keep the phone free to respond to taps. Paused, the picture is frozen; on the title and race
+  // screens it is drawn about 20 times a second at half resolution, shadows refreshed now and then.
+  const menu = isMenuOpen();
+  document.body.classList.toggle('menu-open', menu);
+  setMenuQuality(menu && !shop.isOpen);
+  if (menu && !shop.isOpen) {
+    if (paused && pausedFrameDrawn) return;
+    if (!paused && now - lastMenuDraw < 50) return;
+    lastMenuDraw = now;
+    renderer.shadowMap.needsUpdate = menuFrames++ % 6 === 0;
+  }
+
   // The tuning shop has the screen: draw the garage and the turntable instead of the road.
   if (shop.isOpen) {
     shop.update(dt);
@@ -1158,6 +1194,7 @@ function frame(now) {
     sunVisible = !world.castRay(ray, 900, true, undefined, undefined, undefined, vehicle.body) && !behindRange(camera.position);
   }
   flare.draw(dt, camera, sunDir, timePreset.flare, timePreset.flareTint, sunVisible);
+  if (paused) pausedFrameDrawn = true;
   // The sun glinting off the paint (needs the sun in the sky and not hidden by the mountain).
   glintTint.setRGB(...timePreset.flareTint.map((c) => c / 255));
   let sunOnCar = false;
