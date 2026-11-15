@@ -167,7 +167,7 @@ export const ENGINE_SWAPS = {
     engine: RX7.engine,
   },
   '1jz': {
-    ready: false,
+    ready: true,
     name: '1JZ-GTE VVT-i',
     code: '1JZ',
     donor: 'Toyota Chaser / Mark II (JZX100)',
@@ -181,6 +181,32 @@ export const ENGINE_SWAPS = {
     redline: 7000,
     kg: 200,
     blurb: 'The bulletproof Toyota six. Huge mid-range torque and loves more boost.',
+    sound: 'jz1', // smooth, deep and tonal with the 4.5th-order ring; factory turbo with a soft poof
+    engine: {
+      idleRpm: 745, // the idle control settles about 45 rpm below this: a 700 rpm idle
+      idleMaxThrottle: 0.25,
+      redline: 7000,
+      limiterRpm: 7100,
+      limiterResumeRpm: 6850,
+      stallRpm: 450,
+      inertia: 0.2,
+      // rpm -> N m at full throttle, factory boost included (276 hp at 6,200, 378 N m from 2,400)
+      torqueCurve: [
+        [0, 160],
+        [800, 210],
+        [1500, 290],
+        [2400, 378],
+        [3500, 378],
+        [4500, 372],
+        [5500, 345],
+        [6200, 317],
+        [6800, 285],
+        [7000, 272],
+        [7500, 230],
+      ],
+      frictionTorque: 22,
+      frictionPerRpm: 0.008,
+    },
   },
   ls3: {
     ready: false,

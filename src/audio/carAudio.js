@@ -710,7 +710,9 @@ export class CarAudio {
         // turbo: the synth's whistle, air rush and lift-off flutter follow the game's boost
         turbo: this.turbo && this.turbo !== 'none' ? 1 : 0,
         turboSize: this.turbo === 'big' ? 'big' : 'small',
-        boost: e.boost || 0,
+        // the game's boost only when a turbo part is fitted; otherwise the synth runs an engine's
+        // own factory turbo (the 1JZ) by itself
+        boost: this.turbo && this.turbo !== 'none' ? e.boost || 0 : null,
       });
     } else {
       if (this.prevRunning && !running) this.#sputter();
