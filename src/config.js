@@ -167,7 +167,7 @@ export const ENGINE_SWAPS = {
     engine: RX7.engine,
   },
   '1jz': {
-    ready: false,
+    ready: true,
     name: '1JZ-GTE VVT-i',
     code: '1JZ',
     donor: 'Toyota Chaser / Mark II (JZX100)',
@@ -181,6 +181,32 @@ export const ENGINE_SWAPS = {
     redline: 7000,
     kg: 200,
     blurb: 'The bulletproof Toyota six. Huge mid-range torque and loves more boost.',
+    sound: 'jz1', // smooth, deep and tonal with the 4.5th-order ring; factory turbo with a soft poof
+    engine: {
+      idleRpm: 745, // the idle control settles about 45 rpm below this: a 700 rpm idle
+      idleMaxThrottle: 0.25,
+      redline: 7000,
+      limiterRpm: 7100,
+      limiterResumeRpm: 6850,
+      stallRpm: 450,
+      inertia: 0.2,
+      // rpm -> N m at full throttle, factory boost included (276 hp at 6,200, 378 N m from 2,400)
+      torqueCurve: [
+        [0, 160],
+        [800, 210],
+        [1500, 290],
+        [2400, 378],
+        [3500, 378],
+        [4500, 372],
+        [5500, 345],
+        [6200, 317],
+        [6800, 285],
+        [7000, 272],
+        [7500, 230],
+      ],
+      frictionTorque: 22,
+      frictionPerRpm: 0.008,
+    },
   },
   '4age': {
     ready: false,
@@ -199,7 +225,7 @@ export const ENGINE_SWAPS = {
     blurb: 'The Hachi-Roku\'s twin-cam four. Not much torque, but it loves to rev and weighs next to nothing.',
   },
   ls3: {
-    ready: false,
+    ready: true,
     name: 'LS3',
     code: 'LS3',
     donor: 'Chevrolet Corvette C6',
@@ -213,6 +239,19 @@ export const ENGINE_SWAPS = {
     redline: 6600,
     kg: 185,
     blurb: 'All-aluminium American V8. Torque everywhere and a lazy, thunderous rumble.',
+    sound: 'ls3', // cross-plane V8 burble; street and race exhausts add the lope
+    engine: {
+      idleRpm: 900,
+      idleMaxThrottle: 0.25,
+      redline: 6600,
+      limiterRpm: 6700,
+      limiterResumeRpm: 6450,
+      stallRpm: 450,
+      inertia: 0.28,
+      torqueCurve: [[0, 260], [800, 390], [1500, 480], [2500, 540], [3500, 565], [4600, 575], [5200, 555], [5900, 519], [6400, 482], [6700, 455], [7200, 380]],
+      frictionTorque: 28,
+      frictionPerRpm: 0.009,
+    },
   },
   k24: {
     ready: false,
