@@ -3,7 +3,7 @@
 // height are all visible), applies to the physics, and is saved on the device.
 import * as THREE from 'three';
 import {
-  CAR, BASE_CAR, CARS, ENGINE_SWAPS, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup,
+  CAR, BASE_CAR, CARS, ENGINE_SWAPS, carSave, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup,
   SEATS, RIM_WIDTH_IN, PLATES, cleanPlate, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, HEADLIGHTS, TAILLIGHTS,
 } from '../config.js';
 import { dynoRun } from '../physics/dyno.js';
@@ -94,8 +94,8 @@ function buildGarage(scene) {
     scene.add(m);
     return m;
   };
-  const W = 8; // half width of the room (x)
-  const D = 7; // half depth (z)
+  const W = 9; // half width of the room (x)
+  const D = 7.5; // half depth (z)
   const H = 3.6; // ceiling height
 
   // Light: warm fill from the strip lights, a cooler spill from the open door.
@@ -350,11 +350,225 @@ function buildGarage(scene) {
   neon.rotation.y = Math.PI / 2;
   scene.add(neon);
 
-  // The car stands in the middle of the floor.
+  // ---------- More of the workshop ----------
+  // Workbenches: one along the front wall and one on the right by the door.
+  const bench = (x, z, ry, len) => {
+    const g = new THREE.Group();
+    const add = (w, h, d, mat, px, py, pz) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      m.position.set(px, py, pz);
+      g.add(m);
+    };
+    add(len, 0.08, 0.8, wood, 0, 0.92, 0);
+    add(len - 0.2, 0.05, 0.7, wood, 0, 0.25, 0);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(0.07, 0.92, 0.07, steel, sx * (len / 2 - 0.15), 0.46, sz * 0.33);
+    // Clutter: a toolbox, a vice, a battery, a box of bits, a can.
+    add(0.45, 0.12, 0.28, lambert(0xb42a20), -len / 2 + 0.6, 1.02, 0);
+    add(0.2, 0.16, 0.18, lambert(0x2d4f8a), len / 2 - 0.4, 1.04, -0.15);
+    add(0.3, 0.22, 0.2, lambert(0x1b1c1e), 0.1, 1.07, 0.1);
+    add(0.32, 0.2, 0.26, lambert(0xa4875a), -0.5, 1.06, -0.15);
+    g.position.set(x, 0, z);
+    g.rotation.y = ry;
+    scene.add(g);
+  };
+  bench(-1.5, D - 0.45, Math.PI, 3.2);
+  bench(W - 0.45, -4.6, -Math.PI / 2, 2.6);
+
+  // A tyre rack in the corner and more stacks of tyres.
+  for (const [rx, rz] of [[-W + 1.5, D - 0.5]]) {
+    for (const y of [0.05, 0.9, 1.75]) box(2.2, 0.05, 0.6, shelfMat, rx, y, rz);
+    for (const sx of [-1.05, 1.05]) box(0.05, 2.0, 0.6, shelfMat, rx + sx, 1.0, rz);
+    for (const y of [0.42, 1.27]) {
+      for (let k = 0; k < 4; k++) {
+        const t = new THREE.Mesh(tyreGeo, tyreMat);
+        t.position.set(rx - 0.75 + k * 0.5, y, rz);
+        scene.add(t);
+      }
+    }
+  }
+  for (const [x, z, n] of [[W - 1.1, D - 1.0, 5], [W - 1.9, D - 0.9, 3], [-W + 0.9, -D + 1.2, 4]]) {
+    for (let k = 0; k < n; k++) {
+      const t = new THREE.Mesh(tyreGeo, tyreMat);
+      t.rotation.x = Math.PI / 2;
+      t.position.set(x, 0.11 + k * 0.22, z);
+      scene.add(t);
+    }
+  }
+
+  // Jacks and axle stands.
+  const floorJack = (x, z, ry) => {
+    const j = new THREE.Group();
+    j.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.8), red));
+    const h = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.1, 6), steel);
+    h.rotation.x = 1.0;
+    h.position.set(0, 0.35, 0.75);
+    j.add(h);
+    j.position.set(x, 0.08, z);
+    j.rotation.y = ry;
+    scene.add(j);
+  };
+  floorJack(-2.6, 3.4, -0.4);
+  const standMat = lambert(0xe0b23a);
+  for (const [x, z] of [[2.4, 4.2], [2.9, 4.4], [2.4, 4.8], [2.9, 5.0]]) {
+    const st = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.5, 4), standMat);
+    st.position.set(x, 0.25, z);
+    scene.add(st);
+    box(0.06, 0.25, 0.06, standMat, x, 0.6, z);
+  }
+
+  // Posters on the walls.
+  const posterTex = (bg, ink, accent, title, sub, draw) =>
+    textTexture(null, 256, 360, (g) => {
+      g.fillStyle = bg;
+      g.fillRect(0, 0, 256, 360);
+      g.fillStyle = accent;
+      g.fillRect(16, 16, 224, 170);
+      draw?.(g);
+      g.fillStyle = ink;
+      g.textAlign = 'center';
+      g.font = 'bold 34px sans-serif';
+      g.fillText(title, 128, 240);
+      g.font = '20px sans-serif';
+      g.fillText(sub, 128, 276);
+      g.fillRect(40, 300, 176, 4);
+    });
+  const mountains = (g) => {
+    g.fillStyle = 'rgba(255,255,255,0.85)';
+    g.beginPath();
+    g.moveTo(24, 180);
+    g.lineTo(100, 80);
+    g.lineTo(140, 120);
+    g.lineTo(190, 60);
+    g.lineTo(232, 180);
+    g.fill();
+  };
+  const carShape = (g) => {
+    g.fillStyle = '#111';
+    g.fillRect(50, 120, 156, 30);
+    g.fillRect(85, 95, 80, 28);
+    g.fillStyle = '#ddd';
+    g.beginPath();
+    g.arc(85, 152, 14, 0, Math.PI * 2);
+    g.arc(175, 152, 14, 0, Math.PI * 2);
+    g.fill();
+  };
+  const rotor = (g) => {
+    g.fillStyle = '#111';
+    g.beginPath();
+    g.moveTo(128, 50);
+    g.quadraticCurveTo(200, 110, 190, 160);
+    g.quadraticCurveTo(128, 175, 66, 160);
+    g.quadraticCurveTo(56, 110, 128, 50);
+    g.fill();
+  };
+  const posters = [
+    [posterTex('#e9e1cc', '#111', '#c8241d', 'TOUGE', 'NIGHT RUN', mountains), -6.0, -D + 0.02, 0],
+    [posterTex('#141414', '#f2c51e', '#f2c51e', 'DOWNHILL', 'NO BRAKES', carShape), 4.8, -D + 0.02, 0],
+    [posterTex('#1d3a8a', '#f2f2f2', '#e6e6e6', 'ROTARY', 'BRAAAP', rotor), 6.3, -D + 0.02, 0],
+    [posterTex('#f2f1ea', '#1f5a32', '#2f6b4f', 'KAIDO', 'MOUNTAIN PASS', mountains), 1.8, D - 0.02, Math.PI],
+    [posterTex('#c8241d', '#fff', '#111', 'DRIFT', 'SIDEWAYS CLUB', carShape), 4.2, D - 0.02, Math.PI],
+    [posterTex('#2a2a2a', '#e8711c', '#e8711c', 'HACHI', '1600 TWIN CAM', carShape), -W + 0.02, -3.5, Math.PI / 2],
+  ];
+  for (const [tex, x, z, ry] of posters) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.75, 1.05), lambert(0xffffff, { map: tex }));
+    m.position.set(x, 1.95, z);
+    m.rotation.y = ry;
+    scene.add(m);
+  }
+
+  // A two-post lift. The car rides on it just high enough for someone to lie under it on a creeper.
+  const LIFT = 0.5;
+  const liftMat = lambert(0x2f5fa8);
+  const padMat = lambert(0x1b1c1e);
+  for (const sx of [-1, 1]) {
+    const x = sx * 1.75;
+    box(0.28, 3.1, 0.34, liftMat, x, 1.55, 0.2);
+    box(0.6, 0.04, 0.7, steel, x, 0.02, 0.2);
+    box(0.34, 0.3, 0.42, steel, x, LIFT + 0.05, 0.2); // carriage
+    // Two arms from each carriage swing in under the sills, front and back.
+    for (const sz of [-1, 1]) {
+      const tz = 0.2 + sz * 1.05;
+      const ax = sx * 0.85;
+      const len = Math.hypot(x - ax, tz - 0.2);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, len), steel);
+      arm.position.set((x + ax) / 2, LIFT - 0.02, (0.2 + tz) / 2);
+      arm.rotation.y = Math.atan2(ax - x, tz - 0.2);
+      scene.add(arm);
+      const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.12, 10), padMat);
+      pad.position.set(ax, LIFT + 0.04, tz);
+      scene.add(pad);
+    }
+  }
+  box(3.78, 0.16, 0.2, liftMat, 0, 3.05, 0.2); // the bar across the top
+  // A creeper under the car, with a mechanic's legs sticking out.
+  const creeper = new THREE.Group();
+  const board = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.04, 1.0), lambert(0x232427));
+  board.position.y = 0.09;
+  creeper.add(board);
+  for (const [cx, cz] of [[-0.18, -0.4], [0.18, -0.4], [-0.18, 0.4], [0.18, 0.4]]) {
+    const w = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 4), padMat);
+    w.position.set(cx, 0.04, cz);
+    creeper.add(w);
+  }
+  const overalls = lambert(0x2c4a7a);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.18, 0.75), overalls);
+  body.position.set(0, 0.2, -0.05);
+  creeper.add(body);
+  for (const lx of [-0.1, 0.1]) {
+    const legM = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.13, 0.85), overalls);
+    legM.position.set(lx, 0.17, 0.75);
+    creeper.add(legM);
+    const boot = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, 0.12), lambert(0x2b1d12));
+    boot.position.set(lx, 0.22, 1.2);
+    creeper.add(boot);
+  }
+  creeper.position.set(0.35, 0, -0.2);
+  creeper.rotation.y = Math.PI / 2 + 0.15; // feet out past the right side of the car
+  scene.add(creeper);
+
+  // The car stands on the lift in the middle of the floor.
   const table = new THREE.Group();
-  table.position.set(0, -0.08, 0.2); // (the car's own height sits it on the floor)
+  table.position.set(0, -0.08 + LIFT, 0.2); // (the car's own height sits it on the floor; then up the lift)
+  table.userData.lift = LIFT;
   scene.add(table);
   return table;
+}
+
+// Wheel positions for a car model standing still (what syncWheels needs in place of the physics).
+function fakeWheels(spec) {
+  return {
+    mountY: spec.wheelMountY,
+    wheels: [
+      [spec.trackFront / 2, spec.frontAxleZ, true],
+      [-spec.trackFront / 2, spec.frontAxleZ, true],
+      [spec.trackRear / 2, spec.rearAxleZ, false],
+      [-spec.trackRear / 2, spec.rearAxleZ, false],
+    ].map(([x, z, front]) => ({ x, z, front, compression: 0, steer: 0, angle: 0 })),
+  };
+}
+
+// Set a car model on its wheels with its setup: each corner sinks by its share of the weight over
+// its spring rate, wheels pushed out by their offset. lifted: up on the lift, so the body sits at
+// its normal height (the lift raises the whole thing) and the wheels hang down at full droop.
+function seatCar(model, spec, t, fake, lifted = false) {
+  const ws = wheelSetup(t);
+  model.applySetup(t);
+  const rh = t.coilovers ? Math.max(-0.2, Math.min(0.05, (t.rideHeight || 0) / 1000)) : 0;
+  const mountY = spec.wheelMountY - rh;
+  fake.mountY = mountY;
+  const g = (spec.mass * 9.81) / 4;
+  for (const w of fake.wheels) {
+    w.baseX ??= w.x;
+    w.x = w.baseX + Math.sign(w.baseX) * (w.front ? ws.pokeFront : ws.pokeRear);
+    w.compression = Math.min(spec.suspensionRest, (g * (w.front ? 1.04 : 0.96)) / (t.coilovers ? (w.front ? t.springFront : t.springRear) : w.front ? TUNABLE_DEFAULTS.springFront : TUNABLE_DEFAULTS.springRear));
+  }
+  const yF = mountY - spec.suspensionRest + fake.wheels[0].compression;
+  const yR = mountY - spec.suspensionRest + fake.wheels[2].compression;
+  // Body origin height so the tyres sit on the floor, with the rake from the springs.
+  model.root.position.y = 0.08 + ws.radius - (yF + yR) / 2;
+  model.root.rotation.x = lifted ? 0 : Math.atan2(yF - yR, spec.frontAxleZ - spec.rearAxleZ);
+  if (lifted) for (const w of fake.wheels) w.compression = 0;
+  model.syncWheels(fake);
 }
 
 export class Shop {
@@ -376,15 +590,21 @@ export class Shop {
     this.dist = 6.4;
     this.dragging = false;
     this.revHeld = false; // the rev button is held down
-    this.fake = {
-      mountY: CAR.wheelMountY,
-      wheels: [
-        [CAR.trackFront / 2, CAR.frontAxleZ, true],
-        [-CAR.trackFront / 2, CAR.frontAxleZ, true],
-        [CAR.trackRear / 2, CAR.rearAxleZ, false],
-        [-CAR.trackRear / 2, CAR.rearAxleZ, false],
-      ].map(([x, z, front]) => ({ x, z, front, compression: 0, steer: 0, angle: 0 })),
-    };
+    this.fake = fakeWheels(CAR);
+    // Your other cars, parked by the roller door, each with its own saved setup.
+    let slot = 0;
+    for (const spec of Object.values(CARS)) {
+      if (spec.id === BASE_CAR.id) continue;
+      const model = new CarModel(spec);
+      const own = { ...TUNABLE_DEFAULTS, paint: '#' + spec.paint.toString(16).padStart(6, '0'), finalDrive: spec.finalDrive, ...(carSave('tuning', spec.id) || {}) };
+      const holder = new THREE.Group();
+      holder.position.set(5.4 - slot * 0.2, -0.08, 0.6 - slot * 5.2);
+      holder.rotation.y = Math.PI + 0.12;
+      holder.add(model.root);
+      this.scene.add(holder);
+      seatCar(model, spec, own, fakeWheels(spec));
+      slot++;
+    }
     this.#applyCar();
   }
 
@@ -414,37 +634,22 @@ export class Shop {
   // Aim the camera at the car from where you have walked to, staying inside the workshop.
   update(dt) {
     this.car.updateFx(dt);
-    const target = new THREE.Vector3(0, 0.55, 0.2);
+    const target = new THREE.Vector3(0, 0.9, 0.2);
     const dir = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch));
-    // Walls at x = ±8 and z = ±7: pull the camera in rather than through them.
+    // Walls at x = ±9 and z = ±7.5: pull the camera in rather than through them.
     let d = this.dist;
-    if (Math.abs(dir.x) > 1e-3) d = Math.min(d, (7.5 - Math.sign(dir.x) * target.x) / Math.abs(dir.x));
-    if (Math.abs(dir.z) > 1e-3) d = Math.min(d, (6.5 - Math.sign(dir.z) * target.z) / Math.abs(dir.z));
-    d = Math.max(2.6, Math.min(d, (3.3 - target.y) / Math.max(1e-3, dir.y)));
+    if (Math.abs(dir.x) > 1e-3) d = Math.min(d, (8.5 - Math.sign(dir.x) * target.x) / Math.abs(dir.x));
+    if (Math.abs(dir.z) > 1e-3) d = Math.min(d, (7.0 - Math.sign(dir.z) * target.z) / Math.abs(dir.z));
+    if (dir.y > 1e-3) d = Math.min(d, (3.3 - target.y) / dir.y);
+    d = Math.max(2.6, d);
     this.camera.position.copy(target).addScaledVector(dir, d);
+    // Low down you can crouch and look under the car on the lift, but not through the floor.
+    this.camera.position.y = Math.max(0.3, this.camera.position.y);
     this.camera.lookAt(target);
   }
 
   #applyCar() {
-    const t = this.tune;
-    const ws = wheelSetup(t);
-    this.car.applySetup(t);
-    // Static ride: each corner sinks by its share of the weight over its spring rate.
-    const rh = t.coilovers ? Math.max(-0.2, Math.min(0.05, (t.rideHeight || 0) / 1000)) : 0;
-    const mountY = CAR.wheelMountY - rh;
-    this.fake.mountY = mountY;
-    const g = (CAR.mass * 9.81) / 4;
-    for (const w of this.fake.wheels) {
-      w.baseX ??= w.x;
-      w.x = w.baseX + Math.sign(w.baseX) * (w.front ? ws.pokeFront : ws.pokeRear);
-      w.compression = Math.min(CAR.suspensionRest, (g * (w.front ? 1.04 : 0.96)) / (t.coilovers ? (w.front ? t.springFront : t.springRear) : w.front ? TUNABLE_DEFAULTS.springFront : TUNABLE_DEFAULTS.springRear));
-    }
-    const yF = mountY - CAR.suspensionRest + this.fake.wheels[0].compression;
-    const yR = mountY - CAR.suspensionRest + this.fake.wheels[2].compression;
-    // Body origin height so the tyres sit on the turntable, with the rake from the springs.
-    this.car.root.position.y = 0.08 + ws.radius - (yF + yR) / 2;
-    this.car.root.rotation.x = Math.atan2(yF - yR, CAR.frontAxleZ - CAR.rearAxleZ);
-    this.car.syncWheels(this.fake);
+    seatCar(this.car, CAR, this.tune, this.fake, this.table.userData.lift > 0);
   }
 
   #change(key, value, rerender = false) {
@@ -1133,7 +1338,7 @@ export class Shop {
         return;
       }
       this.yaw -= (now[0] - last[0]) * 0.008;
-      this.pitch = Math.max(0.03, Math.min(1.1, this.pitch + (now[1] - last[1]) * 0.006));
+      this.pitch = Math.max(-0.12, Math.min(1.1, this.pitch + (now[1] - last[1]) * 0.006));
     });
     const up = (e) => {
       pts.delete(e.pointerId);
