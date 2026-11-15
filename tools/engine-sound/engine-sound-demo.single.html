@@ -279,9 +279,11 @@ const ENGINES = {
     level: 0.8,
   },
   jz1: {
-    // Toyota 1JZ-GTE: 2.5 L oversquare (86 x 71.5 mm) straight-six, firing 1-5-3-6-2-4. Revs
-    // quicker and higher than the 2JZ, with a higher, raspier scream: a lighter body, sharper
-    // pulses and its metallic ring higher up (near 780 Hz). Turbo optional (set({ turbo: 1 })).
+    // Toyota 1JZ-GTE: 2.5 L oversquare (86 x 71.5 mm) straight-six, firing 1-5-3-6-2-4, 7,000 rpm.
+    // Tuned against a recording of a 1JZ car revving to its limiter (used only for
+    // measurements): a smooth, deep, very tonal six whose ring is the 4.5th order (1.5x the
+    // firing frequency), strongest at 120-500 Hz and falling away steeply above 1 kHz, with
+    // little rasp or hiss. Factory turbo always on (set({ turbo: 1 }) upgrades it).
     label: 'Toyota 1JZ-GTE 2.5 straight-six',
     firing: [1, 5, 3, 6, 2, 4],
     angles: [0, 120, 240, 360, 480, 600],
@@ -291,14 +293,17 @@ const ENGINES = {
     idleRpm: 700, redline: 7000, crankFlare: 1400, starterRatio: 11,
     dual: false,
     header: [0.0017, 0.0019], pipe: [3.2, 3.2], pipeRefl: 0.48,
-    width: [28, 8], pump: 0.1, jitter: 0.05, idleJitter: 0.06, lope: [0.005, 0.003],
+    width: [40, 10], pump: 0.1, jitter: 0.04, idleJitter: 0.05, lope: [0.005, 0.003],
     chop: [1.1, 1, 0.85, 0.3, 0.45, 1.5, 1.05, 1, 1.1, 1, 1, 1.05],
-    sizzle: 1.1, idleNoise: 0.9,
-    muff: [650, 950, 0.14, 2300, 1700], body: [125, 4], drone: [290, 1.5],
-    mid: [780, 3.5],                           // the 1JZ's ring sits higher than the 2JZ's
-    zing: { harmonics: [[3, 1], [4, 0.7], [6, 0.45]], level: 0.18, from: 2200, to: 7000 },
-    rasp: [1700, 0.18, 1.0], rumble: [260, 0.06, 0.85], intake: [480, 0.1, 0.12],
-    level: 0.85,
+    sizzle: 0.3, idleNoise: 0.6,
+    muff: [380, 650, 0.07, 1300, 900], muffRpm: 0.8, muffRpm2: 0.05, // a dark, smooth exhaust
+    body: [165, 7.5], drone: [330, 3], subMin: 22,
+    mid: [460, 2.5],
+    // the ring: 4.5th order (1.5x firing) and its double, from about 2,500 rpm
+    zing: { harmonics: [[1.5, 1], [3, 0.35]], level: 0.11, from: 2500, to: 7000 },
+    rasp: [1400, 0.1, 0.55], rumble: [220, 0.05, 0.6], intake: [420, 0.07, 0.08],
+    roar: 0.3, intakeRoar: 0.25,              // much less flow noise than the other engines
+    level: 0.68,
     factoryTurbo: 'factory',                   // the stock turbo is always there; set({ turbo: 1 }) upgrades it
   },
   ls3: {
@@ -378,7 +383,7 @@ const TURBOS = {
   big:   { fw: [1800, 5800], shaftUp: 0.55, shaftDown: 1.3, spool: 3900, range: 1600, lag: 0.85, flutter: [11, 7], whistle: 0.85 },
   // a factory turbo (engines with factoryTurbo): a light spool and a soft 'poof' from the
   // stock recirculating bypass valve on a lift, no flutter
-  factory: { fw: [2200, 5600], shaftUp: 0.35, shaftDown: 0.75, spool: 2400, range: 1600, lag: 0.35, flutter: [0, 0], whistle: 0.17, rush: 0.4, lift: 'poof' },
+  factory: { fw: [2200, 5600], shaftUp: 0.35, shaftDown: 0.75, spool: 2400, range: 1600, lag: 0.35, flutter: [0, 0], whistle: 0.06, rush: 0.2, lift: 'poof' },
 };
 
 function exhaustName(x) {
@@ -458,8 +463,8 @@ class M20Dsp {
     this.cabin = new Biquad().set('lp', 20000, 0.7, 0, fs); this.cabinHz = 20000; // in-car muffling
     this.tFlut = new Biquad().set('bp', 900, 0.6, 0, fs);   // a broad, breathy chatter
     this.tFlutLo = new Biquad().set('lp', 450, 0.7, 0, fs);
-    this.tPoof = new Biquad().set('bp', 1100, 0.55, 0, fs);  // a soft, breathy puff
-    this.tPoofLo = new Biquad().set('lp', 2500, 0.7, 0, fs);
+    this.tPoof = new Biquad().set('bp', 800, 0.6, 0, fs);   // a soft, breathy puff
+    this.tPoofLo = new Biquad().set('lp', 1800, 0.7, 0, fs);
     this.subHz = 28;
     this.onCycle = null;
     this.fs = fs;
@@ -628,13 +633,13 @@ class M20Dsp {
     if (this.coef++ % 4 === 0) {
       const E = this.E, m = E.muff, open = X.open * (1 - 0.22 * this.T.on); // the turbine muffles a bit
       // the muffler lets more through as the revs rise: a higher-pitched note up top, idle as before
-      this.muffLp.set('lp', (m[0] + m[1] * thr0 + rpm0 * m[2] * 1.5) * open, 0.6, 0, fs);
+      this.muffLp.set('lp', (m[0] + m[1] * thr0 + rpm0 * m[2] * (E.muffRpm ?? 1.5)) * open, 0.6, 0, fs);
       this.tWhoosh.set('bp', 1100 + 3200 * this.T.shaft, 1.3, 0, fs);
       if (this.T.on > 0.001) { // the whistle's airy band follows the shaft
         const Zw = this.T.Z || TURBOS.small, fwB = Zw.fw[0] + (Zw.fw[1] - Zw.fw[0]) * this.T.shaft;
         this.tWhNoise.set('bp', fwB, 30, 0, fs); this.tWhNoise2.set('bp', fwB, 30, 0, fs);
       }
-      this.muffLp2.set('lp', (m[3] + m[4] * thr0 + rpm0 * 0.18) * open, 0.5, 0, fs);
+      this.muffLp2.set('lp', (m[3] + m[4] * thr0 + rpm0 * (E.muffRpm2 ?? 0.18)) * open, 0.5, 0, fs);
       this.body.set('pk', E.body[0], 1.1, E.body[1] + X.bodyDb, fs);
       this.drone.set('pk', E.drone[0] * X.droneHz, 1.6, E.drone[1] + X.droneDb, fs);
       if (E.mid) this.mid.set('pk', E.mid[0], 1.4, E.mid[1], fs);
@@ -741,7 +746,7 @@ class M20Dsp {
       // steeply (about with flow squared); fed in before the muffler so it gets each engine's
       // tone. Partly pulsed with the firings. Quiet below about 4,000 rpm.
       const hr = Math.min(1.1, Math.max(0, rpm / (E.redline || 6500) - 0.3) / 0.7);
-      const roar = Math.pow(hr, 1.2) * (0.25 + 0.75 * thr) * (E.roar ?? 1) * (0.8 + 0.2 * X.open);
+      const roar = Math.pow(hr, 1.2) * (0.04 + 0.96 * thr) // closed throttle: little flow, little roar * (E.roar ?? 1) * (0.8 + 0.2 * X.open);
       const rn = roar > 0.0005 ? this.roarLp.run(randn()) * roar * (0.55 + 0.45 * Math.min(2, env)) * 3.2 : 0;
       const refl = E.pipeRefl - X.refl;
       let pipeOut;
@@ -828,11 +833,13 @@ class M20Dsp {
         const tone = (Math.sin(TAU * T.whPh) + 0.15 * Math.sin(TAU * T.whPh2)) * 0.6;
         const air = this.tWhNoise2.run(this.tWhNoise.run(randn())) * 9; // narrow band of rushing air
         let ty = (tone + air) * 0.55 * Z.whistle * T.whAmp;
-        ty += this.tWhoosh.run(randn()) * 0.4 * (Z.rush ?? 1) * sh * sh * (0.2 + 0.8 * thr);
+        // a factory turbo's air rush follows the boost (it dies with it); an aftermarket one the shaft
+        const rs = Z.lift === 'poof' ? T.boost : sh;
+        ty += this.tWhoosh.run(randn()) * 0.4 * (Z.rush ?? 1) * rs * rs * (0.2 + 0.8 * thr);
         if (T.poof > 0.0005) {
           T.poofAtk = Math.min(1, (T.poofAtk || 0) + 1 / (0.012 * fs)); // soft 12 ms onset
-          ty += this.tPoofLo.run(this.tPoof.run(randn())) * T.poof * T.poofAtk * 2.4;
-          T.poof *= 1 - 1 / (0.16 * fs);
+          ty += this.tPoofLo.run(this.tPoof.run(randn())) * T.poof * T.poofAtk * 1.0;
+          T.poof *= 1 - 1 / (0.1 * fs);
         }
         if (T.flut > 0.0005) {
           T.flutRate *= 1 - 0.45 / fs;                // the chatter slows as the boost dies
@@ -1317,7 +1324,7 @@ function step(dt) {
   }
   sim.thrIn += ((held.gas.size ? 1 : 0) - sim.thrIn) * Math.min(1, dt * 14);
   sim.brake = held.brake.size ? 1 : 0;
-  if (sim.rpm >= REDLINE) sim.cut = 0.07;          // rev limiter: fuel cut
+  if (sim.rpm >= REDLINE) sim.cut = 0.045;         // rev limiter: short fuel cuts, about 12 bounces a second
   sim.cut = Math.max(0, sim.cut - dt);
   sim.shift = Math.max(0, sim.shift - dt);
   sim.blip = Math.max(0, sim.blip - dt);
