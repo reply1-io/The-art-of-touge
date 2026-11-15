@@ -1,9 +1,11 @@
 // The roads you can drive.
 import { Road } from './road.js';
 import { dragonPoints } from './dragonMap.js';
-import { worldRoute, STAGES, heightAt, CELL } from './worldMap.js';
+import { worldRoute, STAGES, heightAt, CELL, planLinks } from './worldMap.js';
+import { stopsFor } from './stops.js';
 
 const WORLD = worldRoute(15319);
+export const LINK_SEED = 116; // picked for the most links that pass linkOk
 // The stage a distance along the world route belongs to.
 export function stageAt(s) {
   let k = 0;
@@ -28,6 +30,8 @@ export const TRACKS = {
     road: () => new Road(WORLD.pts, 0, { world: true, heightAt, loop: true }),
     stages: STAGES.map((st, k) => ({ ...st, s0: WORLD.starts[k], s1: WORLD.starts[k + 1] ?? WORLD.length })),
     stageAt,
+    // Link roads between the parts of the loop that pass side by side: junctions to turn off at.
+    links: (road) => worldLinks(road),
     // The village sits on the Valley Run, at the point furthest from the peak.
     town: (road) => {
       const k = STAGES.length - 1;
@@ -47,22 +51,43 @@ export const TRACKS = {
     peak: (road) => ({ x: 0, z: 0, r: 120, top: road.top + 4, rise: 95 }),
     // Lakes in the cells the route misses, ponds in the gaps between roads, and ponds beside the
     // roads that have them.
-    lakes: (road) => worldLakes(road),
+    lakes: (road, terrain) => worldLakes(road, terrain),
   },
 };
 
+// Link roads: short twisty roads joining the loop to itself, each a Road of its own whose ends meet
+// the loop's tarmac edge at the junctions. from/to: which of the eleven roads each end is on.
+function worldLinks(road) {
+  const zones = stopsFor(road, TRACKS.world.stopsOpts);
+  const avoid = (i) => zones.some((z) => i > z.i0 - 18 && i < z.i1 + 18) || i < 60 || i > road.count - 60;
+  const PAV = road.w.PAVED + 0.3;
+  return planLinks(road, WORLD, avoid, 10, LINK_SEED).map((l) => {
+    const ya = road.pointAt(l.a, l.sideA * PAV)[1];
+    const yb = road.pointAt(l.b, l.sideB * PAV)[1];
+    return { ...l, road: new Road(l.pts, 0, { world: true, heightAt, ends: [ya, yb] }), from: stageAt(l.a * 2), to: stageAt(l.b * 2) };
+  }).filter((l) => linkOk(l.road));
+}
+
+// A link has to be as drivable as the loop: no steeper, no tighter.
+export function linkOk(r) {
+  let minR = Infinity;
+  for (let i = 3; i < r.count - 3; i++) minR = Math.min(minR, 1 / Math.max(1e-6, Math.abs(r.kappa[i])));
+  return Math.max(...r.grade.map(Math.abs)) < 0.135 && minR > 10;
+}
+
 // Lakes and ponds: a lake in each cell the route misses, ponds in the corners between cells where
 // roads leave room, and ponds beside the roads that have them.
-function worldLakes(road) {
+function worldLakes(road, terrain) {
   const out = [];
-  // Distance from (x, z) to the nearest road, and the lowest road height nearby.
+  // Distance from (x, z) to the nearest road (the loop or a link), and the lowest road nearby.
+  const all = terrain?.road ?? road;
   const near = (x, z, reach) => {
     let d = Infinity;
     let low = Infinity;
-    for (let i = 0; i < road.count; i += 2) {
-      const e = Math.hypot(road.x[i] - x, road.z[i] - z);
+    for (let i = 0; i < all.count; i += 2) {
+      const e = Math.hypot(all.x[i] - x, all.z[i] - z);
       if (e < d) d = e;
-      if (e < reach) low = Math.min(low, road.y[i]);
+      if (e < reach) low = Math.min(low, all.y[i]);
     }
     return { d, low };
   };
@@ -96,7 +121,7 @@ function worldLakes(road) {
         const off = 16 + r;
         if (road.clearance(i, side, off + r + 20) < off + r + 20) continue;
         const [x, , z] = road.pointAt(i, side * off);
-        if (!free(x, z, r)) continue;
+        if (!free(x, z, r) || near(x, z, 0).d < off - 2) continue;
         out.push({ x, z, r, level: road.y[i] - 3.5 });
         break;
       }
