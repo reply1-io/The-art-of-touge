@@ -125,7 +125,7 @@ input[type=range] { width: 100%; accent-color: var(--needle); }
         <div class="row"><span class="seglabel">Engine</span>
           <div class="seg" role="group" aria-label="Engine">
             <button id="gM20" aria-pressed="true">M20 six</button>
-            <button id="gJZ" aria-pressed="false">2JZ six</button>
+            <button id="gJZ" aria-pressed="false">1JZ six</button>
             <button id="gLS3" aria-pressed="false">LS3 V8</button>
             <button id="gROT" aria-pressed="false">13B rotary</button>
           </div>
@@ -209,6 +209,14 @@ const CARS = {
     noteH: 'Why it sounds like a six',
     noteP: 'Each cylinder fires every 120° of crank, so the main pitch is rpm ÷ 20 (40 Hz at idle, 325 Hz at the limiter). Small differences between cylinders add the half-order rumble a perfectly even buzz would lack.',
     peakNm: 222, peakRpm: 4300, spread: 5200, mass: 1230, freeRev: 8500,
+  },
+  jz1: {
+    eyebrow: 'Toyota 1JZ-GTE · 2.5 straight-six · 86 x 71.5 mm', title: '1JZ Engine Sound',
+    intro: 'No recordings are used. An oversquare 2.5 L straight-six firing 1-5-3-6-2-4 that revs quick and high, with the 1JZ scream: higher and raspier than a 2JZ. Turn on the turbo for boost. Press Start, then hold the gas.',
+    bankA: 'Cylinders 1-3', bankB: 'Cylinders 4-6',
+    noteH: 'Why it screams',
+    noteP: 'It fires every 120°, so the main pitch is rpm ÷ 20, like any straight-six. Its short stroke lets it rev to 7,000 and its pulses are sharp, so the higher harmonics come in early and ring near 780 Hz: a higher, raspier scream than the 2JZ.',
+    peakNm: 250, peakRpm: 4800, spread: 5500, mass: 1400, freeRev: 10000,
   },
   jz2: {
     eyebrow: 'Toyota 2JZ-GTE, run N/A · 3.0 straight-six · 86 x 86 mm', title: '2JZ Engine Sound',
@@ -391,7 +399,7 @@ function setEngineChoice(name) {
   REDLINE = E.redline; IDLE = E.idleRpm; MASS = C.mass;
   $('gM20').setAttribute('aria-pressed', String(name === 'm20'));
   $('gLS3').setAttribute('aria-pressed', String(name === 'ls3'));
-  $('gJZ').setAttribute('aria-pressed', String(name === 'jz2'));
+  $('gJZ').setAttribute('aria-pressed', String(name === 'jz1'));
   $('gROT').setAttribute('aria-pressed', String(name === 'rotary13b'));
   MAXDIAL = E.redline > 6900 ? 8000 : 7000;
   $('scopeTitle').textContent = (E.cycleDeg || 720) === 720
@@ -406,7 +414,7 @@ function setEngineChoice(name) {
 }
 $('gM20').onclick = () => setEngineChoice('m20');
 $('gLS3').onclick = () => setEngineChoice('ls3');
-$('gJZ').onclick = () => setEngineChoice('jz2');
+$('gJZ').onclick = () => setEngineChoice('jz1');
 $('gROT').onclick = () => setEngineChoice('rotary13b');
 
 // ---------- pedals: pointer + keyboard ----------

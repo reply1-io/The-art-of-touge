@@ -79,6 +79,28 @@ export const ENGINES = {
     rasp: [1500, 0.16, 0.8], rumble: [240, 0.06, 0.9], intake: [450, 0.09, 0.12],
     level: 0.8,
   },
+  jz1: {
+    // Toyota 1JZ-GTE: 2.5 L oversquare (86 x 71.5 mm) straight-six, firing 1-5-3-6-2-4. Revs
+    // quicker and higher than the 2JZ, with a higher, raspier scream: a lighter body, sharper
+    // pulses and its metallic ring higher up (near 780 Hz). Turbo optional (set({ turbo: 1 })).
+    label: 'Toyota 1JZ-GTE 2.5 straight-six',
+    firing: [1, 5, 3, 6, 2, 4],
+    angles: [0, 120, 240, 360, 480, 600],
+    bank: [0, 1, 0, 1, 0, 1],                 // manifold split 1-3 / 4-6
+    cylGain: [1.0, 0.95, 1.04, 0.97, 1.02, 0.94],
+    cylTiming: [0, 1, -0.8, 1.2, -0.5, 0.6],
+    idleRpm: 700, redline: 7000, crankFlare: 1400, starterRatio: 11,
+    dual: false,
+    header: [0.0017, 0.0019], pipe: [3.2, 3.2], pipeRefl: 0.48,
+    width: [28, 8], pump: 0.1, jitter: 0.05, idleJitter: 0.06, lope: [0.005, 0.003],
+    chop: [1.1, 1, 0.85, 0.3, 0.45, 1.5, 1.05, 1, 1.1, 1, 1, 1.05],
+    sizzle: 1.1, idleNoise: 0.9,
+    muff: [650, 950, 0.14, 2300, 1700], body: [125, 4], drone: [290, 1.5],
+    mid: [780, 3.5],                           // the 1JZ's ring sits higher than the 2JZ's
+    zing: { harmonics: [[3, 1], [4, 0.7], [6, 0.45]], level: 0.18, from: 2200, to: 7000 },
+    rasp: [1700, 0.18, 1.0], rumble: [260, 0.06, 0.85], intake: [480, 0.1, 0.12],
+    level: 0.85,
+  },
   ls3: {
     label: 'GM LS3 6.2 V8',
     firing: [1, 8, 7, 2, 6, 5, 4, 3],
