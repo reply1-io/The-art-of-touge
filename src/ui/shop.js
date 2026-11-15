@@ -94,8 +94,8 @@ function buildGarage(scene) {
     scene.add(m);
     return m;
   };
-  const W = 9; // half width of the room (x)
-  const D = 7.5; // half depth (z)
+  const W = 7.2; // half width of the room (x)
+  const D = 6.2; // half depth (z)
   const H = 3.6; // ceiling height
 
   // Light: warm fill from the strip lights, a cooler spill from the open door.
@@ -476,6 +476,94 @@ function buildGarage(scene) {
     scene.add(m);
   }
 
+  // ---------- Clutter: the stuff that piles up in a real workshop ----------
+  const cyl = (r, h, mat, x, y, z, rx = 0, rz = 0) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 12), mat);
+    m.position.set(x, y, z);
+    m.rotation.set(rx, 0, rz);
+    scene.add(m);
+    return m;
+  };
+  // Oil drums by the door.
+  for (const [x, z, c] of [[6.6, -2.4, 0x2f5fa8], [6.0, -2.6, 0xb3241c], [5.45, -2.5, 0x3d6b3f]]) {
+    cyl(0.29, 0.88, lambert(c), x, 0.44, z);
+    cyl(0.3, 0.03, lambert(0x1b1c1e), x, 0.89, z);
+  }
+  // Stacks of cardboard boxes along the front wall.
+  const card = lambert(0xa4875a);
+  const card2 = lambert(0x8f7448);
+  for (const [x, n] of [[0.9, 3], [1.5, 2], [2.1, 3], [2.7, 1]]) {
+    for (let k = 0; k < n; k++) box(0.55, 0.42, 0.5, k % 2 ? card2 : card, x + (k % 2) * 0.05, 0.21 + k * 0.42, D - 0.35, k * 0.08);
+  }
+  // Spare wheels leaning against the back wall, and a set of four on the floor.
+  const rimMat = lambert(0xc7c9cf);
+  for (let k = 0; k < 3; k++) {
+    const t = new THREE.Mesh(tyreGeo, tyreMat);
+    t.position.set(3.6 + k * 0.28, 0.42, -D + 0.25);
+    t.rotation.set(0.15, 0, 0);
+    scene.add(t);
+    cyl(0.2, 0.2, rimMat, 3.6 + k * 0.28, 0.42, -D + 0.25, Math.PI / 2 + 0.15);
+  }
+  for (let k = 0; k < 4; k++) {
+    const t = new THREE.Mesh(tyreGeo, tyreMat);
+    t.rotation.x = Math.PI / 2;
+    t.position.set(-4.6, 0.11 + k * 0.22, -4.2);
+    scene.add(t);
+    cyl(0.2, 0.2, lambert(0xd6b04a), -4.6, 0.11 + k * 0.22, -4.2);
+  }
+  // An engine crane by the engine stand.
+  const crane = new THREE.Group();
+  const cm = (w, h, d, x, y, z, rz = 0) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), red);
+    m.position.set(x, y, z);
+    m.rotation.z = rz;
+    crane.add(m);
+  };
+  cm(0.1, 1.7, 0.1, 0, 0.85, 0);
+  cm(1.4, 0.1, 0.1, 0.55, 1.65, 0, -0.25);
+  cm(0.1, 0.06, 1.2, 0, 0.05, 0.3);
+  cm(1.0, 0.06, 0.1, 0.4, 0.05, 0.8);
+  crane.position.set(3.7, 0, -4.3);
+  crane.rotation.y = 0.6;
+  scene.add(crane);
+  // An air compressor and its hose by the left wall.
+  cyl(0.22, 0.75, red, -6.6, 0.32, -3.2, Math.PI / 2);
+  box(0.4, 0.3, 0.4, lambert(0x2b2b2b), -6.6, 0.75, -3.0);
+  const hose = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.025, 6, 20), lambert(0xe0b23a));
+  hose.position.set(-6.4, 0.05, -2.3);
+  hose.rotation.x = Math.PI / 2;
+  scene.add(hose);
+  // An old fridge, a stool with a radio on it, a fan, a broom and a bucket.
+  box(0.62, 1.5, 0.62, lambert(0xd9d6cc), -4.0, 0.75, D - 0.4);
+  box(0.05, 0.4, 0.04, lambert(0x8a8a8a), -3.72, 1.05, D - 0.72);
+  cyl(0.18, 0.04, wood, -1.2, 0.62, -D + 1.3);
+  for (const [dx, dz] of [[-0.1, -0.1], [0.1, -0.1], [-0.1, 0.1], [0.1, 0.1]]) cyl(0.02, 0.6, steel, -1.2 + dx, 0.3, -D + 1.3 + dz);
+  box(0.34, 0.2, 0.12, lambert(0x3a3a3a), -1.2, 0.74, -D + 1.3, 0.4);
+  cyl(0.2, 0.05, lambert(0x2d4f8a), -5.6, 1.0, -D + 0.6, Math.PI / 2);
+  cyl(0.02, 1.0, steel, -5.6, 0.5, -D + 0.6);
+  cyl(0.015, 1.4, wood, 6.9, 0.7, 4.6, 0, 0.12);
+  box(0.3, 0.06, 0.08, lambert(0xb3241c), 6.85, 0.05, 4.6);
+  cyl(0.16, 0.3, lambert(0x2f5fa8), 6.2, 0.15, 5.3);
+  // Exhaust pipes and a bumper hung up on the left wall, a hose reel on the right.
+  for (let k = 0; k < 3; k++) cyl(0.04, 2.2, lambert(k === 1 ? 0x9a9da2 : 0x6d6f73), -W + 0.12, 2.75 + k * 0.12, 0.6, Math.PI / 2);
+  box(0.12, 0.2, 1.6, lambert(0x1d1e21), -W + 0.1, 2.4, 0.6);
+  const reel = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.06, 6, 16), lambert(0x3d8a4a));
+  reel.position.set(W - 0.12, 1.9, -1.9);
+  reel.rotation.y = Math.PI / 2;
+  scene.add(reel);
+  // Rubber mat under the lift, and a drop light hanging from the beam.
+  const mat = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 5.6), lambert(0x1d1e20));
+  mat.rotation.x = -Math.PI / 2;
+  mat.position.set(0, 0.006, 0.2);
+  scene.add(mat);
+  cyl(0.008, 1.0, lambert(0x111111), -0.6, H - 0.6, 1.4);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe2a8 }));
+  bulb.position.set(-0.6, H - 1.15, 1.4);
+  scene.add(bulb);
+  const drop = new THREE.PointLight(0xffd59a, 3, 5, 1.6);
+  drop.position.copy(bulb.position);
+  scene.add(drop);
+
   // A two-post lift. The car rides on it just high enough for someone to lie under it on a creeper.
   const LIFT = 0.5;
   const liftMat = lambert(0x2f5fa8);
@@ -636,10 +724,10 @@ export class Shop {
     this.car.updateFx(dt);
     const target = new THREE.Vector3(0, 0.9, 0.2);
     const dir = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch));
-    // Walls at x = ±9 and z = ±7.5: pull the camera in rather than through them.
+    // Walls at x = ±7.2 and z = ±6.2: pull the camera in rather than through them.
     let d = this.dist;
-    if (Math.abs(dir.x) > 1e-3) d = Math.min(d, (8.5 - Math.sign(dir.x) * target.x) / Math.abs(dir.x));
-    if (Math.abs(dir.z) > 1e-3) d = Math.min(d, (7.0 - Math.sign(dir.z) * target.z) / Math.abs(dir.z));
+    if (Math.abs(dir.x) > 1e-3) d = Math.min(d, (6.7 - Math.sign(dir.x) * target.x) / Math.abs(dir.x));
+    if (Math.abs(dir.z) > 1e-3) d = Math.min(d, (5.7 - Math.sign(dir.z) * target.z) / Math.abs(dir.z));
     if (dir.y > 1e-3) d = Math.min(d, (3.3 - target.y) / dir.y);
     d = Math.max(2.6, d);
     this.camera.position.copy(target).addScaledVector(dir, d);
