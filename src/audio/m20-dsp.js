@@ -100,6 +100,7 @@ export const ENGINES = {
     zing: { harmonics: [[3, 1], [4, 0.7], [6, 0.45]], level: 0.18, from: 2200, to: 7000 },
     rasp: [1700, 0.18, 1.0], rumble: [260, 0.06, 0.85], intake: [480, 0.1, 0.12],
     level: 0.85,
+    factoryTurbo: 'factory',                   // the stock turbo is always there; set({ turbo: 1 }) upgrades it
   },
   ls3: {
     label: 'GM LS3 6.2 V8',
@@ -176,6 +177,9 @@ export const EXHAUSTS = {
 export const TURBOS = {
   small: { fw: [2400, 7200], shaftUp: 0.3, shaftDown: 0.85, spool: 2200, range: 1200, lag: 0.3, flutter: [15, 8], whistle: 1 },
   big:   { fw: [1800, 5800], shaftUp: 0.55, shaftDown: 1.3, spool: 3900, range: 1600, lag: 0.85, flutter: [11, 7], whistle: 0.85 },
+  // a factory turbo (engines with factoryTurbo): a light spool and a soft 'poof' from the
+  // stock recirculating bypass valve on a lift, no flutter
+  factory: { fw: [2200, 5600], shaftUp: 0.35, shaftDown: 0.75, spool: 2400, range: 1600, lag: 0.35, flutter: [0, 0], whistle: 0.17, rush: 0.4, lift: 'poof' },
 };
 
 export function exhaustName(x) {
@@ -240,11 +244,13 @@ export class M20Dsp {
     this.zingAmp = 0;
     // turbo state: boost and shaft speed 0..1, lift-off envelopes and oscillator phases
     this.T = { on: 0, boost: 0, shaft: 0, armed: false, flut: 0, flutRate: 0, flutPh: 0,
-               flutA: 1, whPh: 0, whPh2: 0, whAmp: 0 };
+               flutA: 1, whPh: 0, whPh2: 0, whAmp: 0, poof: 0, poofAtk: 1 };
     this.tWhoosh = new Biquad();
     this.cabin = new Biquad().set('lp', 20000, 0.7, 0, fs); this.cabinHz = 20000; // in-car muffling
     this.tFlut = new Biquad().set('bp', 900, 0.6, 0, fs);   // a broad, breathy chatter
     this.tFlutLo = new Biquad().set('lp', 450, 0.7, 0, fs);
+    this.tPoof = new Biquad().set('bp', 1100, 0.55, 0, fs);  // a soft, breathy puff
+    this.tPoofLo = new Biquad().set('lp', 2500, 0.7, 0, fs);
     this.subHz = 28;
     this.onCycle = null;
     this.fs = fs;
@@ -313,9 +319,12 @@ export class M20Dsp {
   // about half a second of lag; the shaft keeps spinning down for a while after a lift
   _turbo(n, t, c) {
     const T = this.T, dt = n / this.fs;
-    T.on += ((t.turbo ? 1 : 0) - T.on) * Math.min(1, dt / 0.15);
-    if (T.on < 0.001 && !t.turbo) { T.boost = T.shaft = T.flut = 0; return; }
-    const r = this.rpmS, Z = TURBOS[t.turboSize] || TURBOS.small;
+    // set({ turbo: 1 }) fits the aftermarket turbo; engines with a factoryTurbo always have
+    // their stock one otherwise
+    const fitted = t.turbo ? 1 : this.E.factoryTurbo ? 1 : 0;
+    T.on += (fitted - T.on) * Math.min(1, dt / 0.15);
+    if (T.on < 0.001 && !fitted) { T.boost = T.shaft = T.flut = T.poof = 0; return; }
+    const r = this.rpmS, Z = t.turbo ? TURBOS[t.turboSize] || TURBOS.small : TURBOS[this.E.factoryTurbo] || TURBOS.small;
     // a lift only counts once the throttle stays shut a moment: rev-limiter cuts (about
     // 0.07 s) keep the boost, a real lift or a gear change (0.2 s or more) lets it go
     T.closedT = c.throttle < 0.15 ? (T.closedT || 0) + dt : 0;
@@ -332,11 +341,14 @@ export class M20Dsp {
     const shaftT = Math.max(T.boost, (0.1 + 0.25 * th) * Math.min(1, r / 7000));
     T.shaft += (shaftT - T.shaft) * Math.min(1, dt / (shaftT > T.shaft ? Z.shaftUp : Z.shaftDown));
     T.Z = Z;
-    // lift-off with boost: compressor flutter (no blow-off valve)
+    // lift-off with boost: compressor flutter, or a factory bypass valve's soft poof
     if (th > 0.5) T.armed = true;
     if (T.armed && T.closedT >= 0.09) {
       T.armed = false;
-      if (T.boost > 0.15 && t.turbo) {
+      if (T.boost > 0.15 && fitted && Z.lift === 'poof') {
+        const rf = Math.min(1, Math.max(0, (r - 2200) / 4300));
+        T.poof = Math.min(1, T.boost * (0.35 + 0.65 * rf)); T.poofAtk = 0;
+      } else if (T.boost > 0.15 && fitted) {
         // the higher the revs you lift at, the more air surges back: soft from low rpm,
         // full strength near the top, and still scaled by the boost you had
         const rf = Math.min(1, Math.max(0, (r - 2200) / 4300));
@@ -582,7 +594,12 @@ export class M20Dsp {
         T.whPh2 += fw * 2.01 / fs; T.whPh2 -= Math.floor(T.whPh2);
         T.whAmp += (Math.pow(sh, 1.5) * (0.55 + 0.45 * thr) - T.whAmp) * 0.0008;
         let ty = (Math.sin(TAU * T.whPh) + 0.15 * Math.sin(TAU * T.whPh2)) * 0.55 * Z.whistle * T.whAmp;
-        ty += this.tWhoosh.run(randn()) * 0.4 * sh * sh * (0.2 + 0.8 * thr);
+        ty += this.tWhoosh.run(randn()) * 0.4 * (Z.rush ?? 1) * sh * sh * (0.2 + 0.8 * thr);
+        if (T.poof > 0.0005) {
+          T.poofAtk = Math.min(1, (T.poofAtk || 0) + 1 / (0.012 * fs)); // soft 12 ms onset
+          ty += this.tPoofLo.run(this.tPoof.run(randn())) * T.poof * T.poofAtk * 2.4;
+          T.poof *= 1 - 1 / (0.16 * fs);
+        }
         if (T.flut > 0.0005) {
           T.flutRate *= 1 - 0.45 / fs;                // the chatter slows as the boost dies
           T.flutPh += T.flutRate / fs;
