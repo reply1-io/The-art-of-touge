@@ -448,6 +448,8 @@ class M20Dsp {
     this.ap = [113, 337, 541, 773].map((n) => ({ d: new Delay(n + 1), n }));
     this.roomLp = new Biquad().set('lp', 2800, 0.7, 0, fs); this.roomHp = new Biquad().set('hp', 120, 0.7, 0, fs);
     this.envF = 0;
+    this.roarLp = new Biquad().set('lp', 3400, 0.6, 0, fs);   // exhaust flow roar (before the muffler)
+    this.intakeRoar = new Biquad(); this.zj = 0;
     // turbo state: boost and shaft speed 0..1, lift-off envelopes and oscillator phases
     this.T = { on: 0, boost: 0, shaft: 0, armed: false, flut: 0, flutRate: 0, flutPh: 0,
                flutA: 1, whPh: 0, whPh2: 0, whAmp: 0, poof: 0, poofAtk: 1 };
@@ -625,19 +627,21 @@ class M20Dsp {
     const thr0 = C.throttle, rpm0 = C.rpm, X = this.X;
     if (this.coef++ % 4 === 0) {
       const E = this.E, m = E.muff, open = X.open * (1 - 0.22 * this.T.on); // the turbine muffles a bit
-      this.muffLp.set('lp', (m[0] + m[1] * thr0 + rpm0 * m[2]) * open, 0.6, 0, fs);
+      // the muffler lets more through as the revs rise: a higher-pitched note up top, idle as before
+      this.muffLp.set('lp', (m[0] + m[1] * thr0 + rpm0 * m[2] * 1.5) * open, 0.6, 0, fs);
       this.tWhoosh.set('bp', 1100 + 3200 * this.T.shaft, 1.3, 0, fs);
       if (this.T.on > 0.001) { // the whistle's airy band follows the shaft
         const Zw = this.T.Z || TURBOS.small, fwB = Zw.fw[0] + (Zw.fw[1] - Zw.fw[0]) * this.T.shaft;
         this.tWhNoise.set('bp', fwB, 30, 0, fs); this.tWhNoise2.set('bp', fwB, 30, 0, fs);
       }
-      this.muffLp2.set('lp', (m[3] + m[4] * thr0) * open, 0.5, 0, fs);
+      this.muffLp2.set('lp', (m[3] + m[4] * thr0 + rpm0 * 0.18) * open, 0.5, 0, fs);
       this.body.set('pk', E.body[0], 1.1, E.body[1] + X.bodyDb, fs);
       this.drone.set('pk', E.drone[0] * X.droneHz, 1.6, E.drone[1] + X.droneDb, fs);
       if (E.mid) this.mid.set('pk', E.mid[0], 1.4, E.mid[1], fs);
       this.raspBp.set('bp', E.rasp[0] + rpm0 * E.rasp[1], 0.6, 0, fs);
       this.rumbleBp.set('bp', E.rumble[0] + rpm0 * E.rumble[1], 0.45, 0, fs);
       this.intakeBp.set('bp', E.intake[0] + rpm0 * E.intake[1], 1.4, 0, fs);
+      this.intakeRoar.set('bp', 500 + rpm0 * 0.12, 0.7, 0, fs);
     }
 
     const E = this.E, ncyl = E.firing.length;
@@ -733,18 +737,24 @@ class M20Dsp {
       // muffler shapes it into a thud-crack rather than a digital click
       this.popEnv *= 0.9965;
       this.popLp += ((this.popEnv > 0.005 ? randn() * this.popEnv : 0) - this.popLp) * 0.25;
+      // flow roar: at high revs and load, turbulent gas noise rushing down the exhaust grows
+      // steeply (about with flow squared); fed in before the muffler so it gets each engine's
+      // tone. Partly pulsed with the firings. Quiet below about 4,000 rpm.
+      const hr = Math.min(1.1, Math.max(0, rpm / (E.redline || 6500) - 0.3) / 0.7);
+      const roar = Math.pow(hr, 1.2) * (0.25 + 0.75 * thr) * (E.roar ?? 1) * (0.8 + 0.2 * X.open);
+      const rn = roar > 0.0005 ? this.roarLp.run(randn()) * roar * (0.55 + 0.45 * Math.min(2, env)) * 3.2 : 0;
       const refl = E.pipeRefl - X.refl;
       let pipeOut;
       if (!E.dual) {
         // one collector into one pipe (~3 m): inverted, lossy reflection from the open end
-        const coll = hA + hB + this.popLp * 1.4;
+        const coll = hA + hB + this.popLp * 1.4 + rn;
         const back = this.pipe.read(fs * (E.pipe[0] / 343) * 2);
         this.pipeLp += (back - this.pipeLp) * 0.35;
         pipeOut = coll - refl * this.pipeLp;
         this.pipe.write(pipeOut);
       } else {
         // true duals: each bank down its own pipe, so its uneven 90/180/270 beat survives
-        const inA = hA + this.popLp * 0.7, inB = hB + this.popLp * 0.7;
+        const inA = hA + this.popLp * 0.7 + rn * 0.5, inB = hB + this.popLp * 0.7 + rn * 0.5;
         const backA = this.pipe.read(fs * (E.pipe[0] / 343) * 2);
         const backB = this.pipe2.read(fs * (E.pipe[1] / 343) * 2);
         this.pipeLp += (backA - this.pipeLp) * 0.35;
@@ -772,6 +782,8 @@ class M20Dsp {
 
       // intake roar (heard more than you'd think with the throttle open)
       y += this.intakeBp.run(randn() * inEnv) * E.intake[2] * thr * (0.3 + rpm / 6500);
+      // intake roar: a broad rush that opens up at high revs and full throttle
+      y += this.intakeRoar.run(randn()) * 0.28 * thr * thr * hr * hr * (E.intakeRoar ?? 1);
 
       // valve-train tick
       // sizzle: a little crackle on the loudest pulses of a loud exhaust (kept low and
@@ -841,9 +853,11 @@ class M20Dsp {
         const u = Math.min(1, Math.max(0, (rpm - Z.from) / (Z.to - Z.from)));
         const target = ign * Z.level * (0.04 + 0.96 * u * u * (3 - 2 * u)) * (0.45 + 0.55 * thr) * (0.85 + 0.15 * X.open);
         this.zingAmp += (target - this.zingAmp) * 0.002;
-        const fp = TAU * this.phase * ncyl;       // firing phase: ncyl firings per cycle
+        // small random phase wobble: a howl from moving metal and air, not an organ note
+        this.zj = this.zj * 0.9995 + randn() * 0.012;
+        const fp = TAU * this.phase * ncyl + this.zj; // firing phase: ncyl firings per cycle
         let z = 0;
-        for (const [h, a] of Z.harmonics) z += a * Math.sin(h * fp);
+        for (const [h, a] of Z.harmonics) z += a * Math.sin(h * fp + this.zj * h * 0.7);
         // pulse a little with the actual firings, so it is part of the engine, not an organ note
         this.envF += (env - this.envF) * 0.02;
         y += z * this.zingAmp * (0.75 + 0.25 * Math.min(1.5, this.envF * 2));
