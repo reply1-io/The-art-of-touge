@@ -150,45 +150,21 @@ export const CARS = { e30: E30, rx7: RX7 };
 export const ENGINE_SWAPS = {
   rotary: {
     ready: true,
-    name: '13B Rotary (bridge-port)',
+    name: '13B Rotary',
     code: '13B',
-    donor: 'Mazda RX-7 FC3S / FD3S',
+    donor: 'Mazda RX-7 FC3S',
     layout: 'Two-rotor Wankel',
     displacement: '1.3 L',
-    aspiration: 'Naturally aspirated, bridge-ported',
-    hp: 230,
-    hpRpm: 8500,
-    nm: 196,
-    nmRpm: 7000,
-    redline: 9000,
+    aspiration: 'Naturally aspirated',
+    hp: 162,
+    hpRpm: 7000,
+    nm: 190,
+    nmRpm: 4500,
+    redline: 7500,
     kg: 125,
-    blurb: 'A ported 13B: soft down low, then screams to 9,000 rpm with that unmistakable brap. Light, so the nose turns in sharper.',
+    blurb: 'The FC\'s two-rotor: smooth, light and happy to rev, with the rotary brap. Lighter than a six, so the nose turns in sharper.',
     sound: 'rotary13b',
-    engine: {
-      idleRpm: 1150, // a bridge-port idles lumpy and high
-      idleMaxThrottle: 0.32,
-      redline: 9000,
-      limiterRpm: 9100,
-      limiterResumeRpm: 8800,
-      stallRpm: 520,
-      inertia: 0.11,
-      torqueCurve: [
-        [0, 70],
-        [1000, 92],
-        [2000, 112],
-        [3000, 132],
-        [4000, 152],
-        [5000, 172],
-        [6000, 188],
-        [7000, 196],
-        [8000, 193],
-        [8500, 190],
-        [9000, 176],
-        [9600, 150],
-      ],
-      frictionTorque: 14,
-      frictionPerRpm: 0.005,
-    },
+    engine: RX7.engine,
   },
   '1jz': {
     ready: false,
@@ -302,7 +278,7 @@ export const BASE_CAR = CARS[stored('touge.settings.v4')?.car] || E30;
 // ...and with any engine swap fitted.
 function withSwap(car, id) {
   const sw = ENGINE_SWAPS[id];
-  if (!sw?.ready || !sw.engine) return car;
+  if (!sw?.ready || !sw.engine || sw.code === car.engineName) return car;
   return { ...car, engine: { ...sw.engine }, mass: car.mass + sw.kg - car.engineKg, engineName: sw.code, sound: sw.sound, swap: id };
 }
 export const CAR = withSwap(BASE_CAR, stored('touge.tuning.v3')?.engine);
