@@ -243,8 +243,8 @@ export const INTAKES = {
 };
 export const TURBOS = {
   none: { name: 'None', blurb: 'Naturally aspirated M20 six. Smooth, linear and predictable.' },
-  small: { name: 'Small turbo', blurb: 'T25-size. Spools early, about +45% torque, gentle lag. Breathy diesel-style spool and a little poof when you lift.' },
-  big: { name: 'Big turbo', blurb: 'T3-size. Nothing below 4,000 rpm, then it doubles the torque. Laggy, savage, loud: deep diesel spool and flutter on lift-off.' },
+  small: { name: 'Small turbo', blurb: 'T25-size. Spools early, about +45% torque, gentle lag. A high whistle on boost and flutter when you lift.' },
+  big: { name: 'Big turbo', blurb: 'T3-size. Nothing below 4,000 rpm, then it doubles the torque. Laggy, savage, loud: a deep whistle and slow flutter on lift-off.' },
 };
 export const CLUTCHES = {
   stock: { name: 'Stock', blurb: 'Smooth and forgiving. Can slip if you add a lot of power.' },

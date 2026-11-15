@@ -29,6 +29,7 @@
   --bg: #121417; --panel: #1b1e22; --fg: #e9ebec; --muted: #9aa2a9; --line: #2c3137;
   --bank-a: #5aa2ef; --bank-b: #e06bb0; color-scheme: dark }
 
+[hidden] { display: none !important; }
 html, body { background: var(--bg); color: var(--fg); }
 body {
   font: 400 16px/1.5 var(--font-body);
@@ -46,7 +47,7 @@ header p { margin: 6px 0 0; color: var(--muted); max-width: 62ch; }
 
 .cluster { background: var(--dial); color: var(--dial-fg); border-radius: 18px; padding: 18px; display: grid; gap: 10px; }
 .cluster svg { width: 100%; height: auto; display: block; max-width: 100%; }
-.readouts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.readouts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .ro { border-top: 1px solid #262a2e; padding-top: 8px; }
 .ro .k { font: 600 11px/1 var(--font-data); letter-spacing: .12em; text-transform: uppercase; color: var(--dial-dim); }
 .ro .v { font: 600 28px/1.1 var(--font-display); font-variant-numeric: tabular-nums; }
@@ -71,6 +72,10 @@ button:disabled { opacity: .45; cursor: default; }
 .pedal.gas.down { background: var(--needle); color: #fff; border-color: var(--needle); }
 .pedal.brake.down { background: var(--fg); color: var(--bg); }
 .hint { font-size: 13px; color: var(--muted); margin: 0; }
+.shifts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pedal.shift { height: 72px; font-size: 20px; }
+.pedal.shift.down { background: var(--fg); color: var(--bg); }
+#shiftMsg { font: 500 13px/1.4 var(--font-data); color: var(--warn); min-height: 1.4em; margin: 0; }
 kbd { font: 500 12px var(--font-data); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
 
 label.sl { display: grid; gap: 4px; font-size: 14px; }
@@ -103,6 +108,7 @@ input[type=range] { width: 100%; accent-color: var(--needle); }
         <div class="ro"><div class="k">rpm</div><div class="v" id="roRpm">0</div></div>
         <div class="ro"><div class="k">gear</div><div class="v" id="roGear">N</div></div>
         <div class="ro"><div class="k">km/h</div><div class="v" id="roSpeed">0</div></div>
+        <div class="ro"><div class="k">boost psi</div><div class="v" id="roBoost">–</div></div>
       </div>
     </div>
 
@@ -130,6 +136,18 @@ input[type=range] { width: 100%; accent-color: var(--needle); }
             <button id="mManual" aria-pressed="false">Manual</button>
           </div>
         </div>
+        <div class="row" id="gearRow" hidden><span class="seglabel">Gears</span>
+          <div class="seg" role="group" aria-label="Gears">
+            <button id="xAuto" aria-pressed="true">Auto</button>
+            <button id="xManual" aria-pressed="false">Manual</button>
+          </div>
+        </div>
+        <div class="row"><span class="seglabel">Turbo</span>
+          <div class="seg" role="group" aria-label="Turbo">
+            <button id="tOff" aria-pressed="true">Off</button>
+            <button id="tOn" aria-pressed="false">48 mm</button>
+          </div>
+        </div>
         <div class="row"><span class="seglabel">Exhaust</span>
           <div class="seg" role="group" aria-label="Exhaust">
             <button id="eStock" aria-pressed="true">Stock</button>
@@ -141,6 +159,11 @@ input[type=range] { width: 100%; accent-color: var(--needle); }
           <button class="pedal brake" id="pBrake">BRAKE</button>
           <button class="pedal gas" id="pGas">GAS</button>
         </div>
+        <div id="shiftBox" class="shifts" hidden>
+          <button class="pedal shift" id="pDown" aria-label="Shift down">◀ DOWN</button>
+          <button class="pedal shift" id="pUp" aria-label="Shift up">UP ▶</button>
+        </div>
+        <p id="shiftMsg" hidden></p>
         <p class="hint" id="pedalHint">Hold <kbd>W</kbd> / <kbd>↑</kbd> / <kbd>Space</kbd> for gas, <kbd>S</kbd> / <kbd>↓</kbd> to brake. Drive mode shifts up at 6,300 rpm. The limiter cuts fuel at 6,500.</p>
         <div id="manualBox" hidden>
           <label class="sl" for="sRpm"><span>Rpm <output id="oRpm">800</output></span>
@@ -193,6 +216,12 @@ input[type=range] { width: 100%; accent-color: var(--needle); }
 // Motronic cuts fuel on overrun, so off-throttle above idle the pulses are just
 // pumped air: weaker and duller. A proper lift-off from high revs can give a
 // couple of pops (more with a louder exhaust); limiter and shift cuts never do.
+//
+// Turbo (set({ turbo: 1, turboSize: 'small' | 'big' })): a 48 mm turbo ('small') or a
+// T3-size one ('big', deeper and slower) with its own boost model (or the game's boost via
+// set({ boost })), a clean compressor whistle that follows the shaft speed (and keeps singing
+// as the shaft spins down after a lift), an air rush, and compressor flutter on lift-off
+// (no blow-off valve). Flutter and whistle tuned against a recording of a turbo car.
 //
 // Exhausts are their own sound presets (EXHAUSTS): stock, street and race change the
 // muffler, rasp, rumble, resonances and drive, and the aftermarket ones add a heavy
@@ -296,6 +325,13 @@ const EXHAUSTS = {
 };
 
 /** 'stock' | 'street' | 'race', or a number 0 (stock) .. 1 (race) for older callers. */
+// Turbo sizes: whistle range (Hz at a still and a full-speed shaft), how fast the shaft spins
+// up and down (s), the boost model (rpm where boost starts, rpm to full, lag s), flutter rate.
+const TURBOS = {
+  small: { fw: [2400, 7200], shaftUp: 0.3, shaftDown: 0.85, spool: 2200, range: 1200, lag: 0.3, flutter: [15, 8], whistle: 1 },
+  big:   { fw: [1800, 5800], shaftUp: 0.55, shaftDown: 1.3, spool: 3900, range: 1600, lag: 0.85, flutter: [11, 7], whistle: 0.85 },
+};
+
 function exhaustName(x) {
   if (typeof x === 'string') return EXHAUSTS[x] ? x : 'stock';
   return x < 0.3 ? 'stock' : x < 0.8 ? 'street' : 'race';
@@ -356,6 +392,13 @@ class M20Dsp {
     this.X = { ...EXHAUSTS.stock };   // current exhaust voicing, glides to the chosen preset
     this.cycleN = 0;                  // engine cycles, for the every-other-cycle chop
     this.zingAmp = 0;
+    // turbo state: boost and shaft speed 0..1, lift-off envelopes and oscillator phases
+    this.T = { on: 0, boost: 0, shaft: 0, armed: false, flut: 0, flutRate: 0, flutPh: 0,
+               flutA: 1, whPh: 0, whPh2: 0, whAmp: 0 };
+    this.tWhoosh = new Biquad();
+    this.cabin = new Biquad().set('lp', 20000, 0.7, 0, fs); this.cabinHz = 20000; // in-car muffling
+    this.tFlut = new Biquad().set('bp', 900, 0.6, 0, fs);   // a broad, breathy chatter
+    this.tFlutLo = new Biquad().set('lp', 450, 0.7, 0, fs);
     this.subHz = 28;
     this.onCycle = null;
     this.fs = fs;
@@ -420,6 +463,43 @@ class M20Dsp {
     else if (cmd === 'direct') { this.mode = 'direct'; this.rpmS = this.target.rpm; }
   }
 
+  // 58 mm turbo: boost builds from about 2,600 rpm to full around 4,300 rpm under load, with
+  // about half a second of lag; the shaft keeps spinning down for a while after a lift
+  _turbo(n, t, c) {
+    const T = this.T, dt = n / this.fs;
+    T.on += ((t.turbo ? 1 : 0) - T.on) * Math.min(1, dt / 0.15);
+    if (T.on < 0.001 && !t.turbo) { T.boost = T.shaft = T.flut = 0; return; }
+    const r = this.rpmS, Z = TURBOS[t.turboSize] || TURBOS.small;
+    // a lift only counts once the throttle stays shut a moment: rev-limiter cuts (about
+    // 0.07 s) keep the boost, a real lift or a gear change (0.2 s or more) lets it go
+    T.closedT = c.throttle < 0.15 ? (T.closedT || 0) + dt : 0;
+    if (c.throttle >= 0.15) T.lastThr = c.throttle;
+    const th = T.closedT > 0 && T.closedT < 0.09 ? (T.lastThr || 0) : c.throttle;
+    if (typeof t.boost === 'number') {
+      T.boost = Math.min(1, Math.max(0, t.boost)); // the game's own boost
+    } else {
+      // 48 mm (GT2860-class): boost from about 2,200 rpm, full by about 3,400, short lag
+      const tgt = th * Math.min(1, Math.max(0, (r - Z.spool) / Z.range));
+      const tau = tgt > T.boost ? Z.lag : th < 0.15 ? 0.12 : 0.25;
+      T.boost += (tgt - T.boost) * Math.min(1, dt / tau);
+    }
+    const shaftT = Math.max(T.boost, (0.1 + 0.25 * th) * Math.min(1, r / 7000));
+    T.shaft += (shaftT - T.shaft) * Math.min(1, dt / (shaftT > T.shaft ? Z.shaftUp : Z.shaftDown));
+    T.Z = Z;
+    // lift-off with boost: compressor flutter (no blow-off valve)
+    if (th > 0.5) T.armed = true;
+    if (T.armed && T.closedT >= 0.09) {
+      T.armed = false;
+      if (T.boost > 0.15 && t.turbo) {
+        // the higher the revs you lift at, the more air surges back: soft from low rpm,
+        // full strength near the top, and still scaled by the boost you had
+        const rf = Math.min(1, Math.max(0, (r - 2200) / 4300));
+        T.flut = Math.min(1, T.boost * (0.05 + 0.95 * Math.pow(rf, 1.5)));
+        T.flutRate = Z.flutter[0] + Z.flutter[1] * T.boost + 5 * rf; T.flutPh = 0;
+      }
+    }
+  }
+
   _control(n) {
     const c = this.c, t = this.target, dt = this.clock - this.modeT0;
     // lift-off tracking for afterfire pops
@@ -450,6 +530,7 @@ class M20Dsp {
     } else {
       c.rpm = 0; c.throttle = 0; c.ignition = 0; c.starter = 0;
     }
+    this._turbo(n, t, c);
     this.clock += n / this.fs;
   }
 
@@ -478,8 +559,9 @@ class M20Dsp {
     // block-rate coefficient updates
     const thr0 = C.throttle, rpm0 = C.rpm, X = this.X;
     if (this.coef++ % 4 === 0) {
-      const E = this.E, m = E.muff, open = X.open;
+      const E = this.E, m = E.muff, open = X.open * (1 - 0.22 * this.T.on); // the turbine muffles a bit
       this.muffLp.set('lp', (m[0] + m[1] * thr0 + rpm0 * m[2]) * open, 0.6, 0, fs);
+      this.tWhoosh.set('bp', 1100 + 3200 * this.T.shaft, 1.3, 0, fs);
       this.muffLp2.set('lp', (m[3] + m[4] * thr0) * open, 0.5, 0, fs);
       this.body.set('pk', E.body[0], 1.1, E.body[1] + X.bodyDb, fs);
       this.drone.set('pk', E.drone[0] * X.droneHz, 1.6, E.drone[1] + X.droneDb, fs);
@@ -609,7 +691,7 @@ class M20Dsp {
 
       // rasp: turbulence that rides on each pulse, grows with rpm and load
       // at idle the loud pipes' rasp stays low (it reads as hiss); it opens up with load
-      const raspAmt = (0.05 * (1 - 0.7 * lope) * E.idleNoise + 0.22 * thr) * Math.min(1.3, Math.max(E.raspFloor || 0, rpm / 4500)) * X.rasp * E.rasp[2];
+      const raspAmt = (0.05 * (1 - 0.7 * lope) * E.idleNoise + 0.22 * thr) * Math.min(1.3, Math.max(E.raspFloor || 0, rpm / 4500)) * X.rasp * E.rasp[2] * (1 - 0.4 * this.T.on);
       // the crack on top of an afterfire: short (popEnv^3 decays fast), band-limited by the
       // rasp filter, and quieter through the stock muffler
       const crack = this.popEnv > 0.02 ? randn() * this.popEnv ** 3 * X.crack : 0;
@@ -638,6 +720,36 @@ class M20Dsp {
       // low cut follows the exhaust: louder pipes trade sub mud for punch
       const subT = Math.max(X.sub, E.subMin || 0);
       if (Math.abs(subT - this.subHz) > 0.5) { this.subHz = subT; this.dcHp.set('hp', subT, 0.7, 0, fs); }
+      // in the car (set({ cabin: 1 })): the exhaust is heard through the bulkhead; the turbo
+      // (added below) is under the bonnet in front of you, so it stays clear
+      const cabT = 20000 - (20000 - 1100) * Math.min(1, Math.max(0, this.target.cabin || 0));
+      if (Math.abs(cabT - this.cabinHz) > 1) { this.cabinHz += (cabT - this.cabinHz) * 0.01; this.cabin.set('lp', this.cabinHz, 0.7, 0, fs); }
+      if (this.cabinHz < 19000) y = this.cabin.run(y);
+
+      // turbo: a clean compressor whistle that follows the shaft (loud on throttle, still
+      // singing as the shaft spins down after a lift), an air rush, and flutter on a lift
+      const T = this.T;
+      if (T.on > 0.001) {
+        const Z = T.Z || TURBOS.small;
+        const sh = T.shaft, fw = Z.fw[0] + (Z.fw[1] - Z.fw[0]) * sh; // small: up to about 7.2 kHz
+        T.whPh += fw / fs; T.whPh -= Math.floor(T.whPh);
+        T.whPh2 += fw * 2.01 / fs; T.whPh2 -= Math.floor(T.whPh2);
+        T.whAmp += (Math.pow(sh, 1.5) * (0.55 + 0.45 * thr) - T.whAmp) * 0.0008;
+        let ty = (Math.sin(TAU * T.whPh) + 0.15 * Math.sin(TAU * T.whPh2)) * 0.55 * Z.whistle * T.whAmp;
+        ty += this.tWhoosh.run(randn()) * 0.4 * sh * sh * (0.2 + 0.8 * thr);
+        if (T.flut > 0.0005) {
+          T.flutRate *= 1 - 0.45 / fs;                // the chatter slows as the boost dies
+          T.flutPh += T.flutRate / fs;
+          if (T.flutPh >= 1) { T.flutPh -= 1; T.flutA = 0.8 + 0.4 * Math.random(); } // no two pulses alike
+          // smooth swells, not hard gates: it dips about 12 dB between pulses
+          const g = 0.4 + 0.6 * Math.pow(0.5 + 0.5 * Math.cos(TAU * T.flutPh), 2);
+          const n = randn();
+          ty += (this.tFlut.run(n) * 1 + this.tFlutLo.run(n) * 0.6) * g * T.flutA * T.flut * 12;
+          T.flut *= 1 - 1 / (0.55 * fs);
+        }
+        y += ty * T.on;
+      }
+
       // zing (engines that define it): clean tones locked to the firing, rising with rpm
       if (E.zing) {
         const Z = E.zing;
@@ -663,7 +775,7 @@ class M20Dsp {
         if (this.sincePost > fs / 12 && this.cycN > 16) {
           const pts = 360, s = new Float32Array(pts);
           for (let q = 0; q < pts; q++) s[q] = this.cyc[Math.floor(q / pts * this.cycN)];
-          if (this.onCycle) this.onCycle(s);
+          if (this.onCycle) this.onCycle(s, this.T.boost * this.T.on);
           this.sincePost = 0;
         }
         this.cycN = 0;
@@ -683,6 +795,7 @@ class M20Dsp {
 //   // every frame from your car sim:
 //   engine.setRpm(car.rpm);
 //   engine.setThrottle(car.throttle);  // 0..1; 0 above idle = overrun (fuel cut)
+//   engine.setTurbo(true);             // 48 mm turbo: whistle, spool, flutter on lift-off
 //   engine.setExhaust('street');       // 'stock' | 'street' | 'race'
 //   engine.stop();
 //
@@ -703,6 +816,7 @@ function workletSource(dspSource) {
         `const TAU = ${TAU};`,
         `const ENGINES = ${JSON.stringify(ENGINES)};`,
         `const EXHAUSTS = ${JSON.stringify(EXHAUSTS)};`,
+        `const TURBOS = ${JSON.stringify(TURBOS)};`,
         `const IDLE_RPM = ${IDLE_RPM};`,
         `const CRANK_SECONDS = ${CRANK_SECONDS};`,
         randn, crankRpm, exhaustName, Biquad, Delay, M20Dsp,
@@ -713,7 +827,7 @@ function workletSource(dspSource) {
       constructor() {
         super();
         this.d = new M20Dsp(sampleRate);
-        this.d.onCycle = (s) => this.port.postMessage({ cycle: s }, [s.buffer]);
+        this.d.onCycle = (s, boost) => this.port.postMessage({ cycle: s, boost }, [s.buffer]);
         this.port.onmessage = (e) => {
           const m = e.data;
           if (m.set) this.d.set(m.set);
@@ -744,7 +858,7 @@ class M20EngineSound {
         const node = new AudioWorkletNode(ctx, 'm20-engine', {
           numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
         });
-        node.port.onmessage = (m) => { if (m.data.cycle) e.onCycle?.(m.data.cycle); };
+        node.port.onmessage = (m) => { if (m.data.boost !== undefined) e.boost = m.data.boost; if (m.data.cycle) e.onCycle?.(m.data.cycle); };
         e._send = (m) => node.port.postMessage(m);
         e.node = node;
         e.backend = 'worklet';
@@ -754,7 +868,7 @@ class M20EngineSound {
     }
     if (!e.node) {
       const dsp = new M20Dsp(ctx.sampleRate);
-      dsp.onCycle = (s) => e.onCycle?.(s);
+      dsp.onCycle = (s, boost) => { e.boost = boost; e.onCycle?.(s); };
       const node = ctx.createScriptProcessor(1024, 1, 1);
       node.onaudioprocess = (ev) => dsp.process(ev.outputBuffer.getChannelData(0));
       e._send = (m) => { if (m.set) dsp.set(m.set); if (m.cmd) dsp.command(m.cmd); };
@@ -772,7 +886,8 @@ class M20EngineSound {
     this.output.gain.value = 0;
     this.cranking = false;
     this.running = false;
-    this.onCycle = null; // (Float32Array: one engine cycle of output) => void
+    this.onCycle = null;
+    this.boost = 0; // 0..1, turbo boost read back from the synth // (Float32Array: one engine cycle of output) => void
   }
 
   connect(dest) { this.output.connect(dest); return this; }
@@ -782,6 +897,14 @@ class M20EngineSound {
   setThrottle(t) { this._send({ set: { throttle: Math.min(1, Math.max(0, t)) } }); }
   /** 'stock' | 'street' | 'race'. Street and race are rowdier and lope at idle. */
   setExhaust(x) { this._send({ set: { exhaust: exhaustName(x) } }); }
+
+  /**
+   * Turbo: whistle, air rush and compressor flutter on lift-off (no blow-off valve).
+   * size: 'small' (48 mm) or 'big' (T3-size: deeper whistle, slower spool and flutter).
+   * Boost (0..1) is modelled here unless you pass your own each frame with
+   * setState({ boost }). engine.boost reads it back.
+   */
+  setTurbo(on, size = 'small') { this._send({ set: { turbo: on ? 1 : 0, turboSize: size } }); }
 
   /** 'm20' (BMW straight-six) or 'ls3' (GM V8). Switches instantly, even while running. */
   setEngine(name) {
@@ -869,7 +992,7 @@ const $ = (id) => document.getElementById(id);
 
 let ctx, engine, out;
 let state = 'off', mode = 'free', crankT0 = 0, lastCycle = null;
-const sim = { rpm: 0, thr: 0, thrIn: 0, brake: 0, v: 0, gear: 0, cut: 0, shift: 0 };
+const sim = { rpm: 0, thr: 0, thrIn: 0, brake: 0, v: 0, gear: 0, cut: 0, shift: 0, shiftDir: 0, blip: 0 };
 
 // Phones only allow sound if the AudioContext is created and resumed right inside the tap,
 // before anything is awaited. iPhones also mute web audio on the silent switch unless the
@@ -895,6 +1018,7 @@ async function ensureEngine() {
   engine.connect(out);
   engine.onCycle = (c) => { lastCycle = c; };
   engine.setExhaust(exhaust);
+  engine.setTurbo(turbo);
 }
 
 $('btnStart').onclick = async () => {
@@ -935,11 +1059,75 @@ function setMode(m) {
   for (const [id, k] of [['mFree', 'free'], ['mDrive', 'drive'], ['mManual', 'manual']]) $(id).setAttribute('aria-pressed', String(k === m));
   $('pedalBox').hidden = m === 'manual'; $('pedalHint').hidden = m === 'manual'; $('manualBox').hidden = m !== 'manual';
   sim.v = 0; sim.gear = m === 'drive' ? 1 : 0;
+  updateGearUi();
 }
+
+// ---------- gears: auto or manual (drive mode) ----------
+let gearMode = 'auto';
+function updateGearUi() {
+  const drive = mode === 'drive', man = drive && gearMode === 'manual';
+  $('gearRow').hidden = !drive;
+  $('shiftBox').hidden = !man; $('shiftMsg').hidden = !man;
+  $('xAuto').setAttribute('aria-pressed', String(gearMode === 'auto'));
+  $('xManual').setAttribute('aria-pressed', String(gearMode === 'manual'));
+  updateHint();
+}
+function updateHint() {
+  const E = ENGINES[eng];
+  const pedals = 'Hold <kbd>W</kbd> / <kbd>↑</kbd> / <kbd>Space</kbd> for gas, <kbd>S</kbd> / <kbd>↓</kbd> to brake.';
+  const gears = mode === 'drive' && gearMode === 'manual'
+    ? ' Shift up with <kbd>E</kbd> / <kbd>→</kbd>, down with <kbd>Q</kbd> / <kbd>←</kbd>.'
+    : mode === 'drive' ? ` Drive mode shifts up at ${(E.redline - 200).toLocaleString()} rpm.` : '';
+  $('pedalHint').innerHTML = `${pedals}${gears} The limiter cuts fuel at ${E.redline.toLocaleString()}.`;
+}
+$('xAuto').onclick = () => { gearMode = 'auto'; updateGearUi(); };
+$('xManual').onclick = () => { gearMode = 'manual'; updateGearUi(); };
+
+let msgTimer = 0;
+function shiftMsg(text) { $('shiftMsg').textContent = text; clearTimeout(msgTimer); msgTimer = setTimeout(() => { $('shiftMsg').textContent = ''; }, 1600); }
+// A shift: clutch in, revs settle to the new gear. Downshifts get a rev-matching throttle
+// blip (heel-and-toe), which is the "bwap" you hear from a real car.
+function downOrUp(g, dir) {
+  sim.gear = g; sim.shiftDir = dir;
+  sim.shift = dir > 0 ? 0.25 : 0.22;
+  sim.blip = dir < 0 ? 0.18 : 0;
+}
+function shift(dir) {
+  if (mode !== 'drive' || gearMode !== 'manual' || state !== 'running' || sim.shift > 0) return;
+  const g = sim.gear + dir;
+  if (g < 1) { shiftMsg('Already in 1st'); return; }
+  if (g > GEARS.length) { shiftMsg('Already in top gear'); return; }
+  if (dir < 0 && wheelRpm(sim.v, g) > ENGINES[eng].redline + 150) {
+    shiftMsg(`Too fast for ${['1st', '2nd', '3rd', '4th', '5th'][g - 1]}: it would over-rev`);
+    return;
+  }
+  downOrUp(g, dir);
+}
+for (const [id, dir] of [['pUp', 1], ['pDown', -1]]) {
+  const el = $(id);
+  el.addEventListener('pointerdown', (e) => { e.preventDefault(); el.classList.add('down'); shift(dir); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(ev, () => el.classList.remove('down'));
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+addEventListener('keydown', (e) => {
+  if (e.repeat || e.target.tagName === 'INPUT') return;
+  const dir = { KeyE: 1, ArrowRight: 1, KeyQ: -1, ArrowLeft: -1 }[e.code];
+  if (!dir || mode !== 'drive' || gearMode !== 'manual') return;
+  e.preventDefault(); shift(dir);
+});
 $('mFree').onclick = () => setMode('free');
 $('mDrive').onclick = () => setMode('drive');
 $('mManual').onclick = () => setMode('manual');
 let exhaust = 'stock';
+// ---------- turbo ----------
+let turbo = false; // 48 mm: whistle, air rush, flutter on lift-off
+function setTurboUi() {
+  $('tOff').setAttribute('aria-pressed', String(!turbo)); $('tOn').setAttribute('aria-pressed', String(turbo));
+  engine?.setTurbo(turbo);
+}
+$('tOff').onclick = () => { turbo = false; setTurboUi(); };
+$('tOn').onclick = () => { turbo = true; setTurboUi(); };
+const boostNow = () => (turbo && engine ? engine.boost || 0 : 0);
 function setExhaust(name) {
   exhaust = name;
   for (const [id, k] of [['eStock', 'stock'], ['eStreet', 'street'], ['eRace', 'race']]) $(id).setAttribute('aria-pressed', String(k === name));
@@ -963,7 +1151,7 @@ function setEngineChoice(name) {
   for (const k of ['eyebrow', 'title', 'intro', 'bankA', 'bankB', 'noteH', 'noteP']) {
     $({ eyebrow: 'engEyebrow', title: 'engTitle', intro: 'engIntro' }[k] || k).textContent = C[k];
   }
-  $('pedalHint').innerHTML = `Hold <kbd>W</kbd> / <kbd>↑</kbd> / <kbd>Space</kbd> for gas, <kbd>S</kbd> / <kbd>↓</kbd> to brake. Drive mode shifts up at ${(E.redline - 200).toLocaleString()} rpm. The limiter cuts fuel at ${E.redline.toLocaleString()}.`;
+  updateHint();
   engine?.setEngine(name);
   drawTach();
 }
@@ -1002,23 +1190,27 @@ function step(dt) {
   if (sim.rpm >= REDLINE) sim.cut = 0.07;          // rev limiter: fuel cut
   sim.cut = Math.max(0, sim.cut - dt);
   sim.shift = Math.max(0, sim.shift - dt);
-  sim.thr = sim.cut > 0 || sim.shift > 0 ? 0 : sim.thrIn;
+  sim.blip = Math.max(0, sim.blip - dt);
+  sim.thr = sim.cut > 0 ? 0 : sim.blip > 0 ? Math.max(0.75, sim.thrIn) : sim.shift > 0 ? 0 : sim.thrIn;
 
   if (mode === 'free' || sim.gear === 0) {
-    let a = sim.thr * (torque(sim.rpm) / CARS[eng].peakNm) * CARS[eng].freeRev - (250 + (sim.rpm - IDLE) * 0.75);
+    let a = sim.thr * (torque(sim.rpm) * (1 + 0.6 * boostNow()) / CARS[eng].peakNm) * CARS[eng].freeRev - (250 + (sim.rpm - IDLE) * 0.75);
     if (sim.rpm < IDLE) a += (IDLE - sim.rpm) * 6;
     sim.rpm += a * dt;
     return;
   }
   const g = sim.gear, wr = wheelRpm(sim.v, g);
-  if (sim.shift > 0) sim.rpm += (wr - sim.rpm) * Math.min(1, dt * 9);
+  if (sim.shift > 0 && sim.shiftDir < 0) sim.rpm += (Math.min(wr * 1.06, REDLINE) - sim.rpm) * Math.min(1, dt * 14); // blip flares just past the target
+  else if (sim.shift > 0) sim.rpm += (wr - sim.rpm) * Math.min(1, dt * 9);
   else if (g === 1 && wr < 1400) sim.rpm += (Math.max(IDLE + 500 + sim.thr * 2600, wr) - sim.rpm) * Math.min(1, dt * 6);
-  else sim.rpm += (wr - sim.rpm) * Math.min(1, dt * 20);
-  const drive = sim.thr * torque(sim.rpm) * GEARS[g - 1] * FINAL * 0.9 / TYRE_R;
+  else sim.rpm += (Math.max(wr, gearMode === 'manual' ? IDLE * 0.85 : 0) - sim.rpm) * Math.min(1, dt * 20); // too high a gear: it lugs
+  const drive = sim.shift > 0 ? 0 : sim.thr * torque(sim.rpm) * (1 + 0.6 * boostNow()) * GEARS[g - 1] * FINAL * 0.9 / TYRE_R; // clutch in while shifting
   const resist = 0.42 * sim.v * sim.v + (sim.v > 0.1 ? 180 : 0) + sim.brake * 9500 + (sim.thr ? 0 : sim.rpm * 0.12);
   sim.v = Math.max(0, sim.v + (drive - resist) / MASS * dt);
-  if (sim.shift === 0 && sim.rpm > REDLINE - 200 && g < 5) { sim.gear++; sim.shift = 0.28; }
-  if (sim.shift === 0 && sim.rpm < 2100 && g > 1 && !sim.thr) { sim.gear--; sim.shift = 0.2; }
+  if (gearMode === 'auto') {
+    if (sim.shift === 0 && sim.rpm > REDLINE - 200 && g < 5) { downOrUp(g + 1, 1); sim.shift = 0.28; }
+    if (sim.shift === 0 && sim.rpm < 2100 && g > 1 && !sim.thr) downOrUp(g - 1, -1);
+  }
 }
 
 // ---------- tach ----------
@@ -1095,6 +1287,7 @@ function frame(now) {
   $('roRpm').textContent = Math.round(sim.rpm / 10) * 10;
   $('roGear').textContent = mode === 'drive' && state === 'running' ? (sim.shift > 0 ? '–' : sim.gear) : 'N';
   $('roSpeed').textContent = Math.round(sim.v * 3.6);
+  $('roBoost').textContent = turbo ? (boostNow() * 15).toFixed(1) : '–'; // about 15 psi at full boost
   drawScope();
   requestAnimationFrame(frame);
 }

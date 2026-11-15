@@ -669,7 +669,9 @@ export class CarAudio {
     // Turbo spool follows boost; it flutters when you lift with boost up.
     const boost = e.boost || 0;
     const big = this.turbo === 'big';
-    if (this.turbo && this.turbo !== 'none') {
+    // With the engine synth running, the turbo is part of it (see below); these older
+    // whistle, rush, flutter and poof layers are only the fallback.
+    if (this.turbo && this.turbo !== 'none' && !this.m20) {
       // Spool: a lower, softer whine (the big turbo is deeper still) that rises gently with boost.
       const spool = (big ? 260 : 360) + boost * (big ? 620 : 760) + rpm * 0.03;
       this.whistle.frequency.setTargetAtTime(spool, t, 0.08);
@@ -695,14 +697,20 @@ export class CarAudio {
       if (!this.prevRunning && running) this.crankT = 0.45;
       const cranking = this.crankT > 0;
       this.crankT -= dt;
-      this.m20Cabin.frequency.setTargetAtTime(inCar ? 1100 : 20000, t, 0.05);
+      // in-car muffling happens inside the synth, so the turbo stays clear from the seat
+      this.m20Cabin.frequency.setTargetAtTime(20000, t, 0.05);
       this.m20.setState({
         rpm: cranking ? 250 : rpm,
         throttle: cranking ? 0 : load,
         ignition: running && !cranking ? 1 : 0,
         starter: cranking ? 1 : 0,
         exhaust: this.exhaust || 'stock', // street/race: rowdier voice and a lopey idle
+        cabin: inCar,
         idleRpm: e.spec?.idleRpm ?? 760,
+        // turbo: the synth's whistle, air rush and lift-off flutter follow the game's boost
+        turbo: this.turbo && this.turbo !== 'none' ? 1 : 0,
+        turboSize: this.turbo === 'big' ? 'big' : 'small',
+        boost: e.boost || 0,
       });
     } else {
       if (this.prevRunning && !running) this.#sputter();
