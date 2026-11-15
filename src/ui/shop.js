@@ -3,7 +3,7 @@
 // height are all visible), applies to the physics, and is saved on the device.
 import * as THREE from 'three';
 import {
-  CAR, CARS, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup,
+  CAR, BASE_CAR, CARS, ENGINE_SWAPS, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup,
   SEATS, RIM_WIDTH_IN, PLATES, cleanPlate, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, HEADLIGHTS, TAILLIGHTS,
 } from '../config.js';
 import { dynoRun } from '../physics/dyno.js';
@@ -478,7 +478,9 @@ export class Shop {
     if (this.tab === 'builds') return [this.#builds()];
     if (this.tab === 'dyno') return [this.#dyno()];
     if (this.tab === 'engine') {
+      if (this.swapView) return [this.#swapPanel()];
       return [
+        this.#section('Engine swap', this.#engineNow(), this.#swapButton()),
         this.#section('Intake', this.#cards(INTAKES, 'intake')),
         this.#section('Turbo', this.#cards(TURBOS, 'turbo')),
         this.#section('Exhaust', this.#cards(EXHAUSTS, 'exhaust')),
@@ -532,6 +534,120 @@ export class Shop {
         this.#chips('Rear brace', 'strutRear', [[false, 'None'], [true, 'Fitted']]),
       ),
     ];
+  }
+
+  // ---------- Engine swaps ----------
+  // What is under the bonnet now.
+  #engineNow() {
+    const sw = ENGINE_SWAPS[CAR.swap];
+    const box = document.createElement('div');
+    box.className = 'swap-now';
+    box.innerHTML = '<span>Fitted</span><b></b><small></small>';
+    box.querySelector('b').textContent = sw ? sw.name : `${CAR.engineName} (factory)`;
+    box.querySelector('small').textContent = sw ? `from the ${sw.donor}` : `The ${BASE_CAR.name}'s own engine`;
+    return box;
+  }
+
+  #swapButton() {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'big swap-open';
+    b.textContent = 'ENGINE SWAPS';
+    b.addEventListener('click', () => {
+      this.swapView = true;
+      this.render();
+    });
+    return b;
+  }
+
+  // Every engine you can swap in, with its specs and the car it comes from.
+  #swapPanel() {
+    const box = this.#section('Engine swaps');
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'swap-back';
+    back.textContent = '\u2190 Back to engine parts';
+    back.addEventListener('click', () => {
+      this.swapView = false;
+      this.render();
+    });
+    box.append(back);
+    const fitted = CAR.swap || 'stock';
+    const list = document.createElement('div');
+    list.className = 'swap-list';
+    const stockCard = {
+      name: `${BASE_CAR.engineName} (factory)`,
+      donor: BASE_CAR.name,
+      blurb: BASE_CAR.blurb,
+      ready: true,
+      factory: true,
+    };
+    for (const [id, sw] of [['stock', stockCard], ...Object.entries(ENGINE_SWAPS)]) {
+      const card = document.createElement('div');
+      card.className = 'swap-card' + (id === fitted ? ' sel' : '') + (sw.ready ? '' : ' soon');
+      const head = document.createElement('div');
+      head.className = 'swap-head';
+      head.innerHTML = '<strong></strong><em></em>';
+      head.querySelector('strong').textContent = sw.name;
+      const tag = head.querySelector('em');
+      if (id === fitted) {
+        tag.textContent = 'FITTED';
+        tag.className = 'owned';
+      } else if (!sw.ready) {
+        tag.textContent = 'COMING SOON';
+        tag.className = 'soon';
+      } else this.#tag(tag, 'engine', id);
+      const donor = document.createElement('div');
+      donor.className = 'swap-donor';
+      donor.textContent = sw.factory ? `Factory engine of the ${sw.donor}` : `From the ${sw.donor}`;
+      card.append(head, donor);
+      if (!sw.factory) {
+        const specs = document.createElement('dl');
+        specs.className = 'swap-specs';
+        for (const [k, v] of [
+          ['Layout', sw.layout],
+          ['Size', sw.displacement],
+          ['Air', sw.aspiration],
+          ['Power', `${sw.hp} hp @ ${sw.hpRpm.toLocaleString('en-US')}`],
+          ['Torque', `${sw.nm} Nm @ ${sw.nmRpm.toLocaleString('en-US')}`],
+          ['Redline', `${sw.redline.toLocaleString('en-US')} rpm`],
+          ['Weight', `${sw.kg} kg (${sw.kg - BASE_CAR.engineKg >= 0 ? '+' : ''}${sw.kg - BASE_CAR.engineKg} kg vs the ${BASE_CAR.engineName})`],
+        ]) {
+          const dt = document.createElement('dt');
+          dt.textContent = k;
+          const dd = document.createElement('dd');
+          dd.textContent = v;
+          specs.append(dt, dd);
+        }
+        card.append(specs);
+      }
+      const p = document.createElement('p');
+      p.textContent = sw.blurb;
+      card.append(p);
+      if (sw.ready && id !== fitted) {
+        const go = document.createElement('button');
+        go.type = 'button';
+        go.className = 'big';
+        go.textContent = id === 'stock' ? 'PUT THE FACTORY ENGINE BACK' : 'SWAP IT IN';
+        go.addEventListener('click', () => this.#swapTo(id));
+        card.append(go);
+      }
+      list.append(card);
+    }
+    box.append(list, this.#hint('Swapping the engine reloads the game. Your other parts stay fitted; intake and turbo work on any engine.'));
+    return box;
+  }
+
+  #swapTo(id) {
+    const w = this.wallet;
+    if (id !== 'stock' && w && !w.owns('engine', id) && !w.buy('engine', id)) {
+      this.flashMsg = `Not enough money: ${money(w.price('engine', id))} needed`;
+      this.render();
+      return;
+    }
+    this.tune.engine = id;
+    this.onChange();
+    this.onEngine?.();
   }
 
   // Plate text: up to 7 letters and numbers, upper case as you type.
@@ -664,7 +780,7 @@ export class Shop {
   #dyno() {
     const box = this.#section('Dyno');
     const now = dynoRun(this.tune);
-    const stock = dynoRun({ ...TUNABLE_DEFAULTS, torque: this.tune.torque });
+    const stock = dynoRun({ ...TUNABLE_DEFAULTS, torque: this.tune.torque }, BASE_CAR.engine);
     const c = document.createElement('canvas');
     c.className = 'shop-dyno';
     box.append(c);
@@ -701,7 +817,8 @@ export class Shop {
     const pad = { l: 34, r: 34, t: 10, b: 22 };
     const maxNm = Math.max(200, ...now.pts.map((p) => p.nm)) * 1.1;
     const maxHp = Math.max(160, ...now.pts.map((p) => p.hp)) * 1.1;
-    const X = (rpm) => pad.l + ((rpm - 1000) / 6000) * (W - pad.l - pad.r);
+    const maxRpm = Math.ceil(Math.max(now.pts.at(-1).rpm, stock.pts.at(-1).rpm) / 1000) * 1000;
+    const X = (rpm) => pad.l + ((rpm - 1000) / (maxRpm - 1000)) * (W - pad.l - pad.r);
     const Yn = (nm) => H - pad.b - (nm / maxNm) * (H - pad.t - pad.b);
     const Yh = (hp) => H - pad.b - (hp / maxHp) * (H - pad.t - pad.b);
     g.strokeStyle = 'rgba(255,255,255,0.08)';
@@ -709,7 +826,7 @@ export class Shop {
     g.font = "14px 'VT323', monospace";
     g.fillStyle = 'rgba(255,255,255,0.45)';
     g.textAlign = 'center';
-    for (let rpm = 1000; rpm <= 7000; rpm += 1000) {
+    for (let rpm = 1000; rpm <= maxRpm; rpm += 1000) {
       g.beginPath();
       g.moveTo(X(rpm), pad.t);
       g.lineTo(X(rpm), H - pad.b);
@@ -873,6 +990,7 @@ export class Shop {
       if (this.tab === id) b.classList.add('sel');
       b.addEventListener('click', () => {
         this.tab = id;
+        this.swapView = false;
         this.render();
       });
       tabs.append(b);

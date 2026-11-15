@@ -13,14 +13,16 @@ function interpolate(table, x) {
   return table[table.length - 1][1];
 }
 
-// Returns [{ rpm, nm, hp }] from 1,000 to 7,000 rpm, plus the peaks.
-export function dynoRun(tune) {
+// Returns [{ rpm, nm, hp }] from 1,000 rpm to the limiter, plus the peaks. engine: which engine
+// (the one fitted unless given, e.g. the car's own for the stock line).
+export function dynoRun(tune, engine = CAR.engine) {
   const p = partsSetup(tune);
   const pts = [];
   let peakHp = { hp: 0, rpm: 0 };
   let peakNm = { nm: 0, rpm: 0 };
-  for (let rpm = 1000; rpm <= 7000; rpm += 100) {
-    let nm = interpolate(CAR.engine.torqueCurve, rpm) * (tune.torque ?? 1);
+  const top = Math.max(7000, Math.floor((engine.limiterRpm ?? 7000) / 100) * 100);
+  for (let rpm = 1000; rpm <= top; rpm += 100) {
+    let nm = interpolate(engine.torqueCurve, rpm) * (tune.torque ?? 1);
     if (p.intake) nm += p.intake(rpm) * (tune.torque ?? 1);
     if (p.turbo) {
       const k = Math.min(1, Math.max(0, (rpm - p.turbo.spool) / p.turbo.range));

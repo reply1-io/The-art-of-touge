@@ -623,6 +623,17 @@ shop.onCar = (id) => {
   }
   location.reload();
 };
+// An engine swap changes the car's engine for the whole session: reload, straight back into the shop.
+shop.onEngine = () => {
+  saveTuning(tune);
+  try {
+    sessionStorage.setItem('touge.openShop', '1');
+    sessionStorage.setItem('touge.shopTab', 'engine');
+  } catch {
+    // Without storage the shop just doesn't reopen by itself.
+  }
+  location.reload();
+};
 shop.resize(window.innerWidth, window.innerHeight);
 $('btn-shop').addEventListener('click', () => shop.open());
 $('btn-shop2').addEventListener('click', () => shop.open());
@@ -1289,6 +1300,9 @@ async function boot() {
   try {
     if (sessionStorage.getItem('touge.openShop')) {
       sessionStorage.removeItem('touge.openShop');
+      const tab = sessionStorage.getItem('touge.shopTab');
+      sessionStorage.removeItem('touge.shopTab');
+      if (tab) shop.tab = tab;
       shop.open();
     }
   } catch {

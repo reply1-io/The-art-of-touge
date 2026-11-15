@@ -67,6 +67,9 @@ const E30 = {
   handbrakeTorque: 1900, // N m per rear wheel
 
   paint: 0xefeee6, // Alpine White
+  engineName: 'M20B25',
+  engineKg: 175, // the iron-block six, dressed
+  sound: 'm20',
 };
 
 // Mazda RX-7 (FC3S, 1990 non-turbo): 13B two-rotor, about 160 hp at 7,000 rpm and a 7,500 rpm
@@ -133,19 +136,176 @@ const RX7 = {
   handbrakeTorque: 1800,
 
   paint: 0xc8241d,
+  engineName: '13B',
+  engineKg: 125,
+  sound: 'rotary13b',
 };
 
 export const CARS = { e30: E30, rx7: RX7 };
 
-// The car you drive, picked in the tuning shop (changing it reloads the game).
-function chosenCar() {
+// ---------- Engine swaps (tuning shop, Engine tab) ----------
+// Each: what it is, the car it comes from, its specs for the shop card, and (when it can be fitted)
+// the engine model the physics runs. `ready: false` swaps are listed but not fittable yet.
+// kg: the engine's dressed weight, so the car gets lighter or heavier than with its own engine.
+export const ENGINE_SWAPS = {
+  rotary: {
+    ready: true,
+    name: '13B Rotary (bridge-port)',
+    code: '13B',
+    donor: 'Mazda RX-7 FC3S / FD3S',
+    layout: 'Two-rotor Wankel',
+    displacement: '1.3 L',
+    aspiration: 'Naturally aspirated, bridge-ported',
+    hp: 230,
+    hpRpm: 8500,
+    nm: 196,
+    nmRpm: 7000,
+    redline: 9000,
+    kg: 125,
+    blurb: 'A ported 13B: soft down low, then screams to 9,000 rpm with that unmistakable brap. Light, so the nose turns in sharper.',
+    sound: 'rotary13b',
+    engine: {
+      idleRpm: 1150, // a bridge-port idles lumpy and high
+      idleMaxThrottle: 0.32,
+      redline: 9000,
+      limiterRpm: 9100,
+      limiterResumeRpm: 8800,
+      stallRpm: 520,
+      inertia: 0.11,
+      torqueCurve: [
+        [0, 70],
+        [1000, 92],
+        [2000, 112],
+        [3000, 132],
+        [4000, 152],
+        [5000, 172],
+        [6000, 188],
+        [7000, 196],
+        [8000, 193],
+        [8500, 190],
+        [9000, 176],
+        [9600, 150],
+      ],
+      frictionTorque: 14,
+      frictionPerRpm: 0.005,
+    },
+  },
+  '1jz': {
+    ready: false,
+    name: '1JZ-GTE VVT-i',
+    code: '1JZ',
+    donor: 'Toyota Chaser / Mark II (JZX100)',
+    layout: 'Inline-6, DOHC 24v',
+    displacement: '2.5 L',
+    aspiration: 'Single turbo',
+    hp: 276,
+    hpRpm: 6200,
+    nm: 378,
+    nmRpm: 2400,
+    redline: 7000,
+    kg: 200,
+    blurb: 'The bulletproof Toyota six. Huge mid-range torque and loves more boost.',
+  },
+  ls3: {
+    ready: false,
+    name: 'LS3',
+    code: 'LS3',
+    donor: 'Chevrolet Corvette C6',
+    layout: 'V8, pushrod 16v',
+    displacement: '6.2 L',
+    aspiration: 'Naturally aspirated',
+    hp: 430,
+    hpRpm: 5900,
+    nm: 575,
+    nmRpm: 4600,
+    redline: 6600,
+    kg: 185,
+    blurb: 'All-aluminium American V8. Torque everywhere and a lazy, thunderous rumble.',
+  },
+  k24: {
+    ready: false,
+    name: 'K24A2',
+    code: 'K24',
+    donor: 'Acura TSX / Honda Accord',
+    layout: 'Inline-4, DOHC i-VTEC',
+    displacement: '2.4 L',
+    aspiration: 'Naturally aspirated',
+    hp: 205,
+    hpRpm: 7000,
+    nm: 224,
+    nmRpm: 4500,
+    redline: 7100,
+    kg: 150,
+    blurb: 'Light, rev-happy Honda four with a hard VTEC crossover.',
+  },
+  rb25: {
+    ready: false,
+    name: 'RB25DET',
+    code: 'RB25',
+    donor: 'Nissan Skyline R33 GTS25-t',
+    layout: 'Inline-6, DOHC 24v',
+    displacement: '2.5 L',
+    aspiration: 'Single turbo',
+    hp: 247,
+    hpRpm: 6400,
+    nm: 319,
+    nmRpm: 3200,
+    redline: 7000,
+    kg: 230,
+    blurb: 'The Skyline six: a smooth, howling top end and a big turbo whoosh.',
+  },
+  m50: {
+    ready: false,
+    name: 'M50B25',
+    code: 'M50',
+    donor: 'BMW E36 325i',
+    layout: 'Inline-6, DOHC 24v',
+    displacement: '2.5 L',
+    aspiration: 'Naturally aspirated',
+    hp: 189,
+    hpRpm: 5900,
+    nm: 245,
+    nmRpm: 4700,
+    redline: 6500,
+    kg: 180,
+    blurb: 'The classic E30 swap: a twin-cam BMW six that bolts in where the M20 sat.',
+  },
+  sr20: {
+    ready: false,
+    name: 'SR20DET',
+    code: 'SR20',
+    donor: 'Nissan Silvia S13 / 180SX',
+    layout: 'Inline-4, DOHC 16v',
+    displacement: '2.0 L',
+    aspiration: 'Single turbo',
+    hp: 202,
+    hpRpm: 6000,
+    nm: 274,
+    nmRpm: 4000,
+    redline: 7500,
+    kg: 155,
+    blurb: 'The drift-scene staple. Light, punchy and endlessly tunable.',
+  },
+};
+
+// Read straight from storage: the car and engine are fixed for the session (changing either
+// reloads the game).
+function stored(key) {
   try {
-    return typeof localStorage === 'undefined' ? 'e30' : JSON.parse(localStorage.getItem('touge.settings.v4'))?.car;
+    return typeof localStorage === 'undefined' ? null : JSON.parse(localStorage.getItem(key));
   } catch {
-    return 'e30';
+    return null;
   }
 }
-export const CAR = CARS[chosenCar()] || E30;
+// The car you drive, picked in the tuning shop, as it left the factory.
+export const BASE_CAR = CARS[stored('touge.settings.v4')?.car] || E30;
+// ...and with any engine swap fitted.
+function withSwap(car, id) {
+  const sw = ENGINE_SWAPS[id];
+  if (!sw?.ready || !sw.engine) return car;
+  return { ...car, engine: { ...sw.engine }, mass: car.mass + sw.kg - car.engineKg, engineName: sw.code, sound: sw.sound, swap: id };
+}
+export const CAR = withSwap(BASE_CAR, stored('touge.tuning.v3')?.engine);
 
 // Tyre compounds (tuning shop).
 //   mu         peak friction on dry asphalt
@@ -216,6 +376,7 @@ export const TUNABLE_DEFAULTS = {
   plateText: 'AE 318',
   intake: 'stock',
   turbo: 'none',
+  engine: 'stock', // engine swap (ENGINE_SWAPS), or the car's own engine
   clutch: 'stock',
   gearbox: 'stock',
   finalDrive: CAR.finalDrive,
@@ -242,7 +403,7 @@ export const INTAKES = {
   itb: { name: 'ITBs', blurb: 'Individual throttle bodies: +20 Nm and +15 hp, razor response, and a deep, soft intake grumble.' },
 };
 export const TURBOS = {
-  none: { name: 'None', blurb: 'Naturally aspirated M20 six. Smooth, linear and predictable.' },
+  none: { name: 'None', blurb: 'Naturally aspirated. Smooth, linear and predictable.' },
   small: { name: 'Small turbo', blurb: 'T25-size. Spools early, about +45% torque, gentle lag. A high whistle on boost and flutter when you lift.' },
   big: { name: 'Big turbo', blurb: 'T3-size. Nothing below 4,000 rpm, then it doubles the torque. Laggy, savage, loud: a deep whistle and slow flutter on lift-off.' },
 };
