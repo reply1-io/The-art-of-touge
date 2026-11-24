@@ -247,21 +247,23 @@ export function randn() { // cheap gaussian-ish
 // stack resonance, and a rush of air that rides on each intake stroke. An engine can override
 // any of these with its own `itb: {...}`.
 export const ITB = {
-  w: 0.07,        // pulse width, as a share of the firing interval (narrower = brighter)
+  w: 0.1,        // pulse width, as a share of the firing interval (narrower = brighter)
   r: 0.45,        // the reflected pulse half a firing later; near 1 the firing note itself
                   // cancels and the stacks sing on twice (and three times) the firing note
-  stack: [220, 1.5, 6],    // trumpet + runner resonance: Hz, Q, dB (picks out whichever
+  stack: [170, 1.2, 6],    // trumpet + runner resonance: Hz, Q, dB (picks out whichever
                           // firing harmonic is near it: 2x and 3x at idle, 2x up the revs)
-  toneLp: 2500,    // upper limit of the honk: on the throttle it is round, not airy
-  tone: 2.0,      // honk level
-  air: 1.8,       // induction air under load
+  toneLp: 1200,    // upper limit of the honk: on the throttle it is round, not airy
+  tone: 1.2,      // honk level
+  air: 1.1,       // induction air under load
   airBand: [500, 3500],
-  hiss: 0.42,      // suction hiss past the nearly shut butterflies (idle, blips, overrun)
-  hissBand: [700, 7000],
-  idle: 0.6,      // how much honk is left with the throttles shut
-  duck: 1.2,      // how much of the exhaust the stacks cover up under load
-  uneven: 0.7,      // cylinder-to-cylinder differences in the stacks: a lumpy, grumpy beat
-  jitter: 0.22,   // stroke-to-stroke variation
+  hiss: 0.18,      // suction hiss past the nearly shut butterflies (idle, blips, overrun)
+  hissBand: [600, 4000],
+  idle: 0.35,      // how much honk is left with the throttles shut
+  duck: 0.8,      // how much of the exhaust the stacks cover up under load
+  uneven: 1.8,   // cylinder-to-cylinder differences in the stacks: a lumpy, grumpy beat
+  jitter: 0.26,   // stroke-to-stroke variation
+  growl: [120, 0.8, 6],  // low growl under the honk: Hz, Q, dB
+  tick: 0.3,      // valve-train tick left with ITBs (the stacks cover it)
 };
 
 export class M20Dsp {
@@ -284,7 +286,7 @@ export class M20Dsp {
     this.intakeRoar = new Biquad(); this.zj = 0;
     this.itbOn = 0; this.itbHp = new Biquad(); this.itbLp = new Biquad(); this.itbStack = new Biquad();
     this.itbAirHp = new Biquad(); this.itbAirLp = new Biquad(); this.itbSet = '';
-    this.itbHissHp = new Biquad(); this.itbHissLp = new Biquad();
+    this.itbHissHp = new Biquad(); this.itbHissLp = new Biquad(); this.itbGrowl = new Biquad();
     // turbo state: boost and shaft speed 0..1, lift-off envelopes and oscillator phases
     this.T = { on: 0, boost: 0, shaft: 0, armed: false, flut: 0, flutRate: 0, flutPh: 0,
                flutA: 1, whPh: 0, whPh2: 0, whAmp: 0, poof: 0, poofAtk: 1 };
@@ -483,6 +485,7 @@ export class M20Dsp {
         this.itbSet = this.engine; this.I = I;
         this.itbHp.set('hp', 90, 0.7, 0, fs); this.itbLp.set('lp', I.toneLp, 0.7, 0, fs);
         this.itbStack.set('pk', I.stack[0], I.stack[1], I.stack[2], fs);
+        this.itbGrowl.set('pk', I.growl[0], I.growl[1], I.growl[2], fs);
         this.itbAirHp.set('hp', I.airBand[0], 0.6, 0, fs); this.itbAirLp.set('lp', I.airBand[1], 0.6, 0, fs);
         this.itbHissHp.set('hp', I.hissBand[0], 0.6, 0, fs); this.itbHissLp.set('lp', I.hissBand[1], 0.6, 0, fs);
       }
@@ -648,7 +651,7 @@ export class M20Dsp {
       if (X.sizzle > 0.01) y += this.sizzleBp.run(randn() * hit * hit * hit) * 0.035 * X.sizzle * E.sizzle * (1 + 2 * thr);
 
       this.tickEnv *= 0.9;
-      y += this.tickHp.run(randn() * this.tickEnv) * 0.012 * tickAmt * Math.min(1, rpm / 3000); // none on a rotary
+      y += this.tickHp.run(randn() * this.tickEnv) * 0.012 * tickAmt * Math.min(1, rpm / 3000) * (1 - this.itbOn * (1 - (this.I?.tick ?? 1))); // none on a rotary
 
 
       // starter motor whine (pinion ~ 11x crank speed) with gear grind
@@ -663,7 +666,7 @@ export class M20Dsp {
       if (itbAct) {
         const shutHonk = I.idle * Math.max(0, 1 - Math.max(0, rpm - idle) / 3000); // fades off idle
         const lvl = this.itbOn * ign * (shutHonk + (1 - shutHonk) * thr) * (0.25 + 0.75 * Math.min(1.3, rpm / 6000));
-        let it = this.itbStack.run(this.itbLp.run(this.itbHp.run(itbP))) * I.tone;
+        let it = this.itbGrowl.run(this.itbStack.run(this.itbLp.run(this.itbHp.run(itbP)))) * I.tone;
         it += this.itbAirLp.run(this.itbAirHp.run(randn() * itbF)) * I.air * thr * Math.min(1.4, rpm / 5000);
         it *= lvl;
         // the suck through nearly shut butterflies: at idle, around each blip and on overrun
