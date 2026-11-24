@@ -1,11 +1,11 @@
 // The roads you can drive.
-import { Road } from './road.js';
+import { Road, VERGE } from './road.js';
 import { dragonPoints } from './dragonMap.js';
 import { worldRoute, STAGES, heightAt, CELL, planLinks } from './worldMap.js';
 import { stopsFor } from './stops.js';
 
 const WORLD = worldRoute(15319);
-export const LINK_SEED = 137; // picked for the most links that pass linkOk
+export const LINK_SEED = 61; // picked for the most links that pass linkOk
 // The stage a distance along the world route belongs to.
 export function stageAt(s) {
   let k = 0;
@@ -46,7 +46,8 @@ export const TRACKS = {
     rockCuts: true,
     world: true,
     // The summit car meet at the start, looking out from the mountain; the gas station by the lake.
-    stopsOpts: { meetAtStart: true, meetSide: -1, stationAt: WORLD.starts[2] + 60 },
+    // Your cabin and workshop are in the cedar forest along the Cedar Esses.
+    stopsOpts: { meetAtStart: true, meetSide: -1, stationAt: WORLD.starts[2] + 60, homeAt: WORLD.starts[1] + 350 },
     // The peak in the middle of the map, rising above the highest road.
     peak: (road) => ({ x: 0, z: 0, r: 120, top: road.top + 4, rise: 95 }),
     // Lakes in the cells the route misses, ponds in the gaps between roads, and ponds beside the
@@ -98,6 +99,18 @@ function meetLoop(road, r, end, i) {
     const f = k / 8;
     const w = f * f * (3 - 2 * f);
     r.y[j] = q.height * (1 - w) + r.y[j] * w;
+  }
+  // Coming in at an angle, one corner of the link can pass over the loop's sloping verge before
+  // the rest of it arrives: lift the link wherever any part of its width would sit below the loop.
+  for (let k = 1; k <= 10; k++) {
+    const j = end + dir * k;
+    let lift = 0;
+    for (let lat = -r.w.PAVED; lat <= r.w.PAVED + 0.01; lat += 0.7) {
+      const p = r.pointAt(j, lat);
+      road.query(p[0], p[2], i, q);
+      if (Math.abs(q.lateral) < VERGE + 0.5) lift = Math.max(lift, q.height + 0.03 - p[1]);
+    }
+    if (lift > 0) r.y[j] += lift;
   }
   for (let j = 1; j < r.count; j++) r.grade[j] = (r.y[j - 1] - r.y[j]) / 2;
 }

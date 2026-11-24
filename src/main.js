@@ -591,6 +591,7 @@ function showResults(r) {
   $('res-money').textContent = `+${money(r.earned)}`;
   setTimeout(() => $('results').classList.remove('hidden'), 1200);
 }
+$('btn-home').addEventListener('click', goHome);
 $('btn-recover').addEventListener('click', () => {
   recoverCar();
   setPaused(false);
@@ -624,6 +625,33 @@ shop.onCar = (id) => {
   }
   location.reload();
 };
+// ---------- Your place: drive into the workshop ----------
+// Drive through the open workshop door at your cabin and you are in the workshop (the tuning shop);
+// tap Done and you are back on the drive, facing the road.
+let enteredHome = false;
+let homeArmed = true;
+function checkHome() {
+  const h = mountain.home;
+  if (!h || race?.active) return;
+  const p = vehicle.body.translation();
+  const d = Math.hypot(p.x - h.door.x, p.z - h.door.z);
+  if (d > 8) homeArmed = true;
+  if (homeArmed && d < 3.6) {
+    homeArmed = false;
+    enteredHome = true;
+    setPaused(true);
+    shop.open();
+  }
+}
+function goHome() {
+  if (!mountain.home) return;
+  race?.abort();
+  placeCar(mountain.home.exit);
+  homeArmed = false;
+  setPaused(false);
+  toast('HOME', 1.6);
+}
+
 // ---------- Revving the car in the workshop ----------
 // The car's engine on its own (out of gear), driven by the rev button and heard through the same
 // engine sound as on the road, with whatever intake, turbo and exhaust are fitted.
@@ -667,6 +695,12 @@ shop.onClose = () => {
   // Leaving the workshop: the engine you were revving falls quiet.
   revCar = null;
   shop.revHeld = false;
+  // Came in by driving through the door: back out onto the drive, facing the road.
+  if (enteredHome) {
+    enteredHome = false;
+    placeCar(mountain.home.exit);
+    setPaused(false);
+  }
   if (!running || paused) audio.suspend();
 };
 
@@ -1157,6 +1191,7 @@ function frame(now) {
       miniMap?.update(p.x, p.z, Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.x * q.x)));
     }
     updateWeather(dt);
+    checkHome();
     throwSparks();
     passBy();
     deer.update(dt, run.hint, Math.max(0, vehicle.forwardSpeed));

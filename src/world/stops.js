@@ -19,7 +19,7 @@ export class Zone {
   constructor(kind, i0, i1, side, width, taper, road) {
     this.inner = road ? road.w.GUTTER_OUT : ZONE_INNER; // where the zone starts, from the centreline
     this.shoulder = road ? road.w.SHOULDER : 5.4;
-    this.kind = kind; // 'pulloff' | 'station' | 'show'
+    this.kind = kind; // 'pulloff' | 'station' | 'show' | 'home'
     this.i0 = i0;
     this.i1 = i1;
     this.side = side;
@@ -95,6 +95,18 @@ export function stopsFor(road, opts = {}) {
     if (show) zones.push(new Zone('show', show.i, show.i + 40, show.side, 22, 5, road));
   }
 
+  // Your place: a cabin and a workshop on a gravel lot in the forest, near opts.homeAt metres.
+  if (opts.homeAt != null) {
+    const at = Math.round(opts.homeAt / 2);
+    for (const need of [36, 32]) {
+      const h = quietStretch(road, at - 80, at + 260, 32, need);
+      if (h && free(h.i, h.i + 32, h.side)) {
+        zones.push(new Zone('home', h.i, h.i + 32, h.side, 25, 4, road));
+        break;
+      }
+    }
+  }
+
   // Small pull-offs on the outside of medium corners, about every 600 m.
   let last = -1e9;
   for (let i = 40; i < road.count - 40; i++) {
@@ -146,6 +158,22 @@ export function stationLayout(road, zone) {
     truck: zonePoint(road, zone, 0.86, L0 + 18.5), // box truck parked out of the way
     pylon: zonePoint(road, zone, 0.16, L0 + 2.2), // tall price sign by the road
     air: zonePoint(road, zone, 0.3, L0 + 19.5), // air and water stand
+  };
+}
+
+// Your place: the cabin (6.4 m deep, 5.2 m along the road) toward the near end, the workshop
+// (8 m deep, 7 m along) toward the far end with its door facing the road. door: just outside the
+// open door, where driving in takes you inside; exit: where the car waits after you come out.
+export function homeLayout(road, zone) {
+  const L0 = zone.inner;
+  return {
+    cabin: zonePoint(road, zone, 0.25, L0 + 17),
+    shop: zonePoint(road, zone, 0.7, L0 + 17),
+    door: zonePoint(road, zone, 0.7, L0 + 12.4),
+    exit: zonePoint(road, zone, 0.7, L0 + 6),
+    mailbox: zonePoint(road, zone, 0.06, L0 + 1.6),
+    woodpile: zonePoint(road, zone, 0.42, L0 + 19),
+    lamp: zonePoint(road, zone, 0.5, L0 + 10),
   };
 }
 

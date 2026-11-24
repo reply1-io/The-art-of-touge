@@ -2,7 +2,7 @@
 // the invisible walls. Rapier only, so it can be tested in Node.
 import RAPIER from '@dimforge/rapier3d-compat';
 import { crossSection, barrierLayout, RAIL, GUTTER_OUT, SHOULDER, JUNCTION } from './road.js';
-import { ZONE_INNER, stationLayout, showLayout } from './stops.js';
+import { ZONE_INNER, stationLayout, showLayout, homeLayout } from './stops.js';
 
 function yawQuat(yaw) {
   return { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) };
@@ -130,6 +130,11 @@ export function buildMountainPhysics(world, road, terrain, links = []) {
       solid(st.air, 0.3, 0.7, 0.3);
     } else if (z.kind === 'show') {
       solid(showLayout(road, z).cabin, 3.2, 1.8, 2.6);
+    } else if (z.kind === 'home') {
+      const h = homeLayout(road, z);
+      solid(h.cabin, 3.2, 1.8, 2.6);
+      // The workshop: solid, but you are taken inside before you reach the door.
+      solid(h.shop, 4, 2, 3.5);
     }
   }
   layout.zones = zones;

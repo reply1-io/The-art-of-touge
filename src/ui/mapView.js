@@ -270,6 +270,8 @@ export class MapView {
     };
     mark(0, '▲ CAR MEET');
     mark(t.town?.i ?? r.count - 1, 'VILLAGE', true);
+    const home = (t.zones || []).find((z) => z.kind === 'home');
+    if (home) mark(Math.round((home.i0 + home.i1) / 2), '\u2302 HOME', true);
     this.baseImage = c;
     this.base = true;
     this.#placeLabels();

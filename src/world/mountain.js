@@ -6,7 +6,7 @@ import { TRACKS } from './tracks.js';
 import { Terrain, noise2 } from './terrain.js';
 import { buildMountainPhysics } from './mountainPhysics.js';
 import { Ranges, CloudSea, buildWaterfalls, sunAzimuth } from './wilds.js';
-import { ZONE_INNER, zoneAt, zonePoint, stationLayout, showLayout } from './stops.js';
+import { ZONE_INNER, zoneAt, zonePoint, stationLayout, showLayout, homeLayout } from './stops.js';
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const DEFAULT_SCENE = { trees: 1, maple: 0, rock: 0.5, ponds: 0 };
@@ -392,7 +392,7 @@ export class Mountain {
       const pos = [];
       const col = [];
       const idx = [];
-      const base = z.kind === 'station' ? [0.42, 0.41, 0.39] : [0.2, 0.2, 0.22];
+      const base = z.kind === 'station' ? [0.42, 0.41, 0.39] : z.kind === 'home' ? [0.36, 0.33, 0.28] : [0.2, 0.2, 0.22];
       for (let j = z.i0; j <= z.i1; j++) {
         const outer = Math.max(z.outerAt(j), z.inner + 0.3);
         for (let c = 0; c < cols; c++) {
@@ -436,7 +436,7 @@ export class Mountain {
       const bg = new THREE.BufferGeometry();
       bg.setAttribute('position', new THREE.Float32BufferAttribute(beam, 3));
       bg.computeVertexNormals();
-      group.add(new THREE.Mesh(bg, beamMat));
+      group.add(new THREE.Mesh(bg, z.kind === 'home' ? lambert(0x7a5a38, { side: THREE.DoubleSide }) : beamMat));
 
       const at = (pt, obj, dy = 0) => {
         obj.position.set(pt.x, pt.y + dy, pt.z);
@@ -455,6 +455,7 @@ export class Mountain {
         }
         this.#cabin(lay.cabin, at, lambert, z.side);
       }
+      if (z.kind === 'home') this.#home(z, at, lambert);
       group.traverse((o) => {
         if (o.isMesh) o.receiveShadow = o.castShadow = true;
       });
@@ -617,6 +618,191 @@ export class Mountain {
   }
 
   // Parts cabin on the car-show lot: log walls, a pitched roof, a porch and a sign.
+  // Your place in the forest: a log cabin and the workshop beside it, its roller door open with the
+  // light on inside. Driving in through the door takes you into the workshop (see main.js).
+  #home(z, at, lambert) {
+    const road = this.road;
+    const side = z.side;
+    const h = homeLayout(road, z);
+    // Where the game watches for you driving in, and where you come back out.
+    const out = Math.atan2(-side * Math.cos(h.exit.yaw), side * Math.sin(h.exit.yaw)); // facing the road
+    this.home = { door: h.door, exit: { pos: [h.exit.x, h.exit.y + 0.8, h.exit.z], yaw: out, index: h.exit.j }, i: z.i0 };
+    const front = -side; // local x toward the road
+
+    // ---- The cabin ----
+    const cabin = new THREE.Group();
+    const logs = new THREE.Mesh(new THREE.BoxGeometry(6.4, 3.0, 5.2), lambert(0x7a5434, { flatShading: true }));
+    logs.position.y = 1.5;
+    cabin.add(logs);
+    for (let y = 0.3; y < 3.0; y += 0.4) {
+      const seam = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.06, 5.3), lambert(0x4a321e));
+      seam.position.y = y;
+      cabin.add(seam);
+    }
+    const roofGeo = new THREE.CylinderGeometry(0.01, 4.7, 2.2, 4, 1);
+    roofGeo.rotateY(Math.PI / 4);
+    roofGeo.scale(1.05, 1, 0.85);
+    const roof = new THREE.Mesh(roofGeo, lambert(0x2f3a2c, { flatShading: true }));
+    roof.position.y = 4.1;
+    const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.7, 2.2, 0.7), lambert(0x6d6a63, { flatShading: true }));
+    chimney.position.set(-front * 1.6, 4.1, 1.4);
+    const porch = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.2, 5.2), lambert(0x6a4a2e));
+    porch.position.set(front * 3.9, 0.1, 0);
+    const door = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 2.0), lambert(0x3a2616));
+    door.position.set(front * 3.21, 1.0, -0.6);
+    door.rotation.y = front * (Math.PI / 2);
+    const warm = new THREE.MeshBasicMaterial({ color: 0xffcf7a });
+    for (const zz of [1.3, -2.0]) {
+      const win = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.8), warm);
+      win.position.set(front * 3.21, 1.7, zz);
+      win.rotation.y = front * (Math.PI / 2);
+      cabin.add(win);
+    }
+    for (const zz of [-2.4, 2.4]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.4, 0.14), lambert(0x5a3c22));
+      post.position.set(front * 4.55, 1.2, zz);
+      cabin.add(post);
+    }
+    const awning = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.1, 5.4), lambert(0x2f3a2c));
+    awning.position.set(front * 3.95, 2.45, 0);
+    awning.rotation.z = front * 0.18;
+    cabin.add(roof, chimney, porch, door, awning);
+    at(h.cabin, cabin);
+
+    // ---- The workshop ----
+    const tex = (w, hgt, draw) => {
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = hgt;
+      draw(c.getContext('2d'));
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      return t;
+    };
+    const ribs = tex(64, 64, (g) => {
+      g.fillStyle = '#8e969c';
+      g.fillRect(0, 0, 64, 64);
+      for (let x = 0; x < 64; x += 8) {
+        g.fillStyle = '#6f777d';
+        g.fillRect(x, 0, 3, 64);
+        g.fillStyle = '#aab1b6';
+        g.fillRect(x + 3, 0, 1, 64);
+      }
+    });
+    ribs.repeat.set(4, 1);
+    const metal = lambert(0xffffff, { map: ribs });
+    const shop = new THREE.Group();
+    const D = 8; // deep (x)
+    const Wd = 7; // wide (z)
+    const H = 3.6;
+    const doorW = 3.8;
+    const doorH = 2.9;
+    const wall = (w, hh, x, y, zz, ry) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, hh), metal);
+      m.material.side = THREE.DoubleSide;
+      m.position.set(x, y, zz);
+      m.rotation.y = ry;
+      shop.add(m);
+    };
+    // Back and sides solid; the front has the big door opening.
+    wall(Wd, H, -front * (D / 2), H / 2, 0, front * (Math.PI / 2));
+    wall(D, H, 0, H / 2, Wd / 2, 0);
+    wall(D, H, 0, H / 2, -Wd / 2, Math.PI);
+    const sideW = (Wd - doorW) / 2;
+    wall(sideW, H, front * (D / 2), H / 2, Wd / 2 - sideW / 2, front * (Math.PI / 2));
+    wall(sideW, H, front * (D / 2), H / 2, -Wd / 2 + sideW / 2, front * (Math.PI / 2));
+    wall(doorW, H - doorH, front * (D / 2), doorH + (H - doorH) / 2, 0, front * (Math.PI / 2));
+    // The lit workshop inside: a warm back wall, floor and a strip light, glimpsed through the door.
+    const inside = tex(256, 192, (g) => {
+      const grd = g.createLinearGradient(0, 0, 0, 192);
+      grd.addColorStop(0, '#5a4026');
+      grd.addColorStop(1, '#2a2016');
+      g.fillStyle = grd;
+      g.fillRect(0, 0, 256, 192);
+      g.fillStyle = '#2f5fa8'; // the lift posts
+      g.fillRect(40, 40, 16, 152);
+      g.fillRect(200, 40, 16, 152);
+      g.fillRect(40, 40, 176, 10);
+      g.fillStyle = '#b3241c'; // the tool chest
+      g.fillRect(110, 110, 40, 60);
+      g.fillStyle = '#fff3d0';
+      g.fillRect(90, 12, 76, 6);
+    });
+    inside.wrapS = inside.wrapT = THREE.ClampToEdgeWrapping;
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(Wd - 0.2, H - 0.1), new THREE.MeshBasicMaterial({ map: inside }));
+    back.position.set(-front * (D / 2 - 0.1), H / 2, 0);
+    back.rotation.y = front * (Math.PI / 2);
+    shop.add(back);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(D - 0.2, Wd - 0.2), new THREE.MeshBasicMaterial({ color: 0x4a3a28 }));
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = 0.03;
+    shop.add(floor);
+    const glow = new THREE.PointLight(0xffc77a, 6, 12, 1.6);
+    glow.position.set(0, 2.8, 0);
+    shop.add(glow);
+    // Roof, and the rolled-up door drum over the opening.
+    const roofG = new THREE.CylinderGeometry(0.01, Math.hypot(D, Wd) * 0.56, 1.5, 4, 1);
+    roofG.rotateY(Math.PI / 4);
+    roofG.scale(D / Math.hypot(D, Wd) * 1.45, 1, Wd / Math.hypot(D, Wd) * 1.45);
+    const sroof = new THREE.Mesh(roofG, lambert(0x3e4246, { flatShading: true }));
+    sroof.position.y = H + 0.75;
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, doorW + 0.2, 10), lambert(0x9da3a8));
+    drum.rotation.x = Math.PI / 2;
+    drum.position.set(front * (D / 2 + 0.25), doorH + 0.15, 0);
+    shop.add(sroof, drum);
+    // TOUGE GARAGE over the door, and a lamp.
+    const signTex = tex(512, 128, (g) => {
+      g.fillStyle = '#16120e';
+      g.fillRect(0, 0, 512, 128);
+      g.font = '84px VT323, monospace';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.shadowColor = '#ff7a1a';
+      g.shadowBlur = 16;
+      g.fillStyle = '#ffd38a';
+      g.fillText('TOUGE GARAGE', 256, 66);
+    });
+    signTex.wrapS = signTex.wrapT = THREE.ClampToEdgeWrapping;
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 0.6), new THREE.MeshBasicMaterial({ map: signTex }));
+    sign.position.set(front * (D / 2 + 0.05), doorH + 0.5, 0);
+    sign.rotation.y = front * (Math.PI / 2);
+    shop.add(sign);
+    at(h.shop, shop);
+
+    // ---- Around the yard ----
+    const mailbox = new THREE.Group();
+    const mpost = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.1, 0.1), lambert(0x5a3c22));
+    mpost.position.y = 0.55;
+    const mbox = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.25, 0.5), lambert(0xb3241c));
+    mbox.position.y = 1.2;
+    mailbox.add(mpost, mbox);
+    at(h.mailbox, mailbox);
+    const wood = new THREE.Group();
+    const logMat = lambert(0x8a6338);
+    for (let r = 0; r < 3; r++) {
+      for (let k = 0; k < 5 - r; k++) {
+        const l = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 1.1, 7), logMat);
+        l.rotation.x = Math.PI / 2;
+        l.position.set((k - (4 - r) / 2) * 0.27, 0.13 + r * 0.23, 0);
+        wood.add(l);
+      }
+    }
+    at(h.woodpile, wood);
+    const lamp = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 4.2, 6), lambert(0x3b3b3b));
+    pole.position.y = 2.1;
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe2a6 }));
+    bulb.position.y = 4.1;
+    lamp.add(pole, bulb);
+    const lampGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture('rgba(255,214,140,0.9)', 'rgba(255,170,60,0)'), blending: THREE.AdditiveBlending, depthWrite: false, fog: true }));
+    lampGlow.scale.set(4, 4, 1);
+    lampGlow.position.y = 4.1;
+    lamp.add(lampGlow);
+    this.lampGlows?.push(lampGlow);
+    at(h.lamp, lamp);
+  }
+
   #cabin(pt, at, lambert, side) {
     const g = new THREE.Group();
     const logs = new THREE.Mesh(new THREE.BoxGeometry(6.4, 3.4, 5.2), lambert(0x7a5434, { flatShading: true }));
