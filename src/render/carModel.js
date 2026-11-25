@@ -19,30 +19,30 @@ const FRONT_AXLE = 1.28;
 const REAR_AXLE = -1.29;
 const WHEEL_R = 0.305;
 const ARCH_R = 0.37;
-const NOSE = 2.13;
+const NOSE = 1.99; // front overhang about 0.71 m to the axle (the real car's is close to that)
 const TAIL = -2.17;
 
 const HALF_WIDTH = [
-  [2.13, 0.79],
-  [2.1, 0.81],
-  [1.95, 0.82],
+  [1.99, 0.79],
+  [1.97, 0.81],
+  [1.87, 0.82],
   [-1.95, 0.82],
   [-2.12, 0.81],
   [-2.17, 0.79],
 ];
 const BOTTOM = [
-  [2.13, 0.5],
-  [2.11, 0.3],
-  [1.95, 0.22],
+  [1.99, 0.5],
+  [1.978, 0.3],
+  [1.87, 0.22],
   [-1.9, 0.21],
   [-2.1, 0.3],
   [-2.17, 0.5],
 ];
 // Top of the sides / shoulder line: wings along the bonnet, window line, boot.
 const BELT = [
-  [2.13, 0.79],
-  [2.1, 0.82],
-  [1.9, 0.84],
+  [1.99, 0.79],
+  [1.97, 0.82],
+  [1.835, 0.84],
   [0.78, 0.85],
   [0.0, 0.855],
   [-1.5, 0.86],
@@ -52,9 +52,9 @@ const BELT = [
 // Centreline: bonnet, (cabin floor under the glass), boot lid. A level, straight line from the
 // nose to the tail, so the body stands the same height over the front and rear wheels.
 const TOP = [
-  [2.13, 0.8],
-  [2.1, 0.83],
-  [1.9, 0.862],
+  [1.99, 0.8],
+  [1.97, 0.83],
+  [1.835, 0.862],
   [0.78, 0.885],
   [0.0, 0.905],
   [-1.55, 0.9],
