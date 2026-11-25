@@ -1890,7 +1890,11 @@ async function boot() {
   shadow = blobShadow();
   shadow.position.y = -0.6;
   carModel.root.add(shadow);
-  shifter = new Shifter($('shifter'), (gear) => vehicle.trans.requestGear(gear, vehicle.forwardSpeed));
+  shifter = new Shifter(
+    $('shifter'),
+    (gear) => vehicle.trans.requestGear(gear, vehicle.forwardSpeed),
+    () => vehicle.trans.gears.length,
+  );
   shifter.setMode(settings.shifter);
   tuning = new TuningPanel($('tuning'), tune, () => saveTuning(tune));
   tuning.toggle(false);

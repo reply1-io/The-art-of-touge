@@ -27,9 +27,11 @@
       <button type="button" id="left" class="btn" aria-label="Steer left"><svg class="pxicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 2h1v12h-1zM9 3h1v10H9zM8 4h1v8H8zM7 5h1v6H7zM6 6h1v4H6zM5 7h1v2H5z" fill-rule="evenodd" /></svg></button>
       <button type="button" id="right" class="btn" aria-label="Steer right"><svg class="pxicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2h1v12H5zM6 3h1v10H6zM7 4h1v8H7zM8 5h1v6H8zM9 6h1v4H9zM10 7h1v2h-1z" fill-rule="evenodd" /></svg></button>
       <button type="button" id="clutch" class="btn" aria-label="Clutch"><svg class="pxicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2h2v12H4zM10 2h2v12h-2zM1 7h3v2H1zM6 7h4v2H6zM12 7h3v2h-3z" fill-rule="evenodd" /></svg></button>
+      <!-- Sequential shifter: tap up or down a gear. -->
       <div id="shifter">
-        <canvas id="shifter-gate"></canvas>
-        <div id="shifter-knob"></div>
+        <button type="button" id="shift-up" class="btn" aria-label="Shift up"><svg class="pxicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 3h2v1H7zM6 4h4v1H6zM5 5h6v1H5zM4 6h8v1H4zM3 7h10v1H3zM7 8h2v5H7z" fill-rule="evenodd" /></svg></button>
+        <span id="shift-gear" aria-live="polite">N</span>
+        <button type="button" id="shift-down" class="btn" aria-label="Shift down"><svg class="pxicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 3h2v5H7zM3 8h10v1H3zM4 9h8v1H4zM5 10h6v1H5zM6 11h4v1H6zM7 12h2v1H7z" fill-rule="evenodd" /></svg></button>
       </div>
       <div id="dr">
         <button type="button" data-drive="D" class="btn">D</button>
@@ -101,10 +103,6 @@
         <div class="field">
           <span class="label">Steering</span>
           <div class="choices" data-setting="steering"></div>
-        </div>
-        <div class="field">
-          <span class="label">Shifter</span>
-          <div class="choices" data-setting="shifter"></div>
         </div>
         <div class="field">
           <span class="label">Money</span>
@@ -201,10 +199,6 @@
         <div class="field">
           <span class="label">Steering</span>
           <div class="choices" data-setting="steering"></div>
-        </div>
-        <div class="field">
-          <span class="label">Shifter</span>
-          <div class="choices" data-setting="shifter"></div>
         </div>
         <button type="button" id="btn-tuning" class="link">Dev tuning panel</button>
       </div>
