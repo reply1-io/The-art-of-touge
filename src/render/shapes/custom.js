@@ -72,7 +72,42 @@ const hex = (h) => {
 const detail = (part) => Math.max(1, Math.min(4, part.d ?? 2));
 
 // The shape of a part, 1 x 1 x 1 about its centre, before sizing.
+// A shape drawn in SKETCH mode: its outline (part.o, [[a, b], ...] in metres about its middle)
+// made solid, 1 deep, then turned to face the way it was drawn.
+//   side: drawn on the side view (a = forward, b = up), thick across the car
+//   top: drawn from above (a = across, b = forward), thick up and down
+//   front: drawn from the front (a = across, b = up), thick front to back
+// part.bev: rounded edges.
+export const SKETCH_VIEWS = ['side', 'top', 'front'];
+function sketchGeometry(part) {
+  const o = part.o || [];
+  const shape = new THREE.Shape(o.map(([a, b]) => new THREE.Vector2(a, b)));
+  const g = new THREE.ExtrudeGeometry(shape, {
+    depth: 1,
+    steps: detail(part),
+    bevelEnabled: !!part.bev,
+    bevelThickness: 0.12,
+    bevelSize: 0.025,
+    bevelSegments: 2,
+  });
+  g.deleteAttribute('uv');
+  const pos = g.toNonIndexed().getAttribute('position');
+  const out = [];
+  for (let i = 0; i < pos.count; i++) {
+    const a = pos.getX(i);
+    const b = pos.getY(i);
+    const e = pos.getZ(i) - 0.5;
+    out.push(part.view === 'top' ? [a, e, b] : part.view === 'front' ? [a, b, e] : [e, b, a]);
+  }
+  // Side and top swap two directions over, which turns every face inside out: turn them back.
+  if (part.view !== 'front') for (let i = 0; i < out.length; i += 3) [out[i + 1], out[i + 2]] = [out[i + 2], out[i + 1]];
+  const r = new THREE.BufferGeometry();
+  r.setAttribute('position', new THREE.Float32BufferAttribute(out.flat(), 3));
+  return r;
+}
+
 function unitGeometry(part) {
+  if (part.type === 'sketch') return sketchGeometry(part);
   let g;
   switch (part.type) {
     // More detail: more corners to drag (part.d: 1 plain, 2, or 4 per side).
@@ -151,7 +186,12 @@ const baseCache = new Map();
 // The part's corners and triangles before its own edits, in its unsized space (a stock body: in
 // car space, where the game puts it).
 export function baseMesh(part) {
-  const key = part.type === 'stock' ? `stock:${part.model}` : `${part.type}:${part.t ?? ''}:${detail(part)}`;
+  const key =
+    part.type === 'stock'
+      ? `stock:${part.model}`
+      : part.type === 'sketch'
+        ? `sketch:${part.view}:${detail(part)}:${part.bev ? 1 : 0}:${JSON.stringify(part.o)}`
+        : `${part.type}:${part.t ?? ''}:${detail(part)}`;
   if (baseCache.has(key)) return baseCache.get(key);
   const tris = [];
   if (part.type === 'stock') {

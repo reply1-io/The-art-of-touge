@@ -74,3 +74,27 @@ test('Car Builder: dragging a corner reshapes the part, and moves with it', asyn
   const e30 = baseMesh({ type: 'stock', model: 'e30' });
   assert.ok(e30.verts.length > 200, `${e30.verts.length} corners`);
 });
+
+test('Car Builder: a sketched outline becomes a solid shape, facing out, any way it was drawn', async () => {
+  const { partMesh, baseMesh, designPolys } = await import('../src/render/shapes/custom.js');
+  // An L-shaped outline (not convex), 1 m by 0.6 m.
+  const o = [[-0.5, -0.3], [0.5, -0.3], [0.5, 0], [0, 0], [0, 0.3], [-0.5, 0.3]];
+  for (const view of ['side', 'top', 'front']) {
+    const s = view === 'side' ? [0.2, 1, 1] : view === 'top' ? [1, 0.2, 1] : [1, 1, 0.2];
+    const part = { type: 'sketch', view, o, p: [0, 1, 0], s, r: [0, 0, 0], mat: 'paint', d: 1 };
+    assert.ok(baseMesh(part).faces.length >= 20, view);
+    const { verts } = partMesh(part);
+    const span = (k) => Math.max(...verts.map((v) => v[k])) - Math.min(...verts.map((v) => v[k]));
+    const thick = view === 'side' ? 0 : view === 'top' ? 1 : 2;
+    assert.ok(Math.abs(span(thick) - 0.2) < 1e-6, `${view} thickness ${span(thick)}`);
+    // Every face of a plain rectangle points away from the middle of the solid.
+    const polys = designPolys({ parts: [{ ...part, o: [[-0.5, -0.3], [0.5, -0.3], [0.5, 0.3], [-0.5, 0.3]] }] }).paint;
+    let outward = 0;
+    for (const p of polys) {
+      const m = p.pts.reduce((a, v) => [a[0] + v[0] / 3, a[1] + v[1] / 3, a[2] + v[2] / 3], [0, 0, 0]);
+      const d = [m[0], m[1] - 1, m[2]];
+      if (p.out[0] * d[0] + p.out[1] * d[1] + p.out[2] * d[2] > 0) outward++;
+    }
+    assert.equal(outward, polys.length, `${view}: ${outward}/${polys.length} facing out`);
+  }
+});

@@ -624,6 +624,14 @@ function moveDrag(e) {
 document.addEventListener(
   'pointerdown',
   (e) => {
+    if (sketching) {
+      if (e.target === renderer.domElement && e.isPrimary && sketchDown(e)) {
+        e.stopPropagation();
+        e.preventDefault();
+        controls.enabled = false;
+      }
+      return;
+    }
     if (drawing) {
       if (!stroke && startStroke(e)) {
         e.stopPropagation();
@@ -640,10 +648,15 @@ document.addEventListener(
   true,
 );
 window.addEventListener('pointermove', (e) => {
-  if (stroke && e.isPrimary) moveStroke(e);
+  if (sketchPen && e.isPrimary) sketchMove(e);
+  else if (stroke && e.isPrimary) moveStroke(e);
   else if (drag && e.isPrimary) moveDrag(e);
 });
 const endDrag = () => {
+  if (sketchPen) {
+    sketchUp();
+    return;
+  }
   if (stroke) {
     stroke = null;
     controls.enabled = true;
@@ -829,6 +842,205 @@ $('dark').oninput = (e) => {
 brush.sat = 0.75;
 drawWheel();
 updateColour();
+
+// ---------- Sketching a shape ----------
+// Draw an outline on a flat sheet (from the side, the top or the front), and SAVE makes it a solid
+// shape that thick, ready to move, size, reshape and paint like any other.
+let sketching = false;
+let sketchView = 'side';
+let sketchPts = []; // [a, b] on the sheet, in metres
+let sketchMarks = []; // how many points each finger-down added (for BACK)
+let sketchPen = null;
+const sketchOpts = { thick: 0.1, bev: false };
+// Where each sheet is: side view through the middle of the car; top view above the roof; front
+// view just ahead of the nose.
+const SHEET = {
+  side: { normal: [1, 0, 0], at: 0, cam: [8, 0.8, 0], up: [0, 1, 0] },
+  top: { normal: [0, 1, 0], at: 1.6, cam: [0, 9, 0.001], up: [0, 0, 1] },
+  front: { normal: [0, 0, 1], at: 2.4, cam: [0, 0.8, 8], up: [0, 1, 0] },
+};
+const toSheet = (v) => (sketchView === 'side' ? [v.z, v.y] : sketchView === 'top' ? [v.x, v.z] : [v.x, v.y]);
+const fromSheet = ([a, b]) => {
+  const at = SHEET[sketchView].at;
+  return sketchView === 'side' ? [at, b, a] : sketchView === 'top' ? [a, at, b] : [a, b, at];
+};
+const sketchGroup = new THREE.Group();
+sketchGroup.renderOrder = 12;
+scene.add(sketchGroup);
+const sheetGrid = new THREE.GridHelper(8, 80, 0x5aa0ff, 0x2f4a6a);
+sheetGrid.material.transparent = true;
+sheetGrid.material.opacity = 0.35;
+sheetGrid.material.depthTest = false;
+
+function sketchPlane() {
+  const sh = SHEET[sketchView];
+  return new THREE.Plane(new THREE.Vector3(...sh.normal), -sh.at);
+}
+function sketchHit(e) {
+  aim(e);
+  const p = ray.ray.intersectPlane(sketchPlane(), new THREE.Vector3());
+  return p ? toSheet(p).map((v) => Math.round(v * 1000) / 1000) : null;
+}
+function sketchDown(e) {
+  const p = sketchHit(e);
+  if (!p) return false;
+  sketchPen = { start: [e.clientX, e.clientY], added: 0, moved: false };
+  addSketchPoint(p, true);
+  return true;
+}
+function addSketchPoint(p, force = false) {
+  const last = sketchPts[sketchPts.length - 1];
+  if (!force && last && Math.hypot(p[0] - last[0], p[1] - last[1]) < 0.015) return;
+  sketchPts.push(p);
+  sketchPen && sketchPen.added++;
+  drawSketch();
+}
+function sketchMove(e) {
+  if (Math.hypot(e.clientX - sketchPen.start[0], e.clientY - sketchPen.start[1]) > 6) sketchPen.moved = true;
+  const p = sketchHit(e);
+  if (p && sketchPen.moved) addSketchPoint(p);
+}
+function sketchUp() {
+  // A drawn line: keep its shape with fewer points.
+  if (sketchPen.added > 3) {
+    const n = sketchPts.length - sketchPen.added;
+    const kept = simplify(sketchPts.slice(n), 0.008);
+    sketchPts = [...sketchPts.slice(0, n), ...kept];
+    sketchPen.added = kept.length;
+  }
+  sketchMarks.push(sketchPen.added);
+  sketchPen = null;
+  controls.enabled = true;
+  drawSketch();
+}
+// Fewer points along a hand-drawn line, keeping its shape (within tol metres).
+function simplify(pts, tol) {
+  if (pts.length < 3) return pts;
+  const [a, b] = [pts[0], pts[pts.length - 1]];
+  let worst = 0;
+  let at = 0;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const p = pts[i];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy);
+    // (A loop that ends where it began: measure from that point instead of from the line.)
+    const d = len < 1e-6 ? Math.hypot(p[0] - a[0], p[1] - a[1]) : Math.abs(dy * p[0] - dx * p[1] + b[0] * a[1] - b[1] * a[0]) / len;
+    if (d > worst) [worst, at] = [d, i];
+  }
+  if (worst < tol) return [a, b];
+  return [...simplify(pts.slice(0, at + 1), tol).slice(0, -1), ...simplify(pts.slice(at), tol)];
+}
+
+function drawSketch() {
+  sketchGroup.clear();
+  sketchGroup.add(sheetGrid);
+  const sh = SHEET[sketchView];
+  sheetGrid.rotation.set(0, 0, 0);
+  if (sketchView === 'side') sheetGrid.rotation.z = Math.PI / 2;
+  if (sketchView === 'front') sheetGrid.rotation.x = Math.PI / 2;
+  sheetGrid.position.set(...fromSheet([0, sketchView === 'top' ? 0 : 1]));
+  if (!sketchPts.length) return;
+  const pts = sketchPts.map((p) => new THREE.Vector3(...fromSheet(p)));
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xff5a36, depthTest: false }));
+  line.renderOrder = 13;
+  sketchGroup.add(line);
+  if (pts.length > 2) {
+    // Where it will close itself.
+    const close = new THREE.Line(new THREE.BufferGeometry().setFromPoints([pts[pts.length - 1], pts[0]]), new THREE.LineDashedMaterial({ color: 0xff5a36, dashSize: 0.05, gapSize: 0.04, depthTest: false, transparent: true, opacity: 0.6 }));
+    close.computeLineDistances();
+    close.renderOrder = 13;
+    sketchGroup.add(close);
+  }
+  const dotsG = new THREE.Points(new THREE.BufferGeometry().setFromPoints(pts), new THREE.PointsMaterial({ color: 0xffffff, size: 6, sizeAttenuation: false, depthTest: false }));
+  dotsG.renderOrder = 14;
+  sketchGroup.add(dotsG);
+  void sh;
+}
+
+function setSketchView(v) {
+  sketchView = v;
+  for (const b of document.querySelectorAll('[data-view]')) b.classList.toggle('on', b.dataset.view === v);
+  const sh = SHEET[v];
+  // Look straight at the sheet.
+  controls.target.set(...fromSheet([0, v === 'top' ? 0 : 0.8]));
+  if (v === 'top') controls.target.set(0, sh.at, 0);
+  camera.position.copy(controls.target).add(new THREE.Vector3(...sh.normal).multiplyScalar(fitDist() + 1));
+  if (v === 'top') camera.position.z += 0.001;
+  drawSketch();
+}
+function setSketching(on) {
+  sketching = on;
+  if (on) {
+    if (drawing) setDrawing(false);
+    selected = -1;
+    showSelection();
+    sketchPts = [];
+    sketchMarks = [];
+    controls.enableRotate = false;
+    controls.maxPolarAngle = Math.PI;
+    setSketchView(sketchView);
+  } else {
+    sketchGroup.clear();
+    controls.enableRotate = true;
+    controls.maxPolarAngle = Math.PI * 0.52;
+    controls.target.set(0, 0.6, 0);
+    camera.position.set(...VIEWS[0]).sub(controls.target).setLength(fitDist()).add(controls.target);
+  }
+  document.body.classList.toggle('sketching', on);
+  $('b-sketch').classList.toggle('on', on);
+}
+$('b-sketch').onclick = () => setSketching(!sketching);
+$('sk-cancel').onclick = () => setSketching(false);
+for (const b of document.querySelectorAll('[data-view]'))
+  b.onclick = () => {
+    if (sketchPts.length && b.dataset.view !== sketchView) {
+      sketchPts = [];
+      sketchMarks = [];
+    }
+    setSketchView(b.dataset.view);
+  };
+$('sk-back').onclick = () => {
+  const n = sketchMarks.pop() || 0;
+  sketchPts.splice(sketchPts.length - n, n);
+  drawSketch();
+};
+$('sk-clear').onclick = () => {
+  sketchPts = [];
+  sketchMarks = [];
+  drawSketch();
+};
+$('sk-thick').oninput = (e) => {
+  sketchOpts.thick = +e.target.value;
+  $('sk-thick-v').textContent = `${Math.round(sketchOpts.thick * 100)} cm`;
+};
+$('sk-round').onclick = () => {
+  sketchOpts.bev = !sketchOpts.bev;
+  $('sk-round').classList.toggle('on', sketchOpts.bev);
+};
+$('sk-save').onclick = () => {
+  // Drop a closing point that lands back on the first.
+  let pts = sketchPts.slice();
+  if (pts.length > 3 && Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]) < 0.03) pts.pop();
+  if (pts.length < 3) return toast('Draw at least three corners first');
+  // The outline about its own middle; the part sits where it was drawn.
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  const ca = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const cb = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const o = pts.map(([a, b]) => [Math.round((a - ca) * 1000) / 1000, Math.round((b - cb) * 1000) / 1000]);
+  const t = sketchOpts.thick;
+  const s = sketchView === 'side' ? [t, 1, 1] : sketchView === 'top' ? [1, t, 1] : [1, 1, t];
+  remember();
+  design.parts.push({ type: 'sketch', view: sketchView, o, p: fromSheet([ca, cb]), s, r: [0, 0, 0], mat: 'paint', d: 1, ...(sketchOpts.bev ? { bev: true } : {}) });
+  const i = design.parts.length - 1;
+  setSketching(false);
+  selected = i;
+  mode = 'move';
+  rebuild();
+  toast('Shape made: drag it into place, SIZE it, or SHAPE its corners');
+};
+$('sk-thick').dispatchEvent(new Event('input'));
 
 // ---------- Top bar ----------
 function syncTop() {
@@ -1050,6 +1262,7 @@ window.__builder = {
   get design() {
     return design;
   },
+  sketch: () => ({ pts: sketchPts.length, pen: !!sketchPen, view: sketchView }),
   select: (i) => {
     selected = i;
     showSelection();

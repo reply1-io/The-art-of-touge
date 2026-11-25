@@ -46,6 +46,9 @@
       }
       #drawp { position: fixed; left: 0; right: 0; bottom: 0; background: #15181dee; border-top: 1px solid #2c3139; padding: 8px 8px max(8px, env(safe-area-inset-bottom)); display: none; }
       body.drawing #drawp { display: block; }
+      #sketchp { position: fixed; left: 0; right: 0; bottom: 0; background: #15181dee; border-top: 1px solid #2c3139; padding: 8px 8px max(8px, env(safe-area-inset-bottom)); display: none; }
+      body.sketching #sketchp { display: block; }
+      body.sketching #add, body.sketching #side, body.sketching #panel, body.sketching #hint { display: none !important; }
       body.drawing #add, body.drawing #side, body.drawing #panel, body.drawing #hint { display: none !important; }
       #wheel { width: 120px; height: 120px; border-radius: 50%; touch-action: none; }
       #dark { width: 100%; }
@@ -79,6 +82,7 @@
       <button type="button" data-add="rx7">RX-7 BODY</button>
     </div>
     <div id="side">
+      <button type="button" id="b-sketch">SKETCH</button>
       <button type="button" id="b-draw">DRAW</button>
       <button type="button" id="b-ghost">GHOST</button>
       <button type="button" id="b-wheels" class="on">WHEELS</button>
@@ -126,6 +130,28 @@
           <span class="lbl" id="taper-lbl">TOP</span>
           <input type="range" id="taper" min="0.2" max="1" step="0.05" aria-label="Taper" />
         </div>
+      </div>
+    </div>
+    <div id="sketchp">
+      <div class="row chips">
+        <button type="button" data-view="side" class="on">SIDE</button>
+        <button type="button" data-view="top">TOP</button>
+        <button type="button" data-view="front">FRONT</button>
+        <span class="grow" style="flex: 1"></span>
+        <button type="button" id="sk-back">BACK</button>
+        <button type="button" id="sk-clear">CLEAR</button>
+      </div>
+      <div class="row chips">
+        <span class="lbl">THICK</span>
+        <input type="range" id="sk-thick" min="0.01" max="2" step="0.01" value="0.1" aria-label="Thickness" style="flex: 1; min-width: 90px" />
+        <span class="lbl" id="sk-thick-v">10 cm</span>
+        <button type="button" id="sk-round">ROUNDED</button>
+      </div>
+      <p class="lbl" id="sk-hint" style="margin: 4px 2px">Draw the outline with your finger, or tap corner by corner. It closes itself.</p>
+      <div class="row chips">
+        <button type="button" id="sk-cancel">CANCEL</button>
+        <span class="grow" style="flex: 1"></span>
+        <button type="button" id="sk-save" class="go">SAVE SHAPE</button>
       </div>
     </div>
     <div id="drawp">
