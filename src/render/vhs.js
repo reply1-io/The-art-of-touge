@@ -25,6 +25,7 @@ const fragmentShader = /* glsl */ `
   uniform float hood;     // 0..1: a lens hood creeping into the corners
   uniform float circle;   // 0..1: the picture closes down to a round fisheye image
   uniform float zoom;     // fisheye crop: scales in so the bent picture still fills the frame
+  uniform float cy;       // where the lens centre is on screen (0..1 up); 0.5 unless the view is shifted
   varying vec2 vUv;
 
   float rand(vec2 c) {
@@ -42,7 +43,8 @@ const fragmentShader = /* glsl */ `
     // centre (instead of the tangent a normal lens uses), so the middle swells and the edges crowd in.
     float lensMask = 1.0;
     if (fish > 0.001 || circle > 0.001 || hood > 0.001) {
-      vec2 p0 = (uv - 0.5) * 2.0 * vec2(aspect, 1.0); // units of half the screen height
+      vec2 cen = vec2(0.5, cy);
+      vec2 p0 = (uv - cen) * 2.0 * vec2(aspect, 1.0); // units of half the screen height
       vec2 p = p0 * mix(zoom, 1.0, circle);
       float r = length(p);
       float theta = r * hv;
@@ -57,7 +59,7 @@ const fragmentShader = /* glsl */ `
       vec2 q = p0 / vec2(aspect, 1.0);
       float rh = mix(1.5, 1.0, hood);
       lensMask *= 1.0 - smoothstep(rh - 0.25, rh, length(q * vec2(1.0, 0.92))) * step(0.001, hood);
-      uv = src / vec2(aspect, 1.0) * 0.5 + 0.5;
+      uv = src / vec2(aspect, 1.0) * 0.5 + cen;
       lensMask *= step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
     }
     // A very wide camcorder lens: the picture bows out, the corners fall off into black.
@@ -113,19 +115,23 @@ const fragmentShader = /* glsl */ `
 
 // How far to scale into a fisheye picture so its corners still land inside what was rendered (the
 // largest zoom that keeps the screen's corner within the picture), found by halving the range.
-function fishZoom(fish, hv, aspect) {
-  const fits = (z) => {
+export function fishZoom(fish, hv, aspect, cy = 0.5) {
+  // Room above and below the lens centre, in half-screen-heights.
+  const up = (1 - cy) * 2;
+  const down = cy * 2;
+  const corner = (z, ey) => {
     const px = aspect * z;
-    const py = z;
+    const py = ey * z;
     const r = Math.hypot(px, py);
     const th = r * hv;
-    if (th >= 1.5 * fish + 10 * (1 - fish) && fish > 0.999) return false;
-    const k = (Math.tan(Math.min(th, 1.5)) / Math.tan(hv)) / r;
+    if (th >= 1.5) return false;
+    const k = Math.tan(th) / Math.tan(hv) / r;
     const sx = px + (px * k - px) * fish;
     const sy = py + (py * k - py) * fish;
-    return sx <= aspect && sy <= 1 && th < 1.5;
+    return sx > 0 && sy > 0 && sx <= aspect && sy <= ey;
   };
-  let lo = 0.2;
+  const fits = (z) => corner(z, up) && corner(z, down);
+  let lo = 0.35;
   let hi = 1;
   if (fits(hi)) return 1;
   for (let i = 0; i < 18; i++) {
@@ -142,7 +148,7 @@ export class VhsRenderer {
     this.pixelSize = pixelSize;
     this.strength = 1;
     this.barrel = 0; // wide-angle lens bend, for camcorder shots
-    this.lens = { fish: 0, hood: 0, circle: 0 }; // fisheye lens (replay edit mode)
+    this.lens = { fish: 0, hood: 0, circle: 0, cy: 0.5 }; // fisheye lens; cy: lens centre height on screen
     this.target = new THREE.WebGLRenderTarget(4, 4, {
       minFilter: THREE.NearestFilter,
       magFilter: THREE.NearestFilter,
@@ -163,6 +169,7 @@ export class VhsRenderer {
         hood: { value: 0 },
         circle: { value: 0 },
         zoom: { value: 1 },
+        cy: { value: 0.5 },
       },
       depthTest: false,
       depthWrite: false,
@@ -193,7 +200,8 @@ export class VhsRenderer {
     u.circle.value = this.lens.circle;
     const hv = ((camera.fov ?? 60) * Math.PI) / 360;
     u.hv.value = hv;
-    u.zoom.value = this.lens.fish > 0.001 ? fishZoom(this.lens.fish, hv, u.res.value.x / u.res.value.y) : 1;
+    u.cy.value = this.lens.cy ?? 0.5;
+    u.zoom.value = this.lens.fish > 0.001 ? fishZoom(this.lens.fish, hv, u.res.value.x / u.res.value.y, u.cy.value) : 1;
     r.setRenderTarget(this.target);
     r.render(scene, camera);
     r.setRenderTarget(null);

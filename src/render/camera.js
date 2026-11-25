@@ -1,6 +1,8 @@
 // Chase camera (smoothed, swings toward the direction of travel in a slide) and bumper camera.
 import * as THREE from 'three';
 import { EYE } from './cockpit.js';
+import { drivingLens } from '../game/replay.js';
+import { fishZoom } from './vhs.js';
 
 const GROUND = -0.62; // body space: the car model's body group sits this far below the origin
 
@@ -35,11 +37,22 @@ export class CameraRig {
   // How far behind and above the car the chase camera sits for the chosen field of view: at 60
   // degrees, 5.8 m back and 2.3 m up; wider moves it in (never inside the car), narrower back.
   #chaseOffset(fast) {
-    const k = Math.tan((30 * Math.PI) / 180) / Math.tan(((this.userFov / 2) * Math.PI) / 180);
+    // The fisheye swells the middle of the picture, where the car is: back off by as much.
+    // Relative to a plain 60-degree lens at 5.8 m back: the car stays the same size on screen.
+    const k = this.#sizeFor(this.userFov) * Math.tan((30 * Math.PI) / 180);
     return {
       back: Math.max(3.4, (5.8 + fast * 0.6) * k),
       up: Math.max(1.45, (2.3 - fast * 0.35) * Math.sqrt(k)),
     };
+  }
+
+  // How far back the camera has to be (relative) for the car to look the same size on screen.
+  #sizeFor(v) {
+    const lens = drivingLens(v);
+    const hv = (lens.fov * Math.PI) / 360;
+    const z = lens.fish > 0.001 ? fishZoom(lens.fish, hv, this.camera.aspect || 2, 0.7) : 1;
+    const mag = 1 / (z * (1 - lens.fish * (1 - hv / Math.tan(hv))));
+    return mag / Math.tan(hv);
   }
 
   // carObject: the rendered car (interpolated pose). velocity: world linear velocity.
@@ -53,7 +66,7 @@ export class CameraRig {
   #speedFeel(dt, carObject, velocity) {
     const cam = this.camera;
     const mph = Math.hypot(velocity.x, velocity.z) * 2.237;
-    const base = Math.min(150, (BASE_FOV[this.mode] ?? 60) + (this.userFov - 60));
+    const base = Math.min(150, drivingLens(this.userFov).fov + ((BASE_FOV[this.mode] ?? 60) - 60));
     // Wider view with speed: +0 at 20 mph up to about +16 degrees by 110 mph (less when the view
     // is already very wide).
     const room = Math.max(0, 1 - (this.userFov - 60) / 120);

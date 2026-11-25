@@ -122,6 +122,14 @@ export function lensFor(v) {
   };
 }
 
+// The driving camera's lens for the field of view setting (50..150): the same bend as the replay
+// dial (half as strong again, as the replay shows it) up to 120, held there beyond while the view
+// keeps widening to 130 degrees. Never a hood or a round picture.
+export function drivingLens(v) {
+  const L = lensFor(Math.min(v, 120));
+  return { fov: v <= 120 ? L.fov : L.fov + (v - 120) * (32 / 30), fish: L.fish * 1.5 };
+}
+
 const mulberry = (seed) => () => {
   seed = (seed + 0x6d2b79f5) >>> 0;
   let t = seed;

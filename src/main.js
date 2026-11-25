@@ -38,7 +38,7 @@ import { Shop } from './ui/shop.js';
 import { MapView } from './ui/mapView.js';
 import { MiniMap } from './ui/miniMap.js';
 import { Rain } from './render/rain.js';
-import { Recorder, Director, FreeCam, HZ, lensFor } from './game/replay.js';
+import { Recorder, Director, FreeCam, HZ, lensFor, drivingLens } from './game/replay.js';
 import { medalTimes, medalFor } from './game/medals.js';
 import { loadSettings, saveSettings, loadTuning, saveTuning } from './settings.js';
 
@@ -685,7 +685,7 @@ function closeReplay() {
   rp.active = false;
   rp.uiOff = false;
   vhs.barrel = 0;
-  Object.assign(vhs.lens, { fish: 0, hood: 0, circle: 0 });
+  Object.assign(vhs.lens, { fish: 0, hood: 0, circle: 0, cy: 0.5 });
   document.body.classList.remove('replay-ui-off');
   $('replay').classList.add('hidden');
   document.body.classList.remove('in-replay');
@@ -774,6 +774,7 @@ function replayFrame(dt, now) {
   vhs.lens.fish = (lens?.fish ?? 0) * 1.5;
   vhs.lens.hood = lens?.hood ?? 0;
   vhs.lens.circle = lens?.circle ?? 0;
+  vhs.lens.cy = 0.5;
   // Tyre smoke from the wheels that were sliding, where they were.
   if (rp.playing) {
     const r = wheelSetup(tune).radius;
@@ -1579,6 +1580,7 @@ function frame(now) {
   if (shop.isOpen) {
     shop.update(dt);
     shopEngine(dt);
+    Object.assign(vhs.lens, { fish: 0, hood: 0, circle: 0, cy: 0.5 }); // the workshop: a plain lens
     vhs.render(shop.scene, shop.camera, now / 1000);
     flare.draw(dt, camera, sunDir, 0, [0, 0, 0], false);
     hud.draw(null);
@@ -1605,6 +1607,12 @@ function frame(now) {
   mountain.update(camera.position, timePreset.detailRange, timePreset.groundRange, dt);
   // Dust streaks in the air from 50 mph.
   speedLines.update(camera, vehicle.body.linvel(), glintTint.setRGB(...timePreset.flareTint.map((c) => c / 255)));
+  // Driving: the field of view setting bends the lens like the replay dial does (the same amount
+  // up to 120, held there beyond), but never a lens hood or a round picture.
+  {
+    // (The picture is shifted up 20% for the touch controls, so the lens centre sits higher too.)
+    Object.assign(vhs.lens, { fish: drivingLens(rig.userFov ?? 60).fish, hood: 0, circle: 0, cy: 0.7 });
+  }
   vhs.render(scene, camera, now / 1000);
   // Lens flare when facing the sun, unless the mountain is in the way.
   let sunVisible = false;
