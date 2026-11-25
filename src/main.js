@@ -661,7 +661,22 @@ function openReplay(from) {
     toast('NOTHING ON TAPE YET: GO FOR A DRIVE', 2.2);
     return;
   }
-  director ??= new Director(mountain.road, mountain.terrain);
+  // The camera crew only stand where they can see the road: a ray from the lens to the road must
+  // not hit the scenery (signs, rails, rock, trees' solid parts, buildings) or the ground.
+  director ??= new Director(mountain.road, mountain.terrain, (from, to) => {
+    const d = new THREE.Vector3().subVectors(to, from);
+    const len = d.length();
+    if (len < 0.5) return true;
+    d.divideScalar(len);
+    const hit = world.castRay(new RAPIER.Ray(from, d), len - 0.6, true, undefined, undefined, undefined, vehicle.body);
+    if (hit) return false;
+    // Ground and scenery drawn but not solid: sample the terrain along the line too.
+    for (let f = 0.1; f < 0.95; f += 0.1) {
+      const p = from.clone().addScaledVector(d, len * f);
+      if (mountain.terrain.heightAt(p.x, p.z) > p.y - 0.15) return false;
+    }
+    return true;
+  });
   rWheels.wheels = vehicle.wheels.map((w) => ({ x: w.x, z: w.z, front: w.front, compression: 0, steer: 0, angle: 0 }));
   rp.active = true;
   rp.from = from;
@@ -1874,7 +1889,7 @@ async function boot() {
   }
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { droneFrame, droneStart, recorder, freeCam, replayState: rp, get recorderSeconds() { return recorder.seconds; }, get revCar() { return revCar; }, get onRoad() { return onRoad; }, get wildlifeDbg() { return wildlife; }, get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { THREE, get directorDbg() { return director; }, droneFrame, droneStart, recorder, freeCam, replayState: rp, get recorderSeconds() { return recorder.seconds; }, get revCar() { return revCar; }, get onRoad() { return onRoad; }, get wildlifeDbg() { return wildlife; }, get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;

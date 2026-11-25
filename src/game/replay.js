@@ -125,9 +125,9 @@ export function lensFor(v) {
 // The driving camera's lens for the field of view setting (50..150): the same bend as the replay
 // dial (half as strong again, as the replay shows it) up to 120, held there beyond while the view
 // keeps widening to 130 degrees. Never a hood or a round picture.
+// Driving uses a plain lens: the setting is the field of view, with no fisheye bend.
 export function drivingLens(v) {
-  const L = lensFor(Math.min(v, 120));
-  return { fov: v <= 120 ? L.fov : L.fov + (v - 120) * (32 / 30), fish: L.fish * 1.5 };
+  return { fov: v, fish: 0 };
 }
 
 const mulberry = (seed) => () => {
@@ -138,64 +138,147 @@ const mulberry = (seed) => () => {
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 };
 
-// The crowd filming: someone every 40 m of road, on whichever side has room to stand. Most are
-// right at the edge (just behind the rail) with a 10 mm wide-angle lens held low; about one in
-// four stands further back on the bank and zooms in.
+// The crowd filming, cut together like a fan video. The road is split into shots of varying
+// length, each filmed a different way:
+//   pan    - handheld at the edge with a 10 mm wide lens, following the car past
+//   low    - crouched at road level, wide lens, following
+//   high   - up on the bank, zoomed in, following
+//   arrive - a fixed camera on a long lens looking up the road: the car appears in the distance,
+//            grows, and roars out of the frame
+//   depart - a fixed wide camera looking down the road: the frame is empty, the car bursts in
+//            close beside you and drives away into the distance
+// Each shot has its own shake (none, light or heavy), and no shot is too like the few before it.
+const SHOTS = {
+  pan: { len: [14, 24], follow: true, wide: true },
+  low: { len: [12, 18], follow: true, wide: true },
+  high: { len: [18, 28], follow: true, wide: false },
+  arrive: { len: [18, 30], follow: false, wide: false },
+  depart: { len: [16, 26], follow: false, wide: true },
+};
+
 export class Director {
-  constructor(road, terrain) {
+  // canSee(from, to): true when nothing solid is between the two points (optional).
+  constructor(road, terrain, canSee = () => true) {
     this.road = road;
     this.terrain = terrain;
-    this.spots = [];
+    this.canSee = canSee;
     const rand = mulberry(318);
-    for (let i = 16; i < road.count - 10; i += 20) {
-      const wide = rand() > 0.25;
-      let best = null;
-      for (const side of rand() < 0.5 ? [1, -1] : [-1, 1]) {
-        const l = wide ? road.w.RAIL + 0.5 + rand() * 1.2 : road.w.RAIL + 3 + rand() * 4;
-        const [x, y, z] = road.pointAt(i, side * l);
-        const g = terrain.heightAt(x, z);
-        // Not up on a cutting or down a drop where you could not see the road.
-        if (Math.abs(g - y) > (wide ? 1.5 : 3)) continue;
-        best = { i, x, y: Math.max(g, y) + (wide ? 0.9 + rand() * 0.6 : 1.55 + rand() * 0.3), z, side, wide };
-        break;
+    this.shots = [];
+    const recent = [];
+    let i = 10;
+    while (i < road.count - 8) {
+      // Pick a kind of shot unlike the last few (not the same kind as either of the last two, and
+      // not the same kind, side and shake as any of the last four).
+      let shot = null;
+      for (let tries = 0; tries < 60 && !shot; tries++) {
+        const kinds = Object.keys(SHOTS);
+        const kind = kinds[Math.floor(rand() * kinds.length)];
+        if (recent.slice(-2).some((r) => r.kind === kind)) continue;
+        const side = rand() < 0.5 ? 1 : -1;
+        const fixed = !SHOTS[kind].follow;
+        const shake = fixed ? (rand() < 0.6 ? 0 : 0.35) : [0.35, 1, 1.8][Math.floor(rand() * 3)];
+        if (recent.slice(-4).some((r) => r.kind === kind && r.side === side && r.shake === shake)) continue;
+        const spec = SHOTS[kind];
+        const len = Math.round(spec.len[0] + rand() * (spec.len[1] - spec.len[0]));
+        const a = i;
+        const b = Math.min(road.count - 4, i + len);
+        // Where the camera stands, by the kind of shot.
+        const c = kind === 'arrive' ? b + 3 : kind === 'depart' ? a + 4 : Math.round(a + (b - a) * 0.6);
+        const place = this.#stand(kind, Math.min(road.count - 2, c), side, rand);
+        if (!place) continue;
+        // The crew has to be able to see the road the car will be on: check a few points of it.
+        const eye = new THREE.Vector3(place.x, place.y, place.z);
+        const checks = [a, Math.round((a + b) / 2), b].map((j) => this.#roadPoint(Math.min(road.count - 2, j), 0.8));
+        if (checks.filter((p) => this.canSee(eye, p)).length < (SHOTS[kind].follow ? 2 : 3)) continue;
+        // Fixed cameras aim along the road: up it at the coming car, or down it after the car.
+        let aim = null;
+        // (Aimed at where the car will be in the middle of the shot for an arrival, and on down the
+        // road for a departure, so the car is in frame for most of it.)
+        if (kind === 'arrive') aim = this.#roadPoint(Math.max(2, Math.round(a + (b - a) * 0.45)), 0.8);
+        if (kind === 'depart') aim = this.#roadPoint(Math.min(road.count - 2, Math.round(b - 2)), 0.7);
+        if (aim && !this.canSee(eye, aim)) continue;
+        const fov = kind === 'arrive' ? 18 + rand() * 12 : kind === 'depart' ? 78 + rand() * 20 : kind === 'high' ? null : 104;
+        shot = { kind, a, b, side, shake, ...place, aim, fov, wide: kind === 'pan' || kind === 'low' };
       }
-      // Nowhere to stand: the spot before films for longer.
-      this.spots.push(best || { ...(this.spots[this.spots.length - 1] || { i, x: road.x[i], y: road.y[i] + 6, z: road.z[i], wide: false }), i });
+      if (!shot) {
+        i += 10;
+        continue;
+      }
+      this.shots.push(shot);
+      recent.push(shot);
+      i = shot.b;
     }
     this.shake = mulberry(7);
     this.look = new THREE.Vector3();
     this.current = -1;
   }
 
-  // Which spot films the car when it is at road sample i: the next one it is driving toward,
-  // until it is just past.
-  spotFor(i) {
-    return Math.max(0, Math.min(this.spots.length - 1, Math.floor((i - 16 + 6) / 20)));
+  #roadPoint(i, up) {
+    const [x, y, z] = this.road.pointAt(i, 0);
+    return new THREE.Vector3(x, y + up, z);
   }
 
-  // Aim `camera` for the car at `car` (from Recorder.sample). Returns the spot number, whether it
+  // Somewhere to stand for this kind of shot, or null if the ground there is no good.
+  #stand(kind, i, side, rand) {
+    const road = this.road;
+    const t = this.terrain;
+    const off = { pan: road.w.RAIL + 0.5 + rand(), low: road.w.RAIL + 0.9 + rand() * 0.6, high: road.w.RAIL + 5 + rand() * 4, arrive: road.w.RAIL + 1 + rand() * 2, depart: road.w.RAIL + 0.6 + rand() }[kind];
+    const [x, y, z] = road.pointAt(i, side * off);
+    const g = t.heightAt(x, z);
+    if (kind === 'high') {
+      // Up on the bank, a wall or a rock above the road: anywhere the ground is not below it.
+      if (g < y - 1) return null;
+      return { x, y: Math.max(g, y) + 3.4 + rand() * 1.5, z };
+    }
+    if (Math.abs(g - y) > 1.6) return null;
+    const h = { pan: 1.0 + rand() * 0.5, low: 0.45, arrive: 1.35 + rand() * 0.3, depart: 1.1 + rand() * 0.5 }[kind];
+    return { x, y: Math.max(g, y) + h, z };
+  }
+
+  // The shot filming the car at road sample i.
+  shotFor(i) {
+    const s = this.shots;
+    let lo = 0;
+    let hi = s.length - 1;
+    while (lo < hi) {
+      const m = (lo + hi + 1) >> 1;
+      if (s[m].a <= i) lo = m;
+      else hi = m - 1;
+    }
+    return lo;
+  }
+
+  // Aim `camera` for the car at `car` (from Recorder.sample). Returns the shot number, whether it
   // just cut, and whether it is a wide-angle shot (for the lens bend).
   frame(dt, camera, car, t) {
-    const k = this.spotFor(car.index);
+    const k = this.shotFor(car.index);
     const cut = k !== this.current;
     this.current = k;
-    const s = this.spots[k];
+    const s = this.shots[k];
     const target = new THREE.Vector3(car.pos.x, car.pos.y + 0.5, car.pos.z);
     camera.position.set(s.x, s.y, s.z);
-    // Handheld: the aim lags behind the car a touch and wobbles, more for the close ones.
-    if (cut) this.look.copy(target);
-    this.look.lerp(target, Math.min(1, dt * (s.wide ? 7 : 5)));
-    camera.lookAt(this.look);
-    const wob = (s.wide ? 0.012 : 0.005) + Math.min(0.012, car.speed / 2500);
-    camera.rotation.x += Math.sin(t * 7.1) * wob + (this.shake() - 0.5) * wob;
-    camera.rotation.y += Math.sin(t * 5.3) * wob;
-    camera.rotation.z += Math.sin(t * 3.7) * wob * 0.8;
-    if (s.wide) {
-      camera.fov = 104; // about a 10 mm lens on a camcorder
+    if (s.aim) {
+      camera.lookAt(s.aim);
     } else {
-      // Zoom in on the car when it is far off, out as it rushes past.
+      // Following: the aim lags behind the car a touch.
+      if (cut) this.look.copy(target);
+      this.look.lerp(target, Math.min(1, dt * (s.kind === 'high' ? 4 : 7)));
+      camera.lookAt(this.look);
+    }
+    // Shake: a slow handheld sway plus a jitter, more as the car roars past.
+    const near = Math.max(0, 1 - camera.position.distanceTo(target) / 25);
+    const wob = s.shake * (0.006 + near * 0.012);
+    if (wob > 0) {
+      camera.rotation.x += Math.sin(t * 7.1) * wob + (this.shake() - 0.5) * wob * 1.4;
+      camera.rotation.y += Math.sin(t * 5.3) * wob + (this.shake() - 0.5) * wob;
+      camera.rotation.z += Math.sin(t * 3.7) * wob * 0.8;
+    }
+    if (s.fov) {
+      camera.fov = s.fov;
+    } else {
+      // Zoomed in on the car from the bank, easing out as it comes close.
       const dist = camera.position.distanceTo(target);
-      camera.fov = THREE.MathUtils.clamp((Math.atan(5.5 / Math.max(dist, 1)) * 2 * 180) / Math.PI, 14, 60);
+      camera.fov = THREE.MathUtils.clamp((Math.atan(5 / Math.max(dist, 1)) * 2 * 180) / Math.PI, 12, 50);
     }
     camera.updateProjectionMatrix();
     return { k, cut, wide: s.wide };
