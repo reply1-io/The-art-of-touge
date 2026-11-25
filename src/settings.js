@@ -17,6 +17,7 @@ const DEFAULTS = {
   time: 'night', // 'day' | 'sunset' | 'night'
   stage: -1, // world map: which road to start on (-1 = the whole route)
   money: 'unlimited', // 'career' | 'unlimited'
+  fov: 60, // driving camera field of view, 50..150
   driveMode: 'free', // 'free' (Free Roam) | 'touge' (races)
   netName: '',
   netServer: '',

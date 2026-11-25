@@ -1729,3 +1729,18 @@ body.in-replay #chat {
   width: 170px;
   accent-color: #ffa04a;
 }
+
+.drive-fov input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.drive-fov .label b {
+  font-weight: 400;
+  color: var(--accent);
+  margin-left: 6px;
+}
+
+.drive-fov .map-hint {
+  margin: 0;
+}

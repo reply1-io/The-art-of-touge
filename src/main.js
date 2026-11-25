@@ -295,6 +295,9 @@ function applySettings() {
   applyTime();
   updateTitleSub();
   rig.mode = settings.camera;
+  rig.userFov = Math.max(50, Math.min(150, settings.fov ?? 60));
+  for (const el of document.querySelectorAll('.drive-fov input')) el.value = String(rig.userFov);
+  for (const el of document.querySelectorAll('.drive-fov b')) el.textContent = `${rig.userFov}\u00b0`;
   audio.setMuted(!settings.sound);
   vhs.strength = settings.vhs ? 0.45 : 0;
   // Picture: 'sharp' renders at screen resolution, 'retro' at half (chunky pixels).
@@ -593,6 +596,14 @@ function showResults(r) {
   setTimeout(() => $('results').classList.remove('hidden'), 1200);
 }
 $('btn-home').addEventListener('click', goHome);
+// Field of view while driving: the chase camera moves in or out to match.
+for (const el of document.querySelectorAll('.drive-fov input')) {
+  el.addEventListener('input', () => {
+    settings.fov = Number(el.value);
+    saveSettings(settings);
+    applySettings();
+  });
+}
 $('btn-recover').addEventListener('click', () => {
   recoverCar();
   setPaused(false);
