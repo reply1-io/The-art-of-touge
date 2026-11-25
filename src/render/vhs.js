@@ -4,11 +4,11 @@
 // about 480 lines, like DV. A small blurred copy of its brightest parts makes the glow around the
 // sun, lamps and headlights. Then one pass makes the video:
 //   camera: highlights roll off then clip like a camcorder sensor; edges get the bright and dark
-//     halos of camcorder sharpening; dark areas get gain noise
+//     halos of camcorder sharpening (no grain: a clean picture)
 //   DV: interlaced fields (every other line is from the frame before, so fast pans comb); colour
 //     at a quarter of the detail, smeared and lagging to the right
-//   VHS: lines wobble and the tape stretches; a tracking band rolls up the picture; the bottom
-//     lines tear (head switching); white dropout streaks; colour noise; lifted, warm blacks
+//   VHS: lines wobble and the tape stretches; the bottom lines tear (head switching); white
+//     dropout streaks; lifted, warm blacks (no rolling tracking band)
 // strength 0 is a clean picture at screen resolution (with the same light and glow); 1 is full.
 // Also the wide-angle and fisheye lenses for replays.
 import * as THREE from 'three';
@@ -146,14 +146,10 @@ const fragmentShader = /* glsl */ `
     // Every line jitters sideways a little, and the whole picture sways as the tape stretches.
     float jit = (rand(vec2(row, floor(t * 30.0))) - 0.5) * 0.9;
     float sway = (noise1(uv.y * 6.0 + t * 1.3) - 0.5) * 2.2 + sin(t * 0.9 + uv.y * 2.0) * 0.6;
-    // The tracking band: a noisy stripe that rolls slowly up the picture.
-    float bandPos = 1.0 - fract(t * 0.045);
-    float band = smoothstep(0.05, 0.0, abs(uv.y - bandPos));
-    float tear = band * (rand(vec2(row * 1.7, floor(t * 30.0))) - 0.5) * 9.0;
     // Head switching: the bottom lines are torn sideways and noisy.
     float hs = smoothstep(0.035, 0.0, uv.y);
     float hsShift = hs * (14.0 + rand(vec2(row, floor(t * 30.0))) * 10.0);
-    uv.x += (jit + sway + tear + hsShift) * s / res.x;
+    uv.x += (jit + sway + hsShift) * s / res.x;
 
     vec2 one = vec2(1.0 / res.x, 0.0);
     float useField = step(0.2, s);
@@ -177,9 +173,6 @@ const fragmentShader = /* glsl */ `
     ch /= wsum;
     vec3 yc0 = toYC(c0);
     vec2 chroma = mix(yc0.yz, ch.yz, s);
-    // Colour noise: slow blotches of wrong colour, stretched along the lines.
-    vec2 cn = vec2(noise1(uv.x * 40.0 + row * 0.13 + t * 37.0), noise1(uv.x * 40.0 + row * 0.13 + t * 41.0 + 9.0)) - 0.5;
-    chroma += cn * 0.035 * s;
     vec3 col = fromYC(vec3(yS, chroma));
 
     // ---- Grade ----
@@ -187,12 +180,8 @@ const fragmentShader = /* glsl */ `
     float yg = dot(col, LW);
     col = mix(vec3(yg), col, 1.0 + 0.15 * s);
     col = mix(col, col * 0.93 + vec3(0.035, 0.028, 0.035), s);
-    // Gain noise: grain, much heavier in the dark.
-    float g = rand(vUv * screen + fract(t * 7.0) * 100.0) - 0.5;
-    col += g * (0.03 + 0.09 * (1.0 - smoothstep(0.0, 0.45, yg))) * s;
 
     // ---- Tape damage ----
-    col += band * s * (0.2 * rand(vec2(row * 3.1, floor(t * 30.0))) - 0.04);
     col = mix(col, vec3(rand(vec2(uv.x * 300.0, row + t))), hs * 0.5 * s);
     // Dropouts: now and then a white streak along part of a line.
     float drop = step(0.9975, rand(vec2(floor(row / 2.0), floor(t * 15.0))));

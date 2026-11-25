@@ -50,6 +50,8 @@ const settings = loadSettings();
 // Options no longer in the menu: always the default (camera stays on the CAMERA button).
 if (settings.mode === 'autoClutch') settings.mode = 'manual';
 Object.assign(settings, { picture: 'sharp', vhs: true, sound: true });
+// Night driving only.
+settings.time = 'night';
 const tune = loadTuning();
 
 // ---------- Rendering ----------
@@ -1392,7 +1394,7 @@ function setupOnline() {
     });
   // The room decides the road and time for everyone in it.
   online.onRoom = (room) => {
-    if (room.time && room.time !== settings.time && TIMES[room.time]) {
+    if (room.time === 'night' && room.time !== settings.time && TIMES[room.time]) {
       settings.time = room.time;
       saveSettings(settings);
       applySettings();
