@@ -63,15 +63,8 @@ function claim(kind) {
 export function loadTuning() {
   const t = carSave('tuning');
   claim('tuning');
-  // Once: setups saved when BBS was the default wheel move to the new factory wheels.
-  try {
-    if (t?.wheel === 'bbs' && typeof localStorage !== 'undefined' && !localStorage.getItem('touge.factoryWheels')) {
-      localStorage.setItem('touge.factoryWheels', '1');
-      t.wheel = 'factory';
-    }
-  } catch {
-    // storage unavailable: keep the saved wheel
-  }
+  // The short-lived "factory" wheels (from the downloaded E30 model, since removed) go back to BBS.
+  if (t?.wheel === 'factory') t.wheel = 'bbs';
   return { ...TUNABLE_DEFAULTS, ...(t || {}) };
 }
 

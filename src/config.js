@@ -399,7 +399,7 @@ export const TUNABLE_DEFAULTS = {
   steerSpeedFalloff: 0.55, // fraction of lock removed at high speed
   lsdLock: 0.3, // limited-slip locking ratio (E30 factory LSD is about 25%)
   lsdPreload: 40, // N m
-  wheel: 'factory', // rim style (looks only)
+  wheel: 'bbs', // rim style (looks only)
   rim: 14, // rim diameter, inches
   profile: 65, // tyre sidewall height as % of width
   camberFront: 1.0, // degrees of negative camber
@@ -543,7 +543,6 @@ export const EXHAUSTS = {
 
 // Wheels (tuning shop). Looks only: size, sidewall and camber are separate settings.
 export const WHEELS = {
-  factory: { name: 'Factory', blurb: 'The E30\'s own 14-inch wheels, as it left the factory.', face: '#cfd1d6', lip: '#cfd1d6', dish: '#2a2b2f', spokes: 'steel' },
   bbs: { name: 'BBS Mesh', blurb: 'The factory cross-spoke. Silver mesh, polished lip.', face: '#c7c9cf', lip: '#d8dadf', dish: '#26272b', spokes: 'mesh' },
   gold: { name: 'Gold Mesh', blurb: 'Gold cross-spoke with a deep polished lip. Pure 80s.', face: '#d6b04a', lip: '#e4e6ea', dish: '#3a3020', spokes: 'mesh' },
   six: { name: 'Bronze 6-Spoke', blurb: 'Light forged six-spoke in bronze, the Japanese touge classic.', face: '#8e6a3f', lip: '#8e6a3f', dish: '#231c15', spokes: 'six' },
