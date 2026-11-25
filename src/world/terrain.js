@@ -408,6 +408,15 @@ export class Terrain {
   }
 
   // Which sides of road sample i drop away (guardrail) or rise (cut): +1 rises, -1 drops, 0 neither.
+  // A real drop beside the road (a guardrail is needed): the ground 8 m out is more than 5 m
+  // below the road, or it is a bridge.
+  dropAt(i, side) {
+    const road = this.main;
+    if (this.bridgeAt(i)) return true;
+    const [x, , z] = road.pointAt(i, side * 8);
+    return this.natural(x, z) - road.y[i] < -5;
+  }
+
   sideProfile(i, side) {
     const road = this.main;
     if (this.bridgeAt(i)) return -1;

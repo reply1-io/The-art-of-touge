@@ -88,8 +88,49 @@ scene.add(hemi);
 // it out to a glowing green.
 // Long reach: a slower fall-off (decay 1.4) and less power close in, so the near road isn't burnt
 // out while the beam still lights the road far ahead.
-const headlight = new THREE.SpotLight(0xfff2d8, 170, 300, 0.42, 0.45, 1.4);
+// Real low beams: a wide, flat spread with a sharp cut-off along the top, brightest just under the
+// cut-off so it reaches down the road, with the step up on the left (kerb) side, as aimed for
+// driving on the left in Japan. Physical fall-off (decay 2): bright close in, dim far away.
+const headlight = new THREE.SpotLight(0xfff2d8, 1100, 160, 0.72, 0.12, 2);
+headlight.map = lowBeamTexture();
 scene.add(headlight, headlight.target);
+
+function lowBeamTexture() {
+  const S = 128;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d');
+  const img = g.createImageData(S, S);
+  // u: -1 (one side of the cone) .. 1; v: -1 (down) .. 1 (up). The beam axis points 1.6 degrees
+  // down; the cone's half-angle is 41 degrees, so the horizon sits at v = 0.04.
+  const cut = 0.04;
+  for (let py = 0; py < S; py++) {
+    for (let px = 0; px < S; px++) {
+      const u = (px + 0.5) / S * 2 - 1;
+      const v = 1 - (py + 0.5) / S * 2;
+      // The cut-off: flat on the right, stepping up 15 degrees on the left.
+      const edge = u < -0.02 ? cut + Math.min(0.14, (-0.02 - u) * 0.27) : cut;
+      const below = edge - v; // > 0 under the cut-off
+      let b = 0;
+      if (below > 0) {
+        const soft = Math.min(1, below / 0.012); // a crisp but not aliased edge
+        const hot = Math.exp(-((u + 0.05) ** 2) / 0.05 - ((below - 0.05) ** 2) / 0.006); // hot spot just under the cut
+        const spread = Math.exp(-(u * u) / 0.55) * Math.exp(-below / 0.6); // the wide fill
+        b = soft * Math.min(1, 0.95 * hot + 0.45 * spread);
+      } else {
+        b = 0.012 * Math.exp(v / -0.15 + cut / 0.15) * Math.exp(-(u * u) / 0.3); // a little stray light above
+      }
+      const k = (py * S + px) * 4;
+      img.data[k] = img.data[k + 1] = img.data[k + 2] = Math.round(255 * Math.min(1, b));
+      img.data[k + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.flipY = false; // the light projects the image with v down the canvas
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
 const sky = new Sky(scene);
 const flare = new LensFlare($('flare'));
 const sunDir = new THREE.Vector3(0, 1, 0);
@@ -1919,7 +1960,7 @@ async function boot() {
   }
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { get smokeDbg() { return smoke; }, THREE, get directorDbg() { return director; }, droneFrame, droneStart, recorder, freeCam, replayState: rp, get recorderSeconds() { return recorder.seconds; }, get revCar() { return revCar; }, get onRoad() { return onRoad; }, get wildlifeDbg() { return wildlife; }, get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { get smokeDbg() { return smoke; }, THREE, get directorDbg() { return director; }, droneFrame, droneStart, recorder, freeCam, replayState: rp, get recorderSeconds() { return recorder.seconds; }, get revCar() { return revCar; }, get onRoad() { return onRoad; }, get wildlifeDbg() { return wildlife; }, get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel, headlight };
 }
 
 $('btn-drive').disabled = true;

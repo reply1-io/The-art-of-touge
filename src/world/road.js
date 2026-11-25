@@ -8,24 +8,24 @@
 export const STEP = 2; // metres between centreline samples
 // Samples either side of a junction kept clear of rails and walls.
 export const JUNCTION = 8;
-export const HALF = 3.4; // half the lane width, out to the white edge lines (two narrow lanes)
-export const PAVED = 4.2; // edge of the asphalt: a paved shoulder about half a car wide past the line
-export const SHOULDER = 5.4; // end of the gravel shoulder
+// Every road is a skinny Japanese touge road: two tight lanes, the gutter right at the edge.
+export const HALF = 2.6; // half the road, out to the white edge lines
+export const PAVED = 2.75; // edge of the asphalt
+export const SHOULDER = 3.9; // end of the gravel shoulder
 export const VERGE = 8.4; // end of the verge strip that blends into the terrain
-export const RAIL = 4.95; // guardrail line
+export const RAIL = 3.45; // guardrail line
 export const WALL = 9.6; // invisible wall line
 // Drainage gutter: a shallow concrete dish with sloped sides, so a tyre rolls in and out of it.
-export const GUTTER_IN = 4.42;
-export const GUTTER_OUT = 4.82;
+export const GUTTER_IN = 2.92;
+export const GUTTER_OUT = 3.3;
 export const GUTTER_DEPTH = 0.1;
 
 // Road widths. 'wide' is the two-lane Dragon's Tail with a paved shoulder; 'narrow' is a skinny
 // Japanese touge road: two tight lanes, the gutter right at the edge, the rail just past it.
 // LANE is the middle of the left (downhill) lane.
-export const WIDTHS = {
-  wide: { HALF, PAVED, SHOULDER, RAIL, GUTTER_IN, GUTTER_OUT, LANE: 1.7 },
-  narrow: { HALF: 2.6, PAVED: 2.75, SHOULDER: 3.9, RAIL: 3.45, GUTTER_IN: 2.92, GUTTER_OUT: 3.3, LANE: 1.3 },
-};
+// (Every road now uses the narrow width; 'wide' is kept as a name so old road definitions load.)
+const NARROW = { HALF, PAVED, SHOULDER, RAIL, GUTTER_IN, GUTTER_OUT, LANE: 1.3 };
+export const WIDTHS = { wide: NARROW, narrow: NARROW };
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
@@ -429,9 +429,8 @@ export function barrierLayout(road, terrain) {
   const wall = { 1: new Float32Array(n), [-1]: new Float32Array(n) };
   for (const side of [1, -1]) {
     for (let i = 0; i < n; i += 1) {
-      // Rails on both sides of every real corner (inside and out), and wherever the road drops away.
-      const corner = Math.abs(road.kappa[i]) > 1 / 160;
-      rail[side][i] = terrain.sideProfile(i, side) < 0 || corner ? 1 : 0;
+      // Rails only where they are needed: over a real drop beside the road (and on bridges).
+      rail[side][i] = (terrain.dropAt ? terrain.dropAt(i, side) : terrain.sideProfile(i, side) < 0) ? 1 : 0;
     }
     // Fill short gaps and drop short runs so rails come in sensible lengths.
     const r = rail[side];

@@ -17,6 +17,23 @@ const DEFAULT_SCENE = { trees: 1, maple: 0, rock: 0.5, ponds: 0, forest: 'cedar'
 const ROAD_CHUNK = 60; // samples per road chunk (120 m)
 const TILE = 24; // terrain cells per tile
 
+// Asphalt (rough, full of tiny glass-like chips) throws light back towards where it came from. A
+// headlight beam skims the road at a very low angle, so plain diffuse shading leaves it nearly
+// black; this adds that back-scatter, strongest when you look along the beam (from the car).
+function retroReflect(mat) {
+  mat.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace(
+      '#include <lights_lambert_pars_fragment>',
+      THREE.ShaderChunk.lights_lambert_pars_fragment.replace(
+        'vec3 irradiance = dotNL * directLight.color;',
+        `float retro = step(-0.02, dot(geometryNormal, directLight.direction)) * pow(saturate(dot(geometryViewDir, directLight.direction)), 6.0);
+        vec3 irradiance = (dotNL + 0.55 * retro) * directLight.color;`,
+      ),
+    );
+  };
+  mat.customProgramCacheKey = () => 'retro-asphalt';
+}
+
 function asphaltTexture({ HALF, PAVED }) {
   const c = document.createElement('canvas');
   c.width = 64;
@@ -37,13 +54,10 @@ function asphaltTexture({ HALF, PAVED }) {
   // Tyre-polished lines in each lane.
   g.fillStyle = 'rgba(20,20,22,0.25)';
   for (const l of [0.75 * HALF, 0.25 * HALF, -0.25 * HALF, -0.75 * HALF]) g.fillRect((64 * (PAVED - l)) / (2 * PAVED) - 2, 0, 4, 256);
-  // White edge lines and the yellow no-overtaking centre line.
+  // White edge lines only (no centre line, like a narrow mountain road in Japan).
   g.fillStyle = '#d9d9d2';
   g.fillRect(line - 1, 0, 2, 256);
   g.fillRect(64 - line - 1, 0, 2, 256);
-  g.fillStyle = '#e0a51c';
-  g.fillRect(30, 0, 1.5, 256);
-  g.fillRect(32.5, 0, 1.5, 256);
   const t = new THREE.CanvasTexture(c);
   t.wrapS = THREE.ClampToEdgeWrapping;
   t.wrapT = THREE.RepeatWrapping;
@@ -1288,6 +1302,7 @@ export class Mountain {
   #buildRoad(road = this.road, lift = false) {
     const over = lift ? { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 } : {};
     const asphaltMat = new THREE.MeshLambertMaterial({ map: asphaltTexture(road.w), ...over });
+    retroReflect(asphaltMat);
     const edgeMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, ...over });
     const xs = crossSection(road, 0);
     const asphaltCols = xs.map((c, k) => (c[2] === 'asphalt' ? k : -1)).filter((k) => k >= 0);

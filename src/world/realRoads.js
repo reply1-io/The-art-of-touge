@@ -1,4 +1,4 @@
-// Real roads: Berthoud Pass, Tunitas Creek Rd, US-276 and the Chief Joseph Highway. Each is laid
+// Real roads: Tunitas Creek Rd and US-276, set as quiet Japanese mountain roads. Each is laid
 // out from a list of pieces (straights, corners, hairpins and runs of random bends), carrying its
 // own climb, how much the corners are banked, and what grows and stands beside it. Built the same
 // every time (fixed seeds). Pure JavaScript, testable in Node.
@@ -156,7 +156,7 @@ function realTrack(def, reverse = false) {
     },
   };
   if (def.stages) {
-    // A road made of runs (Berthoud: the climb and the descent): each with its own start and
+    // A road made of runs (a climb and a descent): each with its own start and
     // finish, in metres along the road.
     let list = null;
     Object.defineProperty(t, 'stages', {
@@ -174,79 +174,7 @@ function realTrack(def, reverse = false) {
 
 import { Road } from './road.js';
 
-// ---------------------------------------------------------------------------------------------
-// Berthoud Pass, US-40, Colorado: from the Empire side up a stack of switchbacks through the pines
-// to the summit on the Continental Divide (above the trees), then down the far side to Winter Park.
-
 const SW = (dir, leg, r, extra = {}) => [{ H: dir, r, g: 0.035, b: 0.12, ...extra }, { S: leg, g: 0.075, b: 0.3 }];
-
-const BERTHOUD = {
-  name: 'Berthoud Pass',
-  seed: 40,
-  peaks: 1500,
-  relief: 260,
-  waterfalls: 2,
-  station: true,
-  town: { r: 120 },
-  pieces: [
-    { S: 140, g: 0.01, b: 0.4, sc: 'pine' },
-    { W: 700, r: [60, 140], a: [20, 50], gap: 60, g: 0.045, b: 0.6 },
-    { S: 120, g: 0.055 },
-    { T: 60, r: 48, b: 0.35 },
-    { S: 90 },
-    { T: -60, r: 52 },
-    { E: 70, g: 0.06 },
-    { S: 260 },
-    // The first stack of switchbacks.
-    ...SW(1, 210, 16),
-    ...SW(-1, 230, 17),
-    ...SW(1, 210, 15),
-    ...SW(-1, 160, 18),
-    // Faster banked sweepers between the stacks.
-    { W: 650, r: [70, 130], a: [25, 45], gap: 50, g: 0.065, b: 2.4, sc: 'pineRock' },
-    { E: 70, g: 0.07, b: 0.35 },
-    { S: 240 },
-    // The second stack, up through the last of the trees.
-    ...SW(1, 200, 16, { sc: 'treeline' }),
-    ...SW(-1, 200, 17),
-    { S: 150, g: 0.05, b: 0.4, sc: 'alpine' },
-    { T: 25, r: 140 },
-    { T: -25, r: 140 },
-    { S: 90, g: 0.02 },
-    { mark: 'summit' },
-    { S: 150, g: 0.0, b: 0.3 },
-    // Down the Winter Park side.
-    { S: 120, g: -0.04 },
-    { T: 55, r: 60, g: -0.065, b: 0.35 },
-    { S: 100 },
-    { T: -80, r: 42, b: 0.2 },
-    { S: 140, sc: 'treeline' },
-    { T: 70, r: 55, b: 0.35 },
-    { S: 120, sc: 'pine' },
-    { W: 900, r: [55, 120], a: [25, 60], gap: 50, g: -0.06, b: 2 },
-    { S: 160, b: 0.4, sc: 'aspen', g: -0.04 },
-    { W: 700, r: [80, 160], a: [20, 40], gap: 70, g: -0.035, b: 1.6 },
-    { S: 220, g: -0.01, b: 0.3 },
-  ],
-  lots: [
-    // The summit: a big lot on the Continental Divide with the sign and a few parked cars.
-    { at: 'summit', len: 90, side: 'out', width: 22, label: ['BERTHOUD PASS', 'ELEV 11,307 FT', 'CONTINENTAL DIVIDE'], cars: 4, surface: 'asphalt' },
-  ],
-  stages: (get) => {
-    const r = get();
-    const s = r.marks.summit;
-    return {
-      list: [
-        { name: 'Climb from Empire', blurb: 'Up the east-side switchbacks to the summit lot', f0: 0, f1: (s + 45) / r.length },
-        { name: 'Down to Winter Park', blurb: 'From the summit lot down the west side', f0: (s + 60) / r.length, f1: 1 },
-      ],
-    };
-  },
-};
-
-// ---------------------------------------------------------------------------------------------
-// Tunitas Creek Rd, near Half Moon Bay, California: built from Skyline at the ridge, down through
-// the redwoods (narrow, choppy, no banking), then out into the open grass hills to the coast.
 
 const TUNITAS = {
   name: 'Tunitas Creek',
@@ -313,76 +241,10 @@ const US276 = {
   ],
 };
 
-// ---------------------------------------------------------------------------------------------
-// Chief Joseph Highway, WY-296: built from the sagebrush junction on the Cody side, up the big
-// open Dead Indian switchbacks to the summit overlook, down into Sunlight Basin's fast banked
-// sweepers, and over the Sunlight Creek Bridge to a lot just past it.
-
-const CHIEF = {
-  name: 'Chief Joseph Hwy',
-  seed: 296,
-  peaks: 1300,
-  relief: 240,
-  waterfalls: 1,
-  pieces: [
-    { S: 160, g: 0.004, b: 0.4, sc: 'sage' },
-    { W: 900, r: [150, 320], a: [10, 30], gap: 160, g: 0.02, b: 2.5 },
-    { E: 120, g: 0.04, b: 0.5, sc: 'sageRock' },
-    { S: 320 },
-    ...SW(1, 280, 26, { b: 0.45 }),
-    ...SW(-1, 300, 28, { b: 0.45 }),
-    ...SW(1, 280, 27, { b: 0.45 }),
-    ...SW(-1, 260, 29, { b: 0.45 }),
-    ...SW(1, 240, 27, { b: 0.45 }),
-    { T: -170, r: 30, g: 0.035, b: 0.45 },
-    { S: 200, g: 0.05 },
-    { T: 20, r: 200, g: 0.01 },
-    { S: 60, mark: 'summit' },
-    { S: 140, g: 0 },
-    // Down into Sunlight Basin.
-    { W: 1500, r: [130, 260], a: [20, 45], gap: 120, g: -0.055, b: 3.6, sc: 'basin' },
-    { W: 1300, r: [110, 240], a: [20, 50], gap: 110, g: -0.03, b: 3.6 },
-    { S: 180, g: -0.01, b: 0.4, sc: 'sageRock' },
-    { mark: 'bridge0' },
-    { S: 130, g: 0, b: 0 },
-    { mark: 'bridge1' },
-    { S: 80 },
-    { mark: 'endLot' },
-    { S: 140, sc: 'basin' },
-  ],
-  lots: [
-    { at: 40, len: 60, side: 'out', width: 20, label: ['CHIEF JOSEPH', 'SCENIC HWY · WY 296'], surface: 'gravel' },
-    { at: 'summit', len: 80, side: 'out', width: 20, label: ['DEAD INDIAN PASS', 'SUMMIT OVERLOOK'], surface: 'gravel', cars: 3, stone: true },
-    { at: 'endLot', len: 60, side: 'out', width: 18, label: ['SUNLIGHT CREEK', 'BRIDGE'], surface: 'gravel', cars: 1 },
-  ],
-  bridge: ['bridge0', 'bridge1'],
-};
-
-// Bridges: [{ f0, f1 }] as driven.
-function withBridge(def, t, reverse) {
-  if (!def.bridge) return t;
-  let route = null;
-  const get = () => (route ??= layRoute(def.pieces, def.seed));
-  t.bridges = () => {
-    const r = get();
-    const a = r.marks[def.bridge[0]] / r.length;
-    const b = r.marks[def.bridge[1]] / r.length;
-    return [{ f0: reverse ? 1 - b : a, f1: reverse ? 1 - a : b, depth: 70, name: 'SUNLIGHT CREEK' }];
-  };
-  return t;
-}
-
 // Each road is offered in its best direction only (downhill, the touge way). The other direction
 // is still built here (and tested) but marked hidden: it never appears in the game, and an old
 // save that names it is moved to the road's best direction (see `best`).
 export const REAL_TRACKS = {
-  berthoud: (() => {
-    const t = realTrack(BERTHOUD);
-    t.blurb = 'Colorado · Empire to Winter Park over the Continental Divide';
-    t.region = 'Colorado, USA';
-    t.desc = 'Up two stacks of switchbacks through the pines, out above the trees to the summit lot on the Continental Divide, then down the long west side to Winter Park.';
-    return t;
-  })(),
   'tunitas-down': Object.assign(realTrack(TUNITAS), {
     name: 'Tunitas Creek',
     blurb: 'California · Skyline ridge down through the redwoods to the coast',
@@ -397,11 +259,4 @@ export const REAL_TRACKS = {
     desc: 'From the Blue Ridge Parkway overlook down the switchbacks, then along the creek through hardwoods, rhododendron and rock walls, past Looking Glass Falls.',
   }),
   'us276-up': Object.assign(realTrack(US276), { name: 'US-276 Pisgah (uphill)', hidden: true, best: 'us276-down' }),
-  'chiefjoseph-east': withBridge(CHIEF, Object.assign(realTrack(CHIEF, true), {
-    name: 'Chief Joseph Hwy',
-    blurb: 'Wyoming · over the Sunlight Creek Bridge and down Dead Indian Pass to Cody',
-    region: 'Wyoming, USA',
-    desc: 'Fast banked sweepers through Sunlight Basin, across the bridge over the gorge, then down the open Dead Indian switchbacks through sagebrush and red rock.',
-  }), true),
-  'chiefjoseph-west': withBridge(CHIEF, Object.assign(realTrack(CHIEF), { name: 'Chief Joseph Hwy (uphill)', hidden: true, best: 'chiefjoseph-east' }), false),
 };
