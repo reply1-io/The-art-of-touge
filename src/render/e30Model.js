@@ -8,7 +8,7 @@ import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.j
 
 // Sharp edges: where two faces meet at more than this angle the shading breaks into a hard
 // crease; gentler curves (headlamps, wheels, the roof) stay smooth and round.
-const CREASE = (32 * Math.PI) / 180;
+const CREASE = (22 * Math.PI) / 180;
 
 const URL = `${import.meta.env?.BASE_URL ?? './'}models/e30.glb`;
 
