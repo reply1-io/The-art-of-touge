@@ -466,7 +466,7 @@ function buildGarage(scene) {
     [posterTex('#141414', '#f2c51e', '#f2c51e', 'DOWNHILL', 'NO BRAKES', carShape), 4.8, -D + 0.02, 0],
     [posterTex('#1d3a8a', '#f2f2f2', '#e6e6e6', 'ROTARY', 'BRAAAP', rotor), 6.3, -D + 0.02, 0],
     [posterTex('#f2f1ea', '#1f5a32', '#2f6b4f', 'KAIDO', 'MOUNTAIN PASS', mountains), 1.8, D - 0.02, Math.PI],
-    [posterTex('#c8241d', '#fff', '#111', 'DRIFT', 'SIDEWAYS CLUB', carShape), 4.2, D - 0.02, Math.PI],
+    [posterTex('#c8241d', '#fff', '#111', 'DRIFT', 'SIDEWAYS CLUB', carShape), -W + 0.02, -1.9, Math.PI / 2],
     [posterTex('#2a2a2a', '#e8711c', '#e8711c', 'HACHI', '1600 TWIN CAM', carShape), -W + 0.02, -3.5, Math.PI / 2],
   ];
   for (const [tex, x, z, ry] of posters) {
@@ -551,7 +551,119 @@ function buildGarage(scene) {
   reel.position.set(W - 0.12, 1.9, -1.9);
   reel.rotation.y = Math.PI / 2;
   scene.add(reel);
-  // Rubber mat under the lift, and a drop light hanging from the beam.
+  // ---------- Body panels: a project car's worth, stripped and stored ----------
+  // Hard-edged, flat panels in all the colours they came off in: white, red, black, blue, grey
+  // primer and bare metal.
+  const panelMats = [0xe6e3d8, 0xa4231c, 0x1d1e21, 0x2a4a7a, 0x8d8f91, 0xa7aaae, 0x6d4a2e].map((c) => lambert(c, { flatShading: true }));
+  const glassMat = lambert(0x1b2329, { transparent: true, opacity: 0.55 });
+  const extrude = (pts, holes, depth) => {
+    const sh = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y)));
+    for (const h of holes) sh.holes.push(new THREE.Path(h.map(([x, y]) => new THREE.Vector2(x, y))));
+    const g = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false });
+    g.translate(0, 0, -depth / 2);
+    return g;
+  };
+  // Each panel stands upright in its own x/y plane, centred, thickness along z.
+  const PANELS = {
+    // Door: square-cut frame round the window, the window glass still in some.
+    door: (mat, glass) => {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(extrude([[-0.58, -0.5], [0.58, -0.5], [0.58, 0.05], [0.5, 0.5], [-0.58, 0.5]], [[[-0.5, 0.1], [0.46, 0.1], [0.4, 0.43], [-0.5, 0.43]]], 0.07), mat));
+      if (glass) g.add(new THREE.Mesh(extrude([[-0.5, 0.1], [0.46, 0.1], [0.4, 0.43], [-0.5, 0.43]], [], 0.01), glassMat));
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.03, 0.03), lambert(0x111111));
+      handle.position.set(0.38, -0.02, 0.045);
+      g.add(handle);
+      return g;
+    },
+    hood: (mat) => new THREE.Mesh(extrude([[-0.68, -0.62], [0.68, -0.62], [0.6, 0.62], [-0.6, 0.62]], [], 0.05), mat),
+    trunk: (mat) => new THREE.Mesh(extrude([[-0.66, -0.36], [0.66, -0.36], [0.64, 0.36], [-0.64, 0.36]], [], 0.05), mat),
+    // Front wing with a straight-sided, cut-off wheel arch.
+    fender: (mat) => new THREE.Mesh(extrude([[-0.55, -0.32], [-0.42, -0.32], [-0.34, -0.06], [-0.12, 0.04], [0.12, 0.04], [0.34, -0.06], [0.42, -0.32], [0.55, -0.32], [0.55, 0.3], [-0.55, 0.3]], [], 0.05), mat),
+    bumper: (mat) => new THREE.Mesh(new THREE.BoxGeometry(1.62, 0.17, 0.13), mat),
+  };
+  const panel = (kind, mi, x, y, z, rx, ry, rz, glass = false) => {
+    const m = PANELS[kind](panelMats[mi], glass);
+    m.position.set(x, y, z);
+    m.rotation.set(rx, ry, rz, 'YXZ');
+    scene.add(m);
+    return m;
+  };
+  const FLAT = -Math.PI / 2; // lying flat on its face
+  // A tall steel rack along the front wall, full of panels.
+  {
+    const rx = 4.8;
+    const rz = D - 0.42;
+    const rackMat = lambert(0x3a5f8a);
+    for (const y of [0.12, 1.05, 1.95]) box(2.9, 0.05, 0.75, steel, rx, y, rz);
+    for (const sx of [-1.43, 1.43]) for (const sz of [-0.35, 0.35]) box(0.06, 2.7, 0.06, rackMat, rx + sx, 1.35, rz + sz);
+    // Bottom: doors standing on edge, side by side, and a bumper on the floor in front.
+    panel('door', 0, rx - 0.75, 0.67, rz, 0, 0.05, 0.02, true);
+    panel('door', 1, rx - 0.75, 0.67, rz - 0.12, 0, -0.04, -0.03);
+    panel('door', 4, rx + 0.6, 0.67, rz + 0.1, 0, 0.1, 0.0, true);
+    panel('bumper', 2, rx + 0.4, 0.21, rz - 0.18, 0, 0.06, 0);
+    // Middle: a hood and a boot lid stacked flat, a wing on top.
+    panel('hood', 3, rx - 0.6, 1.11, rz, FLAT, 0.03, 0);
+    panel('trunk', 5, rx + 0.75, 1.11, rz, FLAT, -0.05, 0);
+    panel('fender', 0, rx + 0.7, 1.17, rz + 0.02, FLAT, 0.2, 0);
+    // Top: wings and bumpers.
+    panel('fender', 4, rx - 0.75, 2.01, rz, FLAT, -0.1, 0);
+    panel('fender', 1, rx - 0.6, 2.07, rz + 0.05, FLAT, 0.25, 0);
+    panel('bumper', 5, rx + 0.55, 2.06, rz + 0.12, 0, 0.02, 0);
+    panel('bumper', 2, rx + 0.55, 2.06, rz - 0.15, 0, -0.03, 0);
+    panel('trunk', 6, rx + 0.6, 2.33, rz, -0.15, 0.02, 0);
+  }
+  // More on the rack: every shelf crammed, things hanging off the ends.
+  {
+    const rx = 4.8;
+    const rz = D - 0.42;
+    for (let k = 0; k < 3; k++) panel('door', [3, 5, 2][k], rx + 0.1 + k * 0.08, 0.67, rz - 0.05 + k * 0.13, 0, 0.12 - k * 0.08, 0.02 * k, k === 1);
+    for (let k = 0; k < 3; k++) panel('hood', [0, 4, 2][k], rx - 0.62, 1.17 + k * 0.06, rz + 0.02 * k, FLAT, 0.03 - k * 0.04, 0);
+    for (let k = 0; k < 2; k++) panel('trunk', [1, 4][k], rx + 0.78, 1.17 + k * 0.06, rz - 0.02 * k, FLAT, 0.05 * k, 0);
+    panel('bumper', 2, rx - 0.2, 2.21, rz + 0.25, 0, 0.12, 0);
+    for (let k = 0; k < 3; k++) panel('fender', [2, 3, 5][k], rx - 0.7 + k * 0.08, 2.13 + k * 0.06, rz - 0.05, FLAT, -0.3 + k * 0.25, 0);
+    panel('door', 6, rx + 0.55, 2.47, rz + 0.05, 0, 0.0, 0.01);
+  }
+  // A pallet stacked with hoods and boot lids, by the right wall.
+  {
+    const px = 5.6;
+    const pz = 3.9;
+    const wood2 = lambert(0x8a6a44);
+    for (const dz of [-0.5, 0, 0.5]) box(1.3, 0.1, 0.12, wood2, px, 0.05, pz + dz);
+    box(1.3, 0.03, 1.2, wood2, px, 0.115, pz);
+    const stack = ['hood', 'hood', 'trunk', 'hood', 'trunk', 'hood'];
+    stack.forEach((kind, k) => panel(kind, (k * 3) % 7, px + (k % 2 ? 0.04 : -0.03), 0.16 + k * 0.055, pz + (k % 3) * 0.03, FLAT, Math.PI / 2 + (k % 2 ? 0.06 : -0.05), 0));
+  }
+  // A row of bumpers stood on end against the left wall, and a heap of wings on the floor.
+  for (let k = 0; k < 4; k++) {
+    const b = panel('bumper', [2, 5, 2, 0][k], -W + 0.18 + k * 0.05, 0.8, -4.3 + k * 0.2, 0, Math.PI / 2, Math.PI / 2 - 0.1);
+    b.rotation.set(0, Math.PI / 2, Math.PI / 2 - 0.12);
+  }
+  for (let k = 0; k < 5; k++) panel('fender', [4, 0, 1, 5, 3][k], 1.6 + (k % 2) * 0.15, 0.03 + k * 0.05, -4.5 + (k % 3) * 0.1, FLAT, k * 0.7, 0);
+  // Doors leaning in a row against the back wall's end.
+  for (let k = 0; k < 4; k++) panel('door', [1, 4, 0, 2][k], 5.6 + k * 0.1, 0.52, -D + 0.18 + k * 0.1, -0.15 - k * 0.03, 0, 0, k % 2 === 0);
+
+  // Panels leaning against the walls.
+  panel('hood', 1, -W + 0.32, 0.62, -5.0, -0.25, Math.PI / 2, 0);
+  panel('hood', 4, -W + 0.42, 0.62, -4.9, -0.32, Math.PI / 2 + 0.05, 0);
+  panel('door', 2, W - 0.2, 0.52, 3.3, -0.12, -Math.PI / 2, 0);
+  panel('door', 0, W - 0.3, 0.52, 3.45, -0.18, -Math.PI / 2 + 0.06, 0, true);
+  panel('trunk', 3, W - 0.25, 0.37, 2.25, -0.2, -Math.PI / 2, 0);
+  panel('fender', 5, 1.05, 0.33, -D + 0.12, -0.25, 0, 0);
+  // And on the floor round the car: stripped off and dropped where the work is.
+  panel('bumper', 5, 2.5, 0.07, -2.5, Math.PI / 2, 0.4, 0);
+  panel('fender', 2, -2.45, 0.03, 2.7, FLAT, 0.9, 0);
+  panel('door', 4, -2.7, 0.04, -1.3, FLAT, 0.15, 0);
+  panel('trunk', 0, 2.7, 0.03, 2.4, FLAT, -0.5, 0);
+  panel('bumper', 2, -2.2, 0.07, -3.4, Math.PI / 2, -0.25, 0);
+  // Moving blankets under the floor panels.
+  for (const [x, z, ry] of [[-2.7, -1.3, 0.15], [-2.45, 2.7, 0.9]]) {
+    const b = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.3), lambert(0x34507a));
+    b.rotation.set(-Math.PI / 2, 0, ry);
+    b.position.set(x, 0.008, z);
+    scene.add(b);
+  }
+
+  // Rubber mat under the car, and a drop light hanging from the ceiling.
   const mat = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 5.6), lambert(0x1d1e20));
   mat.rotation.x = -Math.PI / 2;
   mat.position.set(0, 0.006, 0.2);
@@ -564,31 +676,8 @@ function buildGarage(scene) {
   drop.position.copy(bulb.position);
   scene.add(drop);
 
-  // A two-post lift. The car rides on it just high enough for someone to lie under it on a creeper.
-  const LIFT = 0.5;
-  const liftMat = lambert(0x2f5fa8);
+  // A creeper left beside the car.
   const padMat = lambert(0x1b1c1e);
-  for (const sx of [-1, 1]) {
-    const x = sx * 1.75;
-    box(0.28, 3.1, 0.34, liftMat, x, 1.55, 0.2);
-    box(0.6, 0.04, 0.7, steel, x, 0.02, 0.2);
-    box(0.34, 0.3, 0.42, steel, x, LIFT + 0.05, 0.2); // carriage
-    // Two arms from each carriage swing in under the sills, front and back.
-    for (const sz of [-1, 1]) {
-      const tz = 0.2 + sz * 1.05;
-      const ax = sx * 0.85;
-      const len = Math.hypot(x - ax, tz - 0.2);
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, len), steel);
-      arm.position.set((x + ax) / 2, LIFT - 0.02, (0.2 + tz) / 2);
-      arm.rotation.y = Math.atan2(ax - x, tz - 0.2);
-      scene.add(arm);
-      const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.12, 10), padMat);
-      pad.position.set(ax, LIFT + 0.04, tz);
-      scene.add(pad);
-    }
-  }
-  box(3.78, 0.16, 0.2, liftMat, 0, 3.05, 0.2); // the bar across the top
-  // A creeper under the car, with a mechanic's legs sticking out.
   const creeper = new THREE.Group();
   const board = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.04, 1.0), lambert(0x232427));
   board.position.y = 0.09;
@@ -598,26 +687,14 @@ function buildGarage(scene) {
     w.position.set(cx, 0.04, cz);
     creeper.add(w);
   }
-  const overalls = lambert(0x2c4a7a);
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.18, 0.75), overalls);
-  body.position.set(0, 0.2, -0.05);
-  creeper.add(body);
-  for (const lx of [-0.1, 0.1]) {
-    const legM = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.13, 0.85), overalls);
-    legM.position.set(lx, 0.17, 0.75);
-    creeper.add(legM);
-    const boot = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, 0.12), lambert(0x2b1d12));
-    boot.position.set(lx, 0.22, 1.2);
-    creeper.add(boot);
-  }
-  creeper.position.set(0.35, 0, -0.2);
-  creeper.rotation.y = Math.PI / 2 + 0.15; // feet out past the right side of the car
+  creeper.position.set(1.75, 0, -1.4);
+  creeper.rotation.y = 0.5;
   scene.add(creeper);
 
-  // The car stands on the lift in the middle of the floor.
+  // The car stands on its wheels in the middle of the floor.
   const table = new THREE.Group();
-  table.position.set(0, -0.08 + LIFT, 0.2); // (the car's own height sits it on the floor; then up the lift)
-  table.userData.lift = LIFT;
+  table.position.set(0, -0.08, 0.2); // (the car's own height sits it on the floor)
+  table.userData.lift = 0;
   scene.add(table);
   return table;
 }

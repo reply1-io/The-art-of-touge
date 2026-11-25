@@ -4,6 +4,11 @@
 // car's body group, so it only needs sliding along z to put its axles on the physics axles.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+
+// Sharp edges: where two faces meet at more than this angle the shading breaks into a hard
+// crease; gentler curves (headlamps, wheels, the roof) stay smooth and round.
+const CREASE = (32 * Math.PI) / 180;
 
 const URL = `${import.meta.env?.BASE_URL ?? './'}models/e30.glb`;
 
@@ -78,10 +83,12 @@ function prepare(gltf, frontAxle, rearAxle) {
       o.visible = false;
     }
     o.material = shared(o.material);
+    o.geometry = toCreasedNormals(o.geometry, CREASE);
   });
   tyre.traverse((o) => {
     if (!o.isMesh) return;
     o.userData.shared = true;
+    o.geometry = toCreasedNormals(o.geometry, CREASE);
     o.material = shared(o.material);
   });
 
