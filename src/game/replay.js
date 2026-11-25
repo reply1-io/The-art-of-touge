@@ -109,6 +109,19 @@ export class Recorder {
   }
 }
 
+// The edit-mode lens dial (10..150). Up to 60 it is a plain field of view. Beyond that the lens
+// turns fisheye, bending more and more while the view itself only widens to 120 degrees; past 120
+// a lens hood creeps into the corners, and at 150 it is a full circular fisheye.
+export function lensFor(v) {
+  const k = Math.max(0, (v - 60) / 90);
+  return {
+    fov: v <= 60 ? v : 60 + (v - 60) * (60 / 90),
+    fish: Math.pow(k, 1.1),
+    hood: Math.min(1, Math.max(0, (v - 120) / 30)),
+    circle: Math.min(1, Math.max(0, (v - 142) / 8)),
+  };
+}
+
 const mulberry = (seed) => () => {
   seed = (seed + 0x6d2b79f5) >>> 0;
   let t = seed;
@@ -216,7 +229,7 @@ export class FreeCam {
     camera.position.copy(this.pos);
     camera.rotation.order = 'YXZ';
     camera.rotation.set(this.pitch, this.yaw, 0);
-    camera.fov = this.fov;
+    camera.fov = lensFor(this.fov).fov;
     camera.updateProjectionMatrix();
   }
 
@@ -229,10 +242,11 @@ export class FreeCam {
     let best = null;
     for (const s of this.shots) if (!best || s.pos.distanceTo(car.pos) < best.pos.distanceTo(car.pos)) best = s;
     if (!best) return -1;
+    this.lastFov = best.fov ?? 55;
     camera.position.copy(best.pos);
     camera.lookAt(car.pos.x, car.pos.y + 0.6, car.pos.z);
     // Each camera keeps the field of view it was placed with.
-    camera.fov = best.fov ?? 55;
+    camera.fov = lensFor(best.fov ?? 55).fov;
     camera.updateProjectionMatrix();
     return this.shots.indexOf(best);
   }

@@ -20,6 +20,11 @@ const fragmentShader = /* glsl */ `
   uniform float time;
   uniform float strength; // 0 = clean pixels only, 1 = full VHS
   uniform float barrel;   // wide-angle lens bend (0 = none): straight lines bow out toward the edges
+  uniform float fish;     // 0..1: blend from a normal lens to a true (equidistant) fisheye
+  uniform float hv;       // half the camera's vertical field of view (radians)
+  uniform float hood;     // 0..1: a lens hood creeping into the corners
+  uniform float circle;   // 0..1: the picture closes down to a round fisheye image
+  uniform float zoom;     // fisheye crop: scales in so the bent picture still fills the frame
   varying vec2 vUv;
 
   float rand(vec2 c) {
@@ -32,6 +37,29 @@ const fragmentShader = /* glsl */ `
 
   void main() {
     vec2 uv = vUv;
+    float aspect = res.x / res.y;
+    // Fisheye lens: each point on screen looks out at an angle in proportion to its distance from the
+    // centre (instead of the tangent a normal lens uses), so the middle swells and the edges crowd in.
+    float lensMask = 1.0;
+    if (fish > 0.001 || circle > 0.001 || hood > 0.001) {
+      vec2 p0 = (uv - 0.5) * 2.0 * vec2(aspect, 1.0); // units of half the screen height
+      vec2 p = p0 * mix(zoom, 1.0, circle);
+      float r = length(p);
+      float theta = r * hv;
+      vec2 eq = r > 1e-4 ? p / r * tan(min(theta, 1.5)) / tan(hv) : p;
+      vec2 src = mix(p, eq, fish);
+      // Beyond 86 degrees off-axis the lens sees nothing the picture holds: black.
+      lensMask *= 1.0 - step(1.5, theta) * fish;
+      // A round image circle, closing in to touch the top and bottom of the screen.
+      float rc = mix(3.0, 1.0, circle);
+      lensMask *= 1.0 - smoothstep(rc - 0.03, rc + 0.01, length(p0));
+      // The lens hood: dark rounded corners growing inward.
+      vec2 q = p0 / vec2(aspect, 1.0);
+      float rh = mix(1.5, 1.0, hood);
+      lensMask *= 1.0 - smoothstep(rh - 0.25, rh, length(q * vec2(1.0, 0.92))) * step(0.001, hood);
+      uv = src / vec2(aspect, 1.0) * 0.5 + 0.5;
+      lensMask *= step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
+    }
     // A very wide camcorder lens: the picture bows out, the corners fall off into black.
     vec2 cc = uv - 0.5;
     cc.x *= res.x / res.y;
@@ -78,9 +106,35 @@ const fragmentShader = /* glsl */ `
     col *= 1.0 - 0.1 * strength * step(0.5, fract(uv.y * res.y * 0.5));
 
     col *= mix(1.0, inside * (1.0 - smoothstep(0.35, 0.75, r2) * barrel * 0.6), step(0.001, barrel));
+    col *= lensMask;
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
   }
 `;
+
+// How far to scale into a fisheye picture so its corners still land inside what was rendered (the
+// largest zoom that keeps the screen's corner within the picture), found by halving the range.
+function fishZoom(fish, hv, aspect) {
+  const fits = (z) => {
+    const px = aspect * z;
+    const py = z;
+    const r = Math.hypot(px, py);
+    const th = r * hv;
+    if (th >= 1.5 * fish + 10 * (1 - fish) && fish > 0.999) return false;
+    const k = (Math.tan(Math.min(th, 1.5)) / Math.tan(hv)) / r;
+    const sx = px + (px * k - px) * fish;
+    const sy = py + (py * k - py) * fish;
+    return sx <= aspect && sy <= 1 && th < 1.5;
+  };
+  let lo = 0.2;
+  let hi = 1;
+  if (fits(hi)) return 1;
+  for (let i = 0; i < 18; i++) {
+    const m = (lo + hi) / 2;
+    if (fits(m)) lo = m;
+    else hi = m;
+  }
+  return lo;
+}
 
 export class VhsRenderer {
   constructor(renderer, pixelSize = 2) {
@@ -88,6 +142,7 @@ export class VhsRenderer {
     this.pixelSize = pixelSize;
     this.strength = 1;
     this.barrel = 0; // wide-angle lens bend, for camcorder shots
+    this.lens = { fish: 0, hood: 0, circle: 0 }; // fisheye lens (replay edit mode)
     this.target = new THREE.WebGLRenderTarget(4, 4, {
       minFilter: THREE.NearestFilter,
       magFilter: THREE.NearestFilter,
@@ -103,6 +158,11 @@ export class VhsRenderer {
         time: { value: 0 },
         strength: { value: 1 },
         barrel: { value: 0 },
+        fish: { value: 0 },
+        hv: { value: 0.5 },
+        hood: { value: 0 },
+        circle: { value: 0 },
+        zoom: { value: 1 },
       },
       depthTest: false,
       depthWrite: false,
@@ -127,6 +187,13 @@ export class VhsRenderer {
     this.material.uniforms.time.value = time;
     this.material.uniforms.strength.value = this.strength;
     this.material.uniforms.barrel.value = this.barrel;
+    const u = this.material.uniforms;
+    u.fish.value = this.lens.fish;
+    u.hood.value = this.lens.hood;
+    u.circle.value = this.lens.circle;
+    const hv = ((camera.fov ?? 60) * Math.PI) / 360;
+    u.hv.value = hv;
+    u.zoom.value = this.lens.fish > 0.001 ? fishZoom(this.lens.fish, hv, u.res.value.x / u.res.value.y) : 1;
     r.setRenderTarget(this.target);
     r.render(scene, camera);
     r.setRenderTarget(null);

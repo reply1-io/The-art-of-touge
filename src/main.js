@@ -38,7 +38,7 @@ import { Shop } from './ui/shop.js';
 import { MapView } from './ui/mapView.js';
 import { MiniMap } from './ui/miniMap.js';
 import { Rain } from './render/rain.js';
-import { Recorder, Director, FreeCam, HZ } from './game/replay.js';
+import { Recorder, Director, FreeCam, HZ, lensFor } from './game/replay.js';
 import { medalTimes, medalFor } from './game/medals.js';
 import { loadSettings, saveSettings, loadTuning, saveTuning } from './settings.js';
 
@@ -685,6 +685,7 @@ function closeReplay() {
   rp.active = false;
   rp.uiOff = false;
   vhs.barrel = 0;
+  Object.assign(vhs.lens, { fish: 0, hood: 0, circle: 0 });
   document.body.classList.remove('replay-ui-off');
   $('replay').classList.add('hidden');
   document.body.classList.remove('in-replay');
@@ -697,13 +698,19 @@ function closeReplay() {
   if (paused) audio.suspend();
 }
 
+// What the lens dial is set to, in words.
+function lensLabel(v) {
+  const n = `${Math.round(v)}\u00b0`;
+  return v >= 149.5 ? `${n} CIRCULAR` : v > 120 ? `${n} FISHEYE + HOOD` : v > 60 ? `${n} FISHEYE` : n;
+}
+
 function renderReplayUi() {
   const el = $('replay');
   el.classList.toggle('no-osd', rp.mode !== 'vhs');
   el.classList.toggle('ui-off', rp.uiOff);
   document.body.classList.toggle('replay-ui-off', rp.uiOff);
   $('rp-fov').value = String(freeCam.fov);
-  $('rp-fov-val').textContent = `${Math.round(freeCam.fov)}\u00b0`;
+  $('rp-fov-val').textContent = lensLabel(freeCam.fov);
   $('replay-edit').classList.toggle('hidden', rp.mode !== 'edit');
   for (const b of document.querySelectorAll('#rp-mode button')) b.classList.toggle('sel', b.dataset.mode === rp.mode);
   for (const b of document.querySelectorAll('#rp-view button')) b.classList.toggle('sel', b.dataset.view === rp.view);
@@ -755,6 +762,11 @@ function replayFrame(dt, now) {
   }
   // The 10 mm camcorder shots bend at the edges.
   vhs.barrel = wide ? 0.55 : 0;
+  // Edit mode's lens dial: more and more fisheye as it turns up.
+  const lens = rp.mode === 'edit' ? lensFor(cam > 0 ? freeCam.lastFov : freeCam.fov) : null;
+  vhs.lens.fish = lens?.fish ?? 0;
+  vhs.lens.hood = lens?.hood ?? 0;
+  vhs.lens.circle = lens?.circle ?? 0;
   // Tyre smoke from the wheels that were sliding, where they were.
   if (rp.playing) {
     const r = wheelSetup(tune).radius;
@@ -853,7 +865,7 @@ $('rp-hide').addEventListener('click', () => {
 });
 $('rp-fov').addEventListener('input', () => {
   freeCam.fov = Number($('rp-fov').value);
-  $('rp-fov-val').textContent = `${Math.round(freeCam.fov)}\u00b0`;
+  $('rp-fov-val').textContent = lensLabel(freeCam.fov);
 });
 $('rp-fish').addEventListener('click', () => {
   rp.fish = !rp.fish;
