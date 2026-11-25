@@ -79,10 +79,12 @@ moon.shadow.camera.far = 140;
 moon.shadow.bias = -0.0006;
 moon.shadow.normalBias = 0.04;
 scene.add(moon, moon.target);
-const hemi = new THREE.HemisphereLight(0x4a5e96, 0x14161c, 1.15);
+const hemi = new THREE.HemisphereLight(0x283040, 0x0a0b0e, 0.35);
 scene.add(hemi);
 // Headlights: one spot light that rides on the car and lights the road ahead.
-const headlight = new THREE.SpotLight(0xfff2d8, 1300, 150, 0.6, 0.6, 1.5);
+// A real fall-off (decay 2) and a beam narrow enough to light the road, not blow the trees beside
+// it out to a glowing green.
+const headlight = new THREE.SpotLight(0xfff2d8, 900, 120, 0.46, 0.55, 2);
 scene.add(headlight, headlight.target);
 const sky = new Sky(scene);
 const flare = new LensFlare($('flare'));
@@ -120,7 +122,7 @@ function applyTime() {
   moon.intensity = p.sunIntensity;
   moon.position.copy(sunDir).multiplyScalar(100);
   // Night shadows from the moon are faint; the lamps carry the light.
-  moon.shadow.intensity = p.stars >= 0.9 ? 0.5 : 1;
+  moon.shadow.intensity = p.night ? 0.5 : 1;
   hemi.color.setHex(p.hemiSky);
   hemi.groundColor.setHex(p.hemiGround);
   hemi.intensity = p.hemiIntensity;

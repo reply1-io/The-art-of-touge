@@ -1113,7 +1113,7 @@ export class Mountain {
     bulb.position.y = 4.1;
     lamp.add(pole, bulb);
     const lampGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture('rgba(255,214,140,0.9)', 'rgba(255,170,60,0)'), blending: THREE.AdditiveBlending, depthWrite: false, fog: true }));
-    lampGlow.scale.set(4, 4, 1);
+    lampGlow.scale.set(7.5, 7.5, 1);
     lampGlow.position.y = 4.1;
     lamp.add(lampGlow);
     this.lampGlows?.push(lampGlow);
@@ -1552,7 +1552,7 @@ export class Mountain {
       hd.position.set(toward[0] * 1.7, 6.9, toward[1] * 1.7);
       hd.rotation.y = a.rotation.y;
       const s = new THREE.Sprite(glow);
-      s.scale.set(4, 4, 1);
+      s.scale.set(7.5, 7.5, 1);
       s.position.copy(hd.position);
       const p = new THREE.Mesh(pool, poolMat);
       const c = road.pointAt(i, side * 1.5, 0.03);
@@ -2109,7 +2109,7 @@ export class Mountain {
     vend.position.set(p[0], p[1] + 0.95, p[2]);
     vend.rotation.y = road.heading[f];
     const glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture('rgba(190,230,255,0.7)', 'rgba(120,180,255,0)'), blending: THREE.AdditiveBlending, depthWrite: false }));
-    glowSprite.scale.set(5, 5, 1);
+    glowSprite.scale.set(8, 8, 1);
     glowSprite.position.copy(vend.position);
     this.scene.add(vend, glowSprite);
   }
@@ -2453,7 +2453,7 @@ export class Mountain {
     this.cloudSea.setTime(preset);
     // The gas station is open by day and at sunset, closed at night.
     if (this.openSigns) {
-      const night = preset.stars >= 0.9;
+      const night = !!preset.night;
       this.openSigns.open.visible = !night;
       this.openSigns.closed.visible = night;
     }

@@ -67,10 +67,9 @@ export class CameraRig {
     const cam = this.camera;
     const mph = Math.hypot(velocity.x, velocity.z) * 2.237;
     const base = Math.min(150, drivingLens(this.userFov).fov + ((BASE_FOV[this.mode] ?? 60) - 60));
-    // Wider view with speed: +0 at 20 mph up to about +16 degrees by 110 mph (less when the view
-    // is already very wide).
     const room = Math.max(0, 1 - (this.userFov - 60) / 120);
-    const widen = Math.max(0, Math.min(1, (mph - 20) / 90)) ** 1.2 * (this.mode === 'chase' ? 16 : 12) * room;
+    // Only a touch wider at speed (up to +4 degrees by 110 mph), so you can still see ahead.
+    const widen = Math.max(0, Math.min(1, (mph - 20) / 90)) ** 1.2 * 4 * room;
     this.fov += (base + widen - this.fov) * (1 - Math.exp(-dt * 3));
     if (Math.abs(cam.fov - this.fov) > 0.01) {
       cam.fov = this.fov;

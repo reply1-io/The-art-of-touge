@@ -427,6 +427,22 @@ const E30_SHAPE = {
 };
 export const SHAPES = { e30: E30_SHAPE, rx7: RX7_SHAPE };
 
+let glowTex = null;
+function glowSpriteTexture() {
+  if (glowTex) return glowTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grd.addColorStop(0, 'rgba(255,255,255,1)');
+  grd.addColorStop(0.25, 'rgba(255,255,255,0.45)');
+  grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 64, 64);
+  glowTex = new THREE.CanvasTexture(c);
+  return glowTex;
+}
+
 export class CarModel {
   // spec: the car's physics spec; its `shape` picks the body ('e30' or 'rx7').
   constructor(spec, shapeId = spec.shape) {
@@ -624,6 +640,44 @@ export class CarModel {
     const head = (HEADLIGHTS[this.headColor] || HEADLIGHTS.white)[1];
     this.headMat.emissive.setHex(on ? head : 0x000000);
     this.tailMat.emissive.setHex(braking ? 0xff1a1a : on ? 0x550000 : 0x000000);
+    // A soft glow round each lamp.
+    this.glows ??= this.#makeGlows();
+    for (const g of this.glows.head) {
+      g.visible = on;
+      g.material.color.setHex(head);
+    }
+    for (const g of this.glows.tail) {
+      g.visible = on || braking;
+      g.material.opacity = braking ? 0.95 : 0.45;
+      g.scale.setScalar(braking ? 1.5 : 1.0);
+    }
+  }
+
+  // Glow sprites on the lamp meshes (so they follow pop-up headlights), one at each end of a lamp
+  // that spans the car and one in the middle of a small one.
+  #makeGlows() {
+    const tex = glowSpriteTexture();
+    const out = { head: [], tail: [] };
+    const box = new THREE.Box3();
+    this.root.updateMatrixWorld(true);
+    this.root.traverse((o) => {
+      if (!o.isMesh || (o.material !== this.headMat && o.material !== this.tailMat)) return;
+      const tail = o.material === this.tailMat;
+      o.geometry.computeBoundingBox();
+      box.copy(o.geometry.boundingBox);
+      const c = box.getCenter(new THREE.Vector3());
+      const w = box.max.x - box.min.x;
+      const xs = w > 0.6 ? [box.min.x + 0.18, box.max.x - 0.18] : [c.x];
+      for (const x of xs) {
+        const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: tail ? 0xff2a1a : 0xfff2d8, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: tail ? 0.45 : 0.85 }));
+        s.position.set(x, c.y, tail ? box.min.z - 0.05 : box.max.z + 0.05);
+        s.scale.setScalar(tail ? 1.0 : 1.6);
+        s.visible = false;
+        o.add(s);
+        (tail ? out.tail : out.head).push(s);
+      }
+    });
+    return out;
   }
 
   // In-car view: show the cockpit, take the glass out so you can see through it, and draw the
