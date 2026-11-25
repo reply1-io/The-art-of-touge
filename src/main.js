@@ -701,7 +701,7 @@ function closeReplay() {
 // What the lens dial is set to, in words.
 function lensLabel(v) {
   const n = `${Math.round(v)}\u00b0`;
-  return v >= 149.5 ? `${n} CIRCULAR` : v > 120 ? `${n} FISHEYE + HOOD` : v > 60 ? `${n} FISHEYE` : n;
+  return v >= 149.5 ? `${n} CIRCULAR` : v > 120 ? `${n} FISHEYE + HOOD` : v > 20 ? `${n} FISHEYE` : n;
 }
 
 function renderReplayUi() {
@@ -770,7 +770,8 @@ function replayFrame(dt, now) {
   vhs.barrel = wide ? 0.55 : 0;
   // Edit mode's lens dial: more and more fisheye as it turns up.
   const lens = rp.mode === 'edit' && !wide ? lensFor(cam > 0 ? freeCam.lastFov : freeCam.fov) : null;
-  vhs.lens.fish = lens?.fish ?? 0;
+  // (Pushed past a true fisheye, half as much again, so the bend is plain to see.)
+  vhs.lens.fish = (lens?.fish ?? 0) * 1.5;
   vhs.lens.hood = lens?.hood ?? 0;
   vhs.lens.circle = lens?.circle ?? 0;
   // Tyre smoke from the wheels that were sliding, where they were.

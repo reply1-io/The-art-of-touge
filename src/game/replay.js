@@ -109,14 +109,14 @@ export class Recorder {
   }
 }
 
-// The edit-mode lens dial (10..150). Up to 60 it is a plain field of view. Beyond that the lens
-// turns fisheye, bending more and more while the view itself only widens to 120 degrees; past 120
-// a lens hood creeps into the corners, and at 150 it is a full circular fisheye.
+// The edit-mode lens dial (10..150). From about 20 degrees up the lens bends, more and more the
+// higher it goes, while the view itself only widens to 120 degrees; past 120 a lens hood creeps
+// into the corners, and at 150 it is a full circular fisheye.
 export function lensFor(v) {
-  const k = Math.max(0, (v - 60) / 90);
+  const k = Math.max(0, (v - 20) / 130);
   return {
-    fov: v <= 60 ? v : 60 + (v - 60) * (60 / 90),
-    fish: Math.pow(k, 1.1),
+    fov: v <= 40 ? v : 40 + (v - 40) * (80 / 110),
+    fish: Math.pow(k, 0.8),
     hood: Math.min(1, Math.max(0, (v - 120) / 30)),
     circle: Math.min(1, Math.max(0, (v - 142) / 8)),
   };
