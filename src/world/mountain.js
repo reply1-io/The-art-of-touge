@@ -1727,9 +1727,9 @@ export class Mountain {
           [0.5, 0.13, 0.1],
         ];
         g.maples.forEach(([x, y, z, h, sh = 1], n) => {
-          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h * 0.045, h * 0.5, h * 0.045)));
+          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h, h, h)));
           trunks.setColorAt(n, col.setRGB(sh, sh, sh));
-          crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.62, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h * 0.36, h * 0.36, h * 0.36)));
+          crowns.setMatrixAt(n, m.compose(v.set(x, y, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h, h, h)));
           q.identity();
           const [r, gg, b] = autumn[Math.floor(noise2(x * 0.9, z * 0.9) * 4) % 4];
           const k2 = (0.8 + noise2(x * 3, z * 2) * 0.35) * sh;
@@ -1765,9 +1765,9 @@ export class Mountain {
         ];
         g.broad.forEach(([x, y, z, h, tint, sh = 1], n) => {
           const flat = tint === 1 ? 1.5 : 1;
-          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h * 0.045 * flat, h * 0.5, h * 0.045 * flat)));
+          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h * flat, h, h * flat)));
           trunks.setColorAt(n, col.setRGB(sh, sh, sh));
-          crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.62, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h * 0.34 * flat, h * 0.36, h * 0.34 * flat)));
+          crowns.setMatrixAt(n, m.compose(v.set(x, y, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h * flat, h, h * flat)));
           q.identity();
           const [r, gg, b] = tints[tint];
           const k2 = (0.78 + noise2(x * 3, z * 2) * 0.4) * sh;

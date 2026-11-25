@@ -282,7 +282,7 @@ export function redwoodTrunk() {
 // outline is leaves or needles, not polygon edges. Normals point out from the crown's axis, so the
 // whole crown lights as one rounded mass: sunlit on top and outside, shaded underneath and inside.
 // clumps: [x, y, z, radius]; flat < 1 squashes the upright cards (flat, layered sprays).
-function cardCrown(clumps, r, { flat = 1, axisNormals = false, dark = 0.4 } = {}) {
+function cardCrown(clumps, r, { flat = 1, axisNormals = false, dark = 0.4, center = [0, 0, 0], radius = 0.95, size = 1.25 } = {}) {
   const pos = [];
   const col = [];
   const uv = [];
@@ -292,7 +292,7 @@ function cardCrown(clumps, r, { flat = 1, axisNormals = false, dark = 0.4 } = {}
   const yMax = Math.max(...clumps.map((c) => c[1]));
   for (const [cx, cy, cz, cr] of clumps) {
     const c = v3(cx, cy, cz);
-    const s = cr * 1.25; // the foliage fills about 80% of the card
+    const s = cr * size; // the foliage fills about 80% of the card
     const spin = r() * Math.PI;
     const cards = [
       [v3(Math.cos(spin), 0, Math.sin(spin)), v3(0, flat, 0)],
@@ -310,10 +310,10 @@ function cardCrown(clumps, r, { flat = 1, axisNormals = false, dark = 0.4 } = {}
         const p = P[k];
         pos.push(p.x, p.y, p.z);
         uv.push(T[k][0], T[k][1]);
-        const n = (axisNormals ? v3(p.x, 0.35, p.z) : p.clone().add(v3(0, 0.25, 0))).normalize();
+        const n = (axisNormals ? v3(p.x, 0.35, p.z) : p.clone().sub(v3(...center)).add(v3(0, 0.25 * radius, 0))).normalize();
         nrm.push(n.x, n.y, n.z);
-        const rad = axisNormals ? Math.max(0.05, Math.abs(cx) + Math.abs(cz)) : 0.95;
-        const out = Math.min(1, Math.hypot(p.x, p.z) / rad);
+        const rad = axisNormals ? Math.max(0.05, Math.abs(cx) + Math.abs(cz)) : radius;
+        const out = Math.min(1, Math.hypot(p.x - center[0], p.z - center[2]) / rad);
         const high = Math.max(0, Math.min(1, (p.y - yMin) / Math.max(0.01, yMax - yMin)));
         const lum = dark + 0.35 * high + (1 - dark - 0.1) * 0.6 * out;
         col.push(lum, lum, lum);
@@ -328,23 +328,15 @@ function cardCrown(clumps, r, { flat = 1, axisNormals = false, dark = 0.4 } = {}
   return g;
 }
 
-// ---------- 3. Broadleaf (oak, maple, beech, aspen): a billowing cloud of leaf clusters ----------
-// Unit sphere space (radius about 1 round the origin), like the old round crown.
-export function broadCrown(seed = 3) {
-  const r = rng(seed);
-  const clumps = [[0, 0.05, 0, 0.6]];
-  for (let i = 0; i < 7; i++) {
-    const a = (i / 7) * Math.PI * 2 + r() * 0.4;
-    const d = 0.55 + r() * 0.15;
-    clumps.push([Math.cos(a) * d, -0.35 + r() * 0.25, Math.sin(a) * d, 0.42 + r() * 0.1]);
-  }
-  for (let i = 0; i < 6; i++) {
-    const a = ((i + 0.5) / 6) * Math.PI * 2 + r() * 0.4;
-    const d = 0.42 + r() * 0.18;
-    clumps.push([Math.cos(a) * d, 0.3 + r() * 0.2, Math.sin(a) * d, 0.42 + r() * 0.1]);
-  }
-  clumps.push([(r() - 0.5) * 0.2, 0.72, (r() - 0.5) * 0.2, 0.42]);
-  return cardCrown(clumps, r, { dark: 0.62 });
+// ---------- 3. Broadleaf (oak, maple, beech, aspen) ----------
+// Built as one tree in tree-height units (scale evenly by the height, ground at y = 0): the
+// branches, and leaf clusters grown at the branch tips, so the crown follows the branches and
+// you see limbs in the gaps between the clusters.
+export function broadCrown(seed = 5) {
+  return broadTree(seed).crown;
+}
+export function broadTrunk(seed = 5) {
+  return broadTree(seed).trunk;
 }
 
 // ---------- 2b. Coast redwood crown: dense, flat sprays clumped along the upper trunk ----------
@@ -366,43 +358,88 @@ export function redwoodCrown(seed = 11) {
   return cardCrown(clumps, r, { flat: 0.55, axisNormals: true, dark: 0.35 });
 }
 
-// Broadleaf trunk: unit height, base radius 1 (scale x and z to the trunk radius), a slight lean, splitting into three limbs that reach up into the
-// crown (above y = 1, which the forest code hides inside the crown).
-export function broadTrunk(seed = 5) {
+// Broadleaf trunk and branches, in tree-height units (scale evenly by the tree's height): a trunk
+// that tapers all the way up into a leader, main limbs leaving it at different heights and
+// angles, each splitting into smaller branches that reach out to the edge of the crown.
+// Every branch is thinner than the one it grows from, so nothing thickens on the way up.
+const treeCache = new Map();
+function broadTree(seed) {
+  if (treeCache.has(seed)) return treeCache.get(seed);
   const r = rng(seed);
+  const clumps = [];
   const pos = [];
   const col = [];
-  const limb = (a, b, ra, rb, ca, cb) => {
-    const sides = 5;
-    const dir = new THREE.Vector3().subVectors(new THREE.Vector3(...b), new THREE.Vector3(...a)).normalize();
-    const side = new THREE.Vector3(0, 0, 1).cross(dir);
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const limb = (a, b, ra, rb, ca, cb, sides = 5) => {
+    const dir = V().subVectors(b, a).normalize();
+    const side = V(0, 0, 1).cross(dir);
     if (side.lengthSq() < 1e-4) side.set(1, 0, 0);
     side.normalize();
-    const up = new THREE.Vector3().crossVectors(dir, side);
+    const up = V().crossVectors(dir, side);
     const ringAt = (p, rad) =>
       Array.from({ length: sides }, (_, k) => {
         const t = (k / sides) * Math.PI * 2;
-        return [p[0] + (side.x * Math.cos(t) + up.x * Math.sin(t)) * rad, p[1] + (side.y * Math.cos(t) + up.y * Math.sin(t)) * rad, p[2] + (side.z * Math.cos(t) + up.z * Math.sin(t)) * rad];
+        return p.clone().addScaledVector(side, Math.cos(t) * rad).addScaledVector(up, Math.sin(t) * rad).toArray();
       });
     const A = ringAt(a, ra);
     const B = ringAt(b, rb);
     for (let k = 0; k < sides; k++) {
       const k2 = (k + 1) % sides;
-      const s1 = 0.75 + 0.25 * Math.cos((k / sides) * Math.PI * 2);
-      const s2 = 0.75 + 0.25 * Math.cos((k2 / sides) * Math.PI * 2);
+      const s1 = 0.7 + 0.3 * Math.cos((k / sides) * Math.PI * 2 - 0.8);
+      const s2 = 0.7 + 0.3 * Math.cos((k2 / sides) * Math.PI * 2 - 0.8);
       tri(pos, col, A[k], B[k], B[k2], ca * s1, cb * s1, cb * s2);
       tri(pos, col, A[k], B[k2], A[k2], ca * s1, cb * s2, ca * s2);
     }
   };
-  // Across is in trunk-radius units (the forest code scales x and z by a share of the height).
-  const fork = [0.3, 0.7, 0.15];
-  limb([0, 0, 0], fork, 1, 0.65, 0.7, 0.9);
-  for (let i = 0; i < 3; i++) {
-    const a = (i / 3) * Math.PI * 2 + r();
-    const d = 3.2 + r() * 1.5;
-    limb(fork, [Math.cos(a) * d, 1.3 + r() * 0.15, Math.sin(a) * d], 0.45, 0.15, 0.9, 1);
+  // Trunk: three sections with a little wander, base radius 2.6% of the height, root flare.
+  const base = 0.026;
+  const trunkR = (y) => base * (1 - y * 1.05) + 0.003;
+  const pts = [V(0, 0, 0), V(0.004, 0.3, 0.002), V(-0.01, 0.58, 0.01), V(0.006, 0.88, -0.004)];
+  limb(V(0, -0.02, 0), V(0, 0.04, 0), base * 1.5, trunkR(0.04), 0.6, 0.7, 6);
+  for (let i = 0; i < pts.length - 1; i++) limb(pts[i].clone().setY(Math.max(0.04, pts[i].y)), pts[i + 1], trunkR(Math.max(0.04, pts[i].y)), trunkR(pts[i + 1].y), 0.7, 0.85, 6);
+  const along = (y) => {
+    for (let i = 0; i < pts.length - 1; i++) {
+      if (y <= pts[i + 1].y) return pts[i].clone().lerp(pts[i + 1], (y - pts[i].y) / (pts[i + 1].y - pts[i].y));
+    }
+    return pts[pts.length - 1].clone();
+  };
+  // Main limbs: spiralling round the trunk, low ones long and spreading, high ones short and steep.
+  const mains = 10;
+  for (let i = 0; i < mains; i++) {
+    const f = i / (mains - 1);
+    const y0 = 0.28 + f * 0.46 + (r() - 0.5) * 0.04;
+    const a = i * 2.39996 + (r() - 0.5) * 0.4;
+    const rise = 0.5 + f * 0.6 + r() * 0.15; // angle above level, radians
+    const len = (0.34 - f * 0.14) * (0.92 + r() * 0.16);
+    const p0 = along(y0);
+    const d = V(Math.cos(a) * Math.cos(rise), Math.sin(rise), Math.sin(a) * Math.cos(rise));
+    const mid = p0.clone().addScaledVector(d, len * 0.55);
+    // A gentle bend: the outer half turns up and out a little.
+    const d2 = d.clone().add(V(0, 0.25, 0)).normalize();
+    const end = mid.clone().addScaledVector(d2, len * 0.45);
+    const r0 = trunkR(y0) * 0.62;
+    limb(p0, mid, r0, r0 * 0.6, 0.8, 0.9);
+    limb(mid, end, r0 * 0.6, r0 * 0.15, 0.9, 1);
+    clumps.push([...end.toArray(), 0.12 + r() * 0.03]);
+    clumps.push([...mid.toArray(), 0.1 + r() * 0.02]);
+    // Side branches off each limb, forking out to fill the crown.
+    for (let k = 0; k < 4; k++) {
+      const t = 0.3 + k * 0.2;
+      const from = t < 0.55 ? p0.clone().lerp(mid, t / 0.55) : mid.clone().lerp(end, (t - 0.55) / 0.45);
+      const ra = (t < 0.55 ? r0 * (1 - 0.4 * (t / 0.55)) : r0 * 0.6 * (1 - (t - 0.55) / 0.45 * 0.75)) * 0.55;
+      const sa = a + (k % 2 ? 1 : -1) * (0.6 + r() * 0.5);
+      const sr = rise + 0.2 + r() * 0.3;
+      const sl = len * (0.35 + r() * 0.15);
+      const tip = from.clone().add(V(Math.cos(sa) * Math.cos(sr) * sl, Math.sin(sr) * sl, Math.sin(sa) * Math.cos(sr) * sl));
+      limb(from, tip, ra, 0.002, 0.9, 1, 4);
+      clumps.push([...tip.toArray(), 0.1 + r() * 0.03]);
+    }
   }
-  return soup(pos, col);
+  clumps.push([pts[3].x, pts[3].y + 0.02, pts[3].z, 0.13]);
+  clumps.push([pts[2].x, pts[2].y + 0.1, pts[2].z, 0.14]);
+  const out = { trunk: soup(pos, col), crown: cardCrown(clumps, r, { dark: 0.5, center: [0, 0.62, 0], radius: 0.36, size: 1.3 }) };
+  treeCache.set(seed, out);
+  return out;
 }
 
 // Plain conifer trunk with the same shading (unit height, base radius 0.28).
