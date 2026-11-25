@@ -198,10 +198,10 @@ const LENS_WHITE = [0.85, 0.85, 0.82];
 // Round lamps for the nose: [x, y, radius]. The E30 has two per side in a black surround, the outer
 // (dipped) lamp slightly larger than the inner (main beam).
 export const HEADLAMPS = [
-  [0.6, 0.65, 0.08],
-  [0.405, 0.65, 0.074],
-  [-0.405, 0.65, 0.074],
-  [-0.6, 0.65, 0.08],
+  [0.6, 0.652, 0.087],
+  [0.405, 0.652, 0.081],
+  [-0.405, 0.652, 0.081],
+  [-0.6, 0.652, 0.087],
 ];
 
 function detailPolys() {
@@ -585,6 +585,30 @@ const E30_SHAPE = {
 export const SHAPES = { e30: E30_SHAPE, rx7: RX7_SHAPE };
 registerStockShapes(SHAPES); // so a Car Builder design can start from either body
 
+// What the paint reflects: a soft, dim sky over a bright horizon line and dark ground, so panels
+// facing up catch a sheen and the sides pick up a horizon streak, as on a real car at dusk.
+let envTex = null;
+function paintEnv() {
+  if (envTex || typeof document === 'undefined') return envTex;
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 32;
+  const g = c.getContext('2d');
+  const gr = g.createLinearGradient(0, 0, 0, 32);
+  gr.addColorStop(0, '#0b0e14');
+  gr.addColorStop(0.38, '#1c222d');
+  gr.addColorStop(0.47, '#8a8780');
+  gr.addColorStop(0.5, '#2a2622');
+  gr.addColorStop(0.56, '#000000');
+  gr.addColorStop(1, '#000000');
+  g.fillStyle = gr;
+  g.fillRect(0, 0, 64, 32);
+  envTex = new THREE.CanvasTexture(c);
+  envTex.mapping = THREE.EquirectangularReflectionMapping;
+  envTex.colorSpace = THREE.SRGBColorSpace;
+  return envTex;
+}
+
 const frontTex = {};
 function frontTexture(name, repeat) {
   if (frontTex[name] || typeof document === 'undefined') return frontTex[name] || null;
@@ -640,7 +664,9 @@ export class CarModel {
     // Painted panels get their own material so the paint colour can change.
     const white = (polys) => polys.map((p) => ({ ...p, color: [1, 1, 1] }));
     // Glossy paint: a sharp specular highlight where the light catches each panel.
-    this.paintMat = new THREE.MeshPhongMaterial({ color: 0xefeee6, vertexColors: true, flatShading: true, shininess: 70, specular: 0x6a6a6a });
+    // Glossy paint: a tight, bright highlight (clear coat) and a soft reflection of sky and ground.
+    const gloss = { shininess: 140, specular: 0x9a9a9a, envMap: paintEnv(), combine: THREE.AddOperation, reflectivity: 0.5 };
+    this.paintMat = new THREE.MeshPhongMaterial({ color: 0xefeee6, vertexColors: true, flatShading: true, ...gloss });
     body.add(new THREE.Mesh(polyGeometry(white([...shell.paint, ...cabin.paint, ...(detail.paint || [])])), this.paintMat));
     this.cabinTop = new THREE.Mesh(polyGeometry(white(shell.cabinTop)), this.paintMat);
     body.add(this.cabinTop);
@@ -679,7 +705,7 @@ export class CarModel {
     if (detail.kidney?.length) body.add(new THREE.Mesh(flatUV(detail.kidney, 0.145, -0.145, 0.572, 0.738), new THREE.MeshLambertMaterial({ map: frontTexture('kidney', false), flatShading: true })));
     if (detail.head?.length) body.add(new THREE.Mesh(polyGeometry(detail.head), this.headMat));
     // Body-colour parts that are not part of the shell mesh (pop-up lids).
-    this.lidMat = new THREE.MeshPhongMaterial({ color: 0xefeee6, flatShading: true, shininess: 70, specular: 0x6a6a6a });
+    this.lidMat = new THREE.MeshPhongMaterial({ color: 0xefeee6, flatShading: true, ...gloss });
     // Round headlamps with chrome rings (E30), or pop-up headlamps (RX-7).
     for (const [x, y, r] of shape.lamps || []) {
       const lamp = new THREE.Mesh(new THREE.CircleGeometry(r, 20), this.lensMat);
