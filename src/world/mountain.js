@@ -4,7 +4,9 @@ import * as THREE from 'three';
 import { crossSection, STEP, JUNCTION } from './road.js';
 import { TRACKS } from './tracks.js';
 import { Terrain, noise2 } from './terrain.js';
-import { buildMountainPhysics } from './mountainPhysics.js';
+import { buildMountainPhysics, addCrowdColliders } from './mountainPhysics.js';
+import { crowdsFor, SHIRTS, PANTS, SKIN } from './crowds.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Ranges, CloudSea, buildWaterfalls, sunAzimuth } from './wilds.js';
 import { ZONE_INNER, zoneAt, zonePoint, stationLayout, showLayout, homeLayout, lotLayout } from './stops.js';
 
@@ -190,6 +192,100 @@ const COLORS = {
   gutter: [0.55, 0.55, 0.52],
 };
 
+// Thick forest, where you should not be able to see far in.
+const isForest = (sc) => sc.trees >= 0.6 && sc.forest !== 'krummholz' && sc.forest !== 'oak' && sc.forest !== 'juniper';
+const smoothstep = (a, b, x) => {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+// A parked car: a boxy PS1-style hatch or sedan in one of six paints.
+const CAR_PAINTS = [0xa8322a, 0x2c4f8a, 0xd8d8d0, 0x2d2f33, 0x6c7a52, 0xc79a2a];
+const carMats = new Map();
+function parkedCar(paint) {
+  const lam = (c) => {
+    if (!carMats.has(c)) carMats.set(c, new THREE.MeshLambertMaterial({ color: c }));
+    return carMats.get(c);
+  };
+  const p = lam(CAR_PAINTS[paint % CAR_PAINTS.length]);
+  const glass = lam(0x1c2430);
+  const car = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.7, 4.2), p);
+  body.position.y = 0.65;
+  const cab = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.55, 2.1), [p, p, p, p, glass, glass]);
+  cab.position.set(0, 1.27, -0.2);
+  car.add(body, cab);
+  for (const [x, zz] of [[-0.8, 1.35], [0.8, 1.35], [-0.8, -1.35], [0.8, -1.35]]) {
+    const w = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.22, 10).rotateZ(Math.PI / 2), lam(0x151515));
+    w.position.set(x, 0.33, zz);
+    car.add(w);
+  }
+  car.traverse((o) => (o.castShadow = true));
+  return car;
+}
+
+// A person, about 1.75 m tall, facing +z, as one mesh with the colours baked in.
+// pose: 0 filming with the phone held up in both hands, 1 filming one-handed with the arm high,
+// 2 arms crossed, 3 pointing, 4 behind a camera on a tripod. look: [shirt, pants, skin, hat].
+function personGeometry(pose, [shirt, pants, skin, hat]) {
+  const parts = [];
+  const col = new THREE.Color();
+  const box = (w, h, d, x, y, z, color, rx = 0) => {
+    const g = new THREE.BoxGeometry(w, h, d).toNonIndexed();
+    if (rx) g.rotateX(rx);
+    g.translate(x, y, z);
+    col.setHex(color);
+    const c = new Float32Array(g.getAttribute('position').count * 3);
+    for (let k = 0; k < c.length; k += 3) c.set([col.r, col.g, col.b], k);
+    g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+    g.deleteAttribute('uv');
+    parts.push(g);
+  };
+  const S = SHIRTS[shirt];
+  const P = PANTS[pants];
+  const K = SKIN[skin];
+  const phone = 0x111318;
+  box(0.15, 0.84, 0.17, -0.1, 0.42, 0, P);
+  box(0.15, 0.84, 0.17, 0.1, 0.42, 0, P);
+  box(0.16, 0.08, 0.26, -0.1, 0.04, 0.04, 0x2a2a2a);
+  box(0.16, 0.08, 0.26, 0.1, 0.04, 0.04, 0x2a2a2a);
+  box(0.44, 0.62, 0.25, 0, 1.15, 0, S);
+  box(0.2, 0.22, 0.21, 0, 1.6, 0, K);
+  if (hat >= 0) {
+    const hc = [0x1b1b1b, 0xc0392b, 0x2c3e50, 0xd8c8a0][hat];
+    box(0.23, 0.08, 0.23, 0, 1.74, 0, hc);
+    box(0.2, 0.03, 0.12, 0, 1.71, 0.15, hc);
+  }
+  const armDown = (x) => box(0.1, 0.62, 0.11, x, 1.12, 0, S);
+  if (pose === 0) {
+    box(0.1, 0.11, 0.42, -0.17, 1.35, 0.2, S, -0.35);
+    box(0.1, 0.11, 0.42, 0.17, 1.35, 0.2, S, -0.35);
+    box(0.17, 0.09, 0.02, 0, 1.5, 0.42, phone);
+  } else if (pose === 1) {
+    armDown(-0.28);
+    box(0.1, 0.6, 0.1, 0.27, 1.72, 0.08, S, 0.3);
+    box(0.09, 0.16, 0.02, 0.27, 2.06, 0.2, phone);
+  } else if (pose === 2) {
+    box(0.5, 0.12, 0.13, 0, 1.2, 0.16, S);
+    box(0.1, 0.3, 0.11, -0.27, 1.3, 0.05, S);
+    box(0.1, 0.3, 0.11, 0.27, 1.3, 0.05, S);
+  } else if (pose === 3) {
+    armDown(-0.28);
+    box(0.1, 0.11, 0.62, 0.25, 1.42, 0.3, S);
+    box(0.07, 0.07, 0.1, 0.25, 1.42, 0.65, K);
+  } else {
+    // Hands on a camera on a tripod in front of them.
+    box(0.1, 0.11, 0.4, -0.15, 1.3, 0.2, S, -0.2);
+    box(0.1, 0.11, 0.4, 0.15, 1.3, 0.2, S, -0.2);
+    box(0.2, 0.16, 0.28, 0, 1.38, 0.46, 0x1b1b1b);
+    box(0.08, 0.08, 0.12, 0, 1.38, 0.64, 0x333333);
+    for (const a of [0, 2.1, 4.2]) box(0.03, 1.3, 0.03, Math.sin(a) * 0.18, 0.66, 0.46 + Math.cos(a) * 0.18, 0x2a2a2a);
+  }
+  const g = mergeGeometries(parts);
+  g.computeVertexNormals();
+  return g;
+}
+
 // The colour of the land on the real roads: alpine tundra with rock and old snow, the dark redwood
 // floor, golden coastal grass, the green Appalachian forest floor, and dusty sagebrush country
 // with red rock bands.
@@ -266,6 +362,8 @@ export class Mountain {
     this.#buildRoadSigns();
     this.#buildJunctionSigns();
     this.#buildStops();
+    // Real roads: people at the roadside filming, and the cars they came in.
+    if (this.track.real) this.#buildCrowds(world);
     this.#buildLake();
     this.#buildTown();
     this.#buildLines();
@@ -519,6 +617,70 @@ export class Mountain {
     }
   }
 
+  // People at the roadside, each one mesh (shared shapes, colours baked in) so they can turn to
+  // watch you go by. Grouped by stretch of road so the distance culling hides them in batches.
+  #buildCrowds(world) {
+    const crowd = crowdsFor(this.road, this.terrain, { seed: this.road.count });
+    addCrowdColliders(world, crowd);
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    const shapes = new Map();
+    const groups = new Map();
+    this.crowds = [];
+    for (const p of crowd.people) {
+      const key = `${p.pose}:${p.look.join(',')}`;
+      if (!shapes.has(key)) shapes.set(key, personGeometry(p.pose, p.look));
+      const m = new THREE.Mesh(shapes.get(key), mat);
+      m.position.set(p.x, p.y, p.z);
+      m.rotation.y = p.yaw;
+      m.castShadow = true;
+      const k = Math.floor(p.i / ROAD_CHUNK);
+      if (!groups.has(k)) groups.set(k, { group: new THREE.Group(), people: [], x: 0, z: 0 });
+      const g = groups.get(k);
+      g.group.add(m);
+      g.people.push({ m, yaw: p.yaw, x: p.x, z: p.z, phase: (p.x * 7.3 + p.z) % 6.28 });
+    }
+    for (const c of crowd.cars) {
+      const car = parkedCar(c.paint);
+      car.position.set(c.x, c.y, c.z);
+      car.rotation.y = c.yaw;
+      const k = Math.floor(this.road.nearestIndex(c.x, c.z) / ROAD_CHUNK);
+      if (!groups.has(k)) groups.set(k, { group: new THREE.Group(), people: [], x: 0, z: 0 });
+      groups.get(k).group.add(car);
+    }
+    for (const [k, g] of groups) {
+      const mid = Math.min(this.road.count - 1, k * ROAD_CHUNK + ROAD_CHUNK / 2);
+      g.x = this.road.x[mid];
+      g.z = this.road.z[mid];
+      this.#addChunk(g.group, g.x, g.z, ROAD_CHUNK * STEP * 0.6 + 20);
+      this.crowds.push(g);
+    }
+    this.crowdTime = 0;
+  }
+
+  // The people near the car turn to follow it, and shift their weight now and then.
+  #updateCrowds(cam, dt) {
+    if (!this.crowds) return;
+    this.crowdTime += dt;
+    const t = this.crowdTime;
+    for (const g of this.crowds) {
+      if (!g.group.visible || (g.x - cam.x) ** 2 + (g.z - cam.z) ** 2 > 200 * 200) continue;
+      for (const p of g.people) {
+        const d2 = (p.x - cam.x) ** 2 + (p.z - cam.z) ** 2;
+        let want = p.yaw + Math.sin(t * 0.4 + p.phase) * 0.25;
+        if (d2 < 110 * 110) {
+          let to = Math.atan2(cam.x - p.x, cam.z - p.z) - p.yaw;
+          while (to > Math.PI) to -= 2 * Math.PI;
+          while (to < -Math.PI) to += 2 * Math.PI;
+          want = p.yaw + Math.max(-1.7, Math.min(1.7, to));
+        }
+        let e = want - p.m.rotation.y;
+        while (e > Math.PI) e -= 2 * Math.PI;
+        while (e < -Math.PI) e += 2 * Math.PI;
+        p.m.rotation.y += e * Math.min(1, dt * 4);
+      }
+    }
+  }
+
   // A named lot on a real road: its sign, parked cars, and at Looking Glass Falls the falls.
   #lot(z, at, lambert, group) {
     const road = this.road;
@@ -563,18 +725,7 @@ export class Mountain {
     // Parked cars along the back of the lot.
     const paints = [0xa8322a, 0x2c4f8a, 0xd8d8d0, 0x2d2f33, 0x6c7a52, 0xc79a2a];
     lay.cars.forEach((pt, k) => {
-      const car = new THREE.Group();
-      const paint = lambert(paints[(k * 3 + z.i0) % paints.length]);
-      const body = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.7, 4.2), paint);
-      body.position.y = 0.65;
-      const cab = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.55, 2.1), [paint, paint, paint, paint, lambert(0x1c2430), lambert(0x1c2430)]);
-      cab.position.set(0, 1.27, -0.2);
-      car.add(body, cab);
-      for (const [x, zz] of [[-0.8, 1.35], [0.8, 1.35], [-0.8, -1.35], [0.8, -1.35]]) {
-        const w = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.22, 10).rotateZ(Math.PI / 2), lambert(0x151515));
-        w.position.set(x, 0.33, zz);
-        car.add(w);
-      }
+      const car = parkedCar((k * 3 + z.i0) % 6);
       // Nosed in, square to the back of the lot.
       const c2 = at(pt, car);
       c2.rotation.y = pt.yaw + (Math.PI / 2) * z.side;
@@ -1235,8 +1386,11 @@ export class Mountain {
             const n = noise2(x / 9, z / 9);
             let cc;
             const gr = this.nearGrid ? this.sceneXZ(x, z) : null;
+            // Under thick forest the floor gets darker the further it is from the road.
+            const gloom = gr && isForest(gr) ? 1 - 0.75 * smoothstep(8, 40, t.roadDist[k]) : 1;
             if (gr && gr.ground !== 'forest') {
-              col.push(...groundColour(gr, x, z, h, slope, t.roadDist[k], n));
+              const gc = groundColour(gr, x, z, h, slope, t.roadDist[k], n);
+              col.push(gc[0] * gloom, gc[1] * gloom, gc[2] * gloom);
               continue;
             }
             if (t.roadDist[k] > 48) {
@@ -1246,7 +1400,7 @@ export class Mountain {
             } else cc = [0.13 + n * 0.05, 0.19 + n * 0.06, 0.1];
             if (slope > 0.75) cc = [0.33 + n * 0.06, 0.32 + n * 0.06, 0.3 + n * 0.05];
             else if (slope > 0.45 && t.roadDist[k] <= 48) cc = [0.24, 0.23, 0.17];
-            col.push(...cc);
+            col.push(cc[0] * gloom, cc[1] * gloom, cc[2] * gloom);
           }
         }
         for (let r = 0; r < rows - 1; r++) {
@@ -1477,7 +1631,7 @@ export class Mountain {
           // The far forest follows the road's scenery: none above the trees, tall redwoods, round
           // broadleaf crowns, scattered junipers in the sagebrush.
           const fs = this.sceneXZ(jx, jz);
-          if (noise2(jx / 30 + 4, jz / 30) > fs.trees * 0.85) continue;
+          if (!isForest(fs) && noise2(jx / 30 + 4, jz / 30) > fs.trees * 0.85) continue;
           if (fs.forest === 'krummholz') continue;
           if (fs.forest === 'redwood') hh *= 2.2;
           if (fs.forest === 'hardwood' || fs.forest === 'oak') tint = 1;
@@ -1486,6 +1640,7 @@ export class Mountain {
             tint = 2;
           }
           if (fs.forest === 'pine') tint = 3;
+          if (isForest(fs)) tint += 10; // deep in the forest: dark
         }
         if (!far.has(key)) far.set(key, []);
         far.get(key).push([jx, t.heightAt(jx, jz) - 0.4, jz, hh, tint]);
@@ -1512,11 +1667,12 @@ export class Mountain {
       if (g.trees.length) {
         const trunks = new THREE.InstancedMesh(trunk, trunkMat, g.trees.length);
         const crowns = new THREE.InstancedMesh(crown, crownMat, g.trees.length);
-        g.trees.forEach(([x, y, z, h, tint = 0], n) => {
+        g.trees.forEach(([x, y, z, h, tint = 0, sh = 1], n) => {
           const w = tint === 1 ? 0.15 : tint === 2 ? 0.28 : 0.19;
           trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(1, h * 0.35, 1)));
+          trunks.setColorAt(n, col.setRGB(sh, sh, sh));
           crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.22, z), q, sc.set(h * w, h * 0.82, h * w)));
-          const b = 0.75 + noise2(x * 3, z * 3) * 0.5;
+          const b = (0.75 + noise2(x * 3, z * 3) * 0.5) * sh;
           // Cedar green; lodgepole and spruce darker and bluer; wind-stunted trees at treeline.
           if (tint === 1) crowns.setColorAt(n, col.setRGB(0.07 * b, 0.17 * b, 0.13 * b));
           else if (tint === 2) crowns.setColorAt(n, col.setRGB(0.1 * b, 0.2 * b, 0.14 * b));
@@ -1533,12 +1689,13 @@ export class Mountain {
           [0.74, 0.5, 0.12],
           [0.5, 0.13, 0.1],
         ];
-        g.maples.forEach(([x, y, z, h], n) => {
+        g.maples.forEach(([x, y, z, h, sh = 1], n) => {
           trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(0.9, h * 0.45, 0.9)));
+          trunks.setColorAt(n, col.setRGB(sh, sh, sh));
           crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.62, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h * 0.33, h * 0.3, h * 0.33)));
           q.identity();
           const [r, gg, b] = autumn[Math.floor(noise2(x * 0.9, z * 0.9) * 4) % 4];
-          const k2 = 0.8 + noise2(x * 3, z * 2) * 0.35;
+          const k2 = (0.8 + noise2(x * 3, z * 2) * 0.35) * sh;
           crowns.setColorAt(n, col.setRGB(r * k2, gg * k2, b * k2));
         });
         group.add(trunks, crowns);
@@ -1547,11 +1704,12 @@ export class Mountain {
         // Redwoods: thick red-brown trunks, bare for the first third, then a narrow dark crown.
         const trunks = new THREE.InstancedMesh(trunk, redwoodMat, g.redwoods.length);
         const crowns = new THREE.InstancedMesh(crown, crownMat, g.redwoods.length);
-        g.redwoods.forEach(([x, y, z, h], n) => {
+        g.redwoods.forEach(([x, y, z, h, sh = 1], n) => {
           const r = 2.2 + noise2(x, z) * 2.2;
           trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(r, h * 0.62, r)));
+          trunks.setColorAt(n, col.setRGB(sh, sh, sh));
           crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.32, z), q, sc.set(h * 0.14, h * 0.72, h * 0.14)));
-          const b = 0.75 + noise2(x * 3, z * 3) * 0.45;
+          const b = (0.75 + noise2(x * 3, z * 3) * 0.45) * sh;
           crowns.setColorAt(n, col.setRGB(0.07 * b, 0.17 * b, 0.1 * b));
         });
         group.add(trunks, crowns);
@@ -1566,13 +1724,14 @@ export class Mountain {
           [0.16, 0.2, 0.13],
           [0.42, 0.5, 0.16],
         ];
-        g.broad.forEach(([x, y, z, h, tint], n) => {
+        g.broad.forEach(([x, y, z, h, tint, sh = 1], n) => {
           const flat = tint === 1 ? 1.5 : 1;
           trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(0.9, h * 0.5, 0.9)));
+          trunks.setColorAt(n, col.setRGB(sh, sh, sh));
           crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.62, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h * 0.3 * flat, h * 0.3, h * 0.3 * flat)));
           q.identity();
           const [r, gg, b] = tints[tint];
-          const k2 = 0.78 + noise2(x * 3, z * 2) * 0.4;
+          const k2 = (0.78 + noise2(x * 3, z * 2) * 0.4) * sh;
           crowns.setColorAt(n, col.setRGB(r * k2, gg * k2, b * k2));
         });
         group.add(trunks, crowns);
@@ -1587,9 +1746,9 @@ export class Mountain {
           [0.28, 0.3, 0.2], // alpine willow and scrub
           [0.42, 0.38, 0.22], // dry coastal brush
         ];
-        g.bushes.forEach(([x, y, z, r, tint = 0], n) => {
+        g.bushes.forEach(([x, y, z, r, tint = 0, sh = 1], n) => {
           bushes.setMatrixAt(n, m.compose(v.set(x, y + r * 0.4, z), q.setFromAxisAngle(Y_AXIS, x), sc.set(r, r * 0.75, r)));
-          const b = 0.7 + noise2(z * 2, x * 2) * 0.6;
+          const b = (0.7 + noise2(z * 2, x * 2) * 0.6) * sh;
           const [rr, gg, bb] = shrub[tint];
           bushes.setColorAt(n, col.setRGB(rr * b, gg * b, bb * b));
         });
@@ -1606,10 +1765,13 @@ export class Mountain {
       const crowns = new THREE.InstancedMesh(farCrown, crownMat, list.length);
       let cx = 0;
       let cz = 0;
-      list.forEach(([x, y, z, h, tint], n) => {
+      list.forEach(([x, y, z, h, tint0], n) => {
+        // Deep forest (tint + 10): the same trees, but dark, as the light barely gets in.
+        const dark = tint0 >= 10 ? 0.4 : 1;
+        const tint = tint0 % 10;
         const wide = tint === 1 ? 0.55 : tint === 2 ? 0.6 : 0.21;
         crowns.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(h * wide, h, h * wide)));
-        const b = 0.7 + noise2(x * 3, z * 3) * 0.5;
+        const b = (0.7 + noise2(x * 3, z * 3) * 0.5) * dark;
         if (tint === 1) crowns.setColorAt(n, col.setRGB(0.12 * b, 0.24 * b, 0.09 * b));
         else if (tint === 2) crowns.setColorAt(n, col.setRGB(0.17 * b, 0.21 * b, 0.13 * b));
         else if (tint === 3) crowns.setColorAt(n, col.setRGB(0.07 * b, 0.16 * b, 0.12 * b));
@@ -1631,37 +1793,44 @@ export class Mountain {
     for (const f of this.fallsClear) if (Math.hypot(x - f.x, z - f.z) < 16) return;
     const dense = noise2(x / 30, z / 30) - (1 - sc.trees) * 0.8;
     const r1 = noise2(x, z);
-    const tree = dense > 0.22;
+    // In a real forest you cannot see far in: the gaps close up and it gets darker the deeper you
+    // look, until it is nearly black between the trunks.
+    const forested = isForest(sc);
+    const deep = forested ? smoothstep(12, 40, d) : 0;
+    const tree = dense > 0.22 - deep * 0.35;
+    const sh = forested ? 1 - 0.86 * smoothstep(8, 40, d) : 1;
     if (tree && toMap) this.mapTrees.push([x, z, 0]);
     // Shrubs: sagebrush, rhododendron, ferns or alpine scrub, by the scenery.
     const shrubTint = sc.sagebrush ? 1 : sc.rhodo ? 2 : sc.ferns ? 3 : sc.ground === 'tundra' ? 4 : sc.ground === 'grass' ? 5 : 0;
     if (!tree) {
       if (noise2(x * 1.7, z * 1.3) < 1 - Math.min(1, sc.bush * 0.6)) return;
       const r = (sc.sagebrush ? 0.45 : sc.ground === 'tundra' ? 0.4 : 0.9) + noise2(z, x) * (sc.sagebrush ? 0.6 : 1.2);
-      g.bushes.push([x, y, z, r, shrubTint]);
+      g.bushes.push([x, y, z, r, shrubTint, sh]);
       return;
     }
     if (sc.maple && noise2(x / 45 + 9, z / 45) > 1 - sc.maple * 0.5) {
-      g.maples.push([x, y, z, 7 + r1 * 7]);
+      g.maples.push([x, y, z, 7 + r1 * 7, sh]);
     } else if (sc.forest === 'redwood') {
       // The odd smaller tree between the giants.
-      if (noise2(x * 0.6, z * 0.6) > 0.35) g.redwoods.push([x, y, z, 34 + r1 * 26]);
-      else g.trees.push([x, y, z, 10 + r1 * 8, 0]);
+      if (noise2(x * 0.6, z * 0.6) > 0.35) g.redwoods.push([x, y, z, 34 + r1 * 26, sh]);
+      else g.trees.push([x, y, z, 10 + r1 * 8, 0, sh]);
     } else if (sc.forest === 'pine') {
-      if (sc.aspen && noise2(x / 25 - 3, z / 25) > 0.62) g.broad.push([x, y, z, 7 + r1 * 6, 3]);
-      else g.trees.push([x, y, z, 12 + r1 * 12, 1]);
+      if (sc.aspen && noise2(x / 25 - 3, z / 25) > 0.62) g.broad.push([x, y, z, 7 + r1 * 6, 3, sh]);
+      else g.trees.push([x, y, z, 12 + r1 * 12, 1, sh]);
     } else if (sc.forest === 'krummholz') {
-      g.trees.push([x, y, z, 1.6 + r1 * 3.5, 2]);
+      g.trees.push([x, y, z, 1.6 + r1 * 3.5, 2, sh]);
     } else if (sc.forest === 'hardwood') {
-      if (noise2(x / 20, z / 20 + 5) > 0.75) g.trees.push([x, y, z, 14 + r1 * 10, 1]); // hemlock and white pine
-      else g.broad.push([x, y, z, 10 + r1 * 9, 0]);
+      if (noise2(x / 20, z / 20 + 5) > 0.75) g.trees.push([x, y, z, 14 + r1 * 10, 1, sh]); // hemlock and white pine
+      else g.broad.push([x, y, z, 10 + r1 * 9, 0, sh]);
     } else if (sc.forest === 'oak') {
-      g.broad.push([x, y, z, 6 + r1 * 5, 1]);
+      g.broad.push([x, y, z, 6 + r1 * 5, 1, sh]);
     } else if (sc.forest === 'juniper') {
-      g.broad.push([x, y, z, 2.5 + r1 * 3, 2]);
-    } else g.trees.push([x, y, z, 10 + r1 * 10, 0]);
-    // Undergrowth between the trees, thicker near the road edge.
-    if (d < 22 && noise2(x * 1.3, z * 1.3) > 1 - Math.min(0.9, 0.55 * sc.bush)) g.bushes.push([x + 2.2, this.terrain.heightAt(x + 2.2, z - 1.5), z - 1.5, (sc.ferns ? 0.6 : 0.8) + noise2(x, 3) * 1.2, shrubTint]);
+      g.broad.push([x, y, z, 2.5 + r1 * 3, 2, sh]);
+    } else g.trees.push([x, y, z, 10 + r1 * 10, 0, sh]);
+    // Undergrowth between the trees: thick near the road edge, and deeper in it fills the gaps
+    // between the trunks so the forest reads as a wall.
+    const under = d < 22 ? 1 - Math.min(0.9, 0.55 * sc.bush) : forested ? 0.45 : 2;
+    if (noise2(x * 1.3, z * 1.3) > under) g.bushes.push([x + 2.2, this.terrain.heightAt(x + 2.2, z - 1.5), z - 1.5, (sc.ferns ? 0.6 : 0.8) + noise2(x, 3) * (forested && d > 22 ? 2 : 1.2), shrubTint, sh * 0.85]);
   }
 
   // Roadside furniture: reflector posts, chevron signs on tight corners, utility poles, boulders,
@@ -2302,6 +2471,7 @@ export class Mountain {
     this.cloudSea.update(dt);
     this.waterfalls.update(dt);
     if (this.fallsTex) this.fallsTex.offset.y += dt * 1.6;
+    this.#updateCrowds(camPos, dt);
   }
 
   // Height of the far ranges (for checking whether a peak hides the sun).
