@@ -588,6 +588,17 @@ const E30_SHAPE = {
 export const SHAPES = { e30: E30_SHAPE, rx7: RX7_SHAPE };
 registerStockShapes(SHAPES); // so a Car Builder design can start from either body
 
+let lensTex = null;
+function lensTexture() {
+  if (lensTex || typeof document === 'undefined') return lensTex;
+  lensTex = new THREE.TextureLoader().load(`${import.meta.env?.BASE_URL ?? './'}textures/headlamp.png`);
+  lensTex.colorSpace = THREE.SRGBColorSpace;
+  lensTex.magFilter = THREE.NearestFilter;
+  lensTex.minFilter = THREE.NearestFilter;
+  lensTex.generateMipmaps = false;
+  return lensTex;
+}
+
 let glowTex = null;
 function glowSpriteTexture() {
   glowTex ??= softTexture([255, 255, 255], [[0, 1], [0.25, 0.45], [1, 0]]);
@@ -610,6 +621,9 @@ export class CarModel {
     const flat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     const glassMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x05070a });
     this.headMat = new THREE.MeshLambertMaterial({ color: 0xe8ecf0, emissive: 0x000000, flatShading: true });
+    // Round headlamp lenses: a pixelated photo of a real E30 lamp (fluted glass, inner reflector),
+    // lit through the same pattern when the lights are on.
+    this.lensMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x000000, map: lensTexture(), emissiveMap: lensTexture() });
     this.tailMat = new THREE.MeshLambertMaterial({ color: 0xd0141c, emissive: 0x000000, flatShading: true });
 
     const { shell, cabin, detail } = shape.build();
@@ -649,7 +663,7 @@ export class CarModel {
     for (const [x, y, r] of shape.lamps || []) {
       const ring = new THREE.Mesh(new THREE.CircleGeometry(r + 0.012, 14), ringMat);
       ring.position.set(x, y, shape.nose + 0.01);
-      const lamp = new THREE.Mesh(new THREE.CircleGeometry(r, 14), this.headMat);
+      const lamp = new THREE.Mesh(new THREE.CircleGeometry(r, 20), this.lensMat);
       lamp.position.set(x, y, shape.nose + 0.014);
       body.add(ring, lamp);
     }
@@ -795,6 +809,7 @@ export class CarModel {
     this.popTarget = on ? 1 : 0;
     const head = (HEADLIGHTS[this.headColor] || HEADLIGHTS.white)[1];
     this.headMat.emissive.setHex(on ? head : 0x000000);
+    this.lensMat.emissive.setHex(on ? head : 0x000000);
     this.tailMat.emissive.setHex(braking ? 0xff1a1a : on ? 0x550000 : 0x000000);
     // A soft glow round each lamp.
     this.glows ??= this.#makeGlows();
@@ -817,7 +832,7 @@ export class CarModel {
     const box = new THREE.Box3();
     this.root.updateMatrixWorld(true);
     this.root.traverse((o) => {
-      if (!o.isMesh || (o.material !== this.headMat && o.material !== this.tailMat)) return;
+      if (!o.isMesh || (o.material !== this.headMat && o.material !== this.lensMat && o.material !== this.tailMat)) return;
       const tail = o.material === this.tailMat;
       o.geometry.computeBoundingBox();
       box.copy(o.geometry.boundingBox);
@@ -860,6 +875,7 @@ export class CarModel {
     this.headColor = t.headlights || 'white';
     const head = (HEADLIGHTS[this.headColor] || HEADLIGHTS.white)[1];
     this.headMat.color.setHex(head).lerp(new THREE.Color(0xe8ecf0), 0.35);
+    this.lensMat.color.setHex(head).lerp(new THREE.Color(0xffffff), 0.6);
     this.tailMat.color.setHex((TAILLIGHTS[t.taillights] || TAILLIGHTS.red)[1]);
     const plateKey = `${t.plateStyle}|${t.plateText}`;
     if (this.plateKey !== plateKey) {
