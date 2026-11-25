@@ -669,8 +669,10 @@ export class CarModel {
     this.cubeCam = new THREE.CubeCamera(0.3, 80, this.cubeRT);
     this.reflectPhase = REFLECTORS.size * 7;
     REFLECTORS.add(this);
-    const gloss = { shininess: 140, specular: 0x9a9a9a, envMap: this.cubeRT.texture, combine: THREE.MixOperation, reflectivity: 0.22 };
-    this.paintMat = new THREE.MeshPhongMaterial({ color: 0xefeee6, vertexColors: true, flatShading: true, ...gloss });
+    // Real car paint: a coloured base coat (a little rough) under a hard, glossy clear coat. Both
+    // reflect what is round the car (the cube map above): sharp in the clear coat, soft below.
+    const gloss = { roughness: 0.42, metalness: 0.0, clearcoat: 1, clearcoatRoughness: 0.04, envMap: this.cubeRT.texture, envMapIntensity: 1.0 };
+    this.paintMat = new THREE.MeshPhysicalMaterial({ color: 0xefeee6, vertexColors: true, flatShading: true, ...gloss });
     body.add(new THREE.Mesh(polyGeometry(white([...shell.paint, ...cabin.paint, ...(detail.paint || [])])), this.paintMat));
     this.cabinTop = new THREE.Mesh(polyGeometry(white(shell.cabinTop)), this.paintMat);
     body.add(this.cabinTop);
@@ -745,7 +747,7 @@ export class CarModel {
     if (detail.kidney?.length) body.add(new THREE.Mesh(flatUV(detail.kidney, 0.145, -0.145, 0.572, 0.738), new THREE.MeshLambertMaterial({ map: frontTexture('kidney', false), flatShading: true })));
     if (detail.head?.length) body.add(new THREE.Mesh(polyGeometry(detail.head), this.headMat));
     // Body-colour parts that are not part of the shell mesh (pop-up lids).
-    this.lidMat = new THREE.MeshPhongMaterial({ color: 0xefeee6, flatShading: true, ...gloss });
+    this.lidMat = new THREE.MeshPhysicalMaterial({ color: 0xefeee6, flatShading: true, ...gloss });
     // Round headlamps with chrome rings (E30), or pop-up headlamps (RX-7).
     for (const [x, y, r] of shape.lamps || []) {
       const lamp = new THREE.Mesh(new THREE.CircleGeometry(r, 20), this.lensMat);
