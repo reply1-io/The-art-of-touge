@@ -1,11 +1,11 @@
 // The Car Builder: put shapes together into a car body around the wheels, then save it to your
-// garage and drive it. Works by touch: tap to pick a shape, buttons to move, size and turn it.
+// garage and drive it. Works by touch: tap a shape to pick it, then drag it to move it, drag its
+// handles to size it, or drag its corners to reshape it (the E30 and RX-7 bodies too).
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CARS } from '../config.js';
 import { CarModel } from '../render/carModel.js';
-import { partGeometry, copies, MATS, starterParts, stockPartPolys, STOCK_NAMES } from '../render/shapes/custom.js';
-import { polyGeometry } from '../render/shapes/poly.js';
+import { copies, MATS, starterParts, STOCK_NAMES, partMesh, triLook, baseMesh, localCorners, partMatrix } from '../render/shapes/custom.js';
 import { loadDesigns, saveDesign, deleteDesign, newId } from './customStore.js';
 
 const $ = (id) => document.getElementById(id);
@@ -100,42 +100,52 @@ function matFor(part) {
 let meshes = [];
 const selBox = new THREE.Box3Helper(new THREE.Box3(), 0xffd23f);
 scene.add(selBox);
-// light: only the shapes change (a nudge), so the panel and its buttons stay as they are.
+// The shapes sit a hair behind the handles and corner dots drawn on them.
+for (const m of [paintMat, glassMat, headMat, tailMat]) Object.assign(m, { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+const trimMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+const BUCKET_MAT = { paint: paintMat, glass: glassMat, head: headMat, tail: tailMat, trim: trimMat };
+
+// A part's meshes: one per kind of surface (paint, trim, glass, lamps), for itself and its copy.
+function partMeshes(part, i) {
+  const list = [];
+  for (const mirrored of copies(part)) {
+    const { verts, faces, meta } = partMesh(part, mirrored);
+    const by = {};
+    faces.forEach((f, k) => {
+      const look = triLook(part, meta[k]);
+      const b = (by[look.bucket] ??= { pos: [], col: [] });
+      for (const v of f) {
+        b.pos.push(...verts[v]);
+        b.col.push(...look.color);
+      }
+    });
+    for (const [bucket, { pos, col }] of Object.entries(by)) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      g.computeVertexNormals();
+      const m = new THREE.Mesh(g, BUCKET_MAT[bucket]);
+      m.userData = { part: i, mirrored };
+      partsGroup.add(m);
+      list.push(m);
+    }
+  }
+  return list;
+}
+
+// light: only the shapes change (a drag), so the panel and its buttons stay as they are.
 function rebuild(light = false) {
   for (const m of partsGroup.children) m.geometry.dispose();
   partsGroup.clear();
-  meshes = design.parts.map((part, i) =>
-    part.type === 'stock' ? stockMeshes(part, i) : copies(part).map((mirrored) => {
-      const m = new THREE.Mesh(partGeometry(part, mirrored), matFor(part));
-      m.userData.part = i;
-      partsGroup.add(m);
-      return m;
-    }),
-  );
+  meshes = design.parts.map((part, i) => partMeshes(part, i));
   paintMat.color.set(design.paint);
   showSelection(light);
   saveDraft();
 }
 
-// A whole stock body (E30 or RX-7): painted panels, trim, glass and lamps.
-const trimMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-function stockMeshes(part, i) {
-  const sp = stockPartPolys(part);
-  if (!sp) return [];
-  const list = [];
-  for (const [k, mat] of [['paint', paintMat], ['trim', trimMat], ['glass', glassMat], ['tail', tailMat], ['head', headMat]]) {
-    if (!sp[k].length) continue;
-    const m = new THREE.Mesh(polyGeometry(sp[k]), mat);
-    m.userData.part = i;
-    partsGroup.add(m);
-    list.push(m);
-  }
-  return list;
-}
-
 function showSelection(light = false) {
-  selBox.visible = selected >= 0 && !!meshes[selected];
-  if (selBox.visible) {
+  selBox.visible = selected >= 0 && !!meshes[selected] && mode !== 'shape';
+  if (selected >= 0 && meshes[selected]) {
     selBox.box.makeEmpty();
     for (const m of meshes[selected]) {
       m.geometry.computeBoundingBox();
@@ -145,6 +155,7 @@ function showSelection(light = false) {
   $('panel').classList.toggle('open', selected >= 0);
   document.body.classList.toggle('editing', selected >= 0);
   $('hint').style.display = selected >= 0 ? 'none' : '';
+  showHandles();
   if (selected >= 0 && !light) renderPanel();
 }
 
@@ -210,9 +221,25 @@ function renderPanel() {
   const part = design.parts[selected];
   for (const b of document.querySelectorAll('#modes [data-mode]')) b.classList.toggle('on', b.dataset.mode === mode);
   const styling = mode === 'style';
+  const shaping = mode === 'shape';
   $('style').style.display = styling ? '' : 'none';
-  $('axes').style.display = styling ? 'none' : '';
-  $('steps').style.display = styling ? 'none' : '';
+  $('shape').style.display = shaping ? '' : 'none';
+  $('axes').style.display = mode === 'turn' ? '' : 'none';
+  $('steps').style.display = mode === 'turn' ? '' : 'none';
+  $('drag-hint').style.display = mode === 'move' || mode === 'size' || shaping ? '' : 'none';
+  $('drag-hint').textContent = {
+    move: 'Drag the shape to move it. Spin the view to drag it another way (side view: up and along, top view: across).',
+    size: 'Drag the orange handles to stretch or shrink each side.',
+    shape: 'Drag any yellow dot to reshape. SOFT pulls the dots around it too; MIRROR does the other side the same.',
+  }[mode] || '';
+  if (shaping) {
+    $('b-sym').classList.toggle('on', shapeOpts.sym);
+    for (const b of document.querySelectorAll('[data-soft]')) b.classList.toggle('on', +b.dataset.soft === shapeOpts.soft);
+    $('detail-row').style.display = part.type === 'stock' ? 'none' : '';
+    for (const b of document.querySelectorAll('[data-detail]')) b.classList.toggle('on', +b.dataset.detail === (part.d ?? 2));
+    return;
+  }
+  if (mode !== 'turn' && !styling) return;
   if (styling) {
     const mats = $('mats');
     mats.innerHTML = '';
@@ -306,7 +333,7 @@ function holdRepeat(btn, fn) {
 for (const b of document.querySelectorAll('#modes [data-mode]')) {
   b.onclick = () => {
     mode = b.dataset.mode;
-    renderPanel();
+    showSelection();
   };
 }
 $('b-done').onclick = () => {
@@ -378,18 +405,281 @@ for (const b of document.querySelectorAll('[data-add]')) {
   };
 }
 
-// ---------- Picking a shape by tapping it ----------
+// ---------- Handles: orange size handles, yellow corner dots ----------
+const handles = new THREE.Group();
+handles.renderOrder = 10;
+scene.add(handles);
+const handleMat = new THREE.MeshBasicMaterial({ color: 0xff8a1f, depthTest: false, transparent: true });
+const handleGeo = new THREE.BoxGeometry(1, 1, 1);
+const dotMat = new THREE.PointsMaterial({ color: 0xffd23f, size: 6, sizeAttenuation: false });
+const activeDot = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), new THREE.MeshBasicMaterial({ color: 0xff3b30, depthTest: false }));
+activeDot.renderOrder = 11;
+activeDot.visible = false;
+scene.add(activeDot);
+let dots = null;
+const shapeOpts = { sym: true, soft: 0.1 };
+
+// The part's own box: its corners' extent in its own space.
+function localBox(part) {
+  const b = new THREE.Box3();
+  for (const c of localCorners(part)) b.expandByPoint(new THREE.Vector3(...c));
+  return b;
+}
+
+function showHandles() {
+  handles.clear();
+  dots = null;
+  if (selected < 0) return;
+  const part = design.parts[selected];
+  const m = partMatrix(part);
+  const camDist = camera.position.distanceTo(controls.target);
+  if (mode === 'size') {
+    const b = localBox(part);
+    const c = b.getCenter(new THREE.Vector3());
+    for (let a = 0; a < 3; a++) {
+      for (const sign of [1, -1]) {
+        const local = c.clone();
+        local.setComponent(a, sign > 0 ? b.max.getComponent(a) : b.min.getComponent(a));
+        const h = new THREE.Mesh(handleGeo, handleMat);
+        h.position.copy(local.clone().applyMatrix4(m));
+        h.scale.setScalar(camDist * 0.014);
+        h.userData = { axis: a, sign, local };
+        h.renderOrder = 10;
+        handles.add(h);
+      }
+    }
+  }
+  if (mode === 'shape') {
+    const { verts, faces, meta } = partMesh(part);
+    // A stock body: dots on its panels and glass only (the trim lines, badges and lamps on them
+    // follow with SOFT), so they don't bury the car.
+    let ids = verts.map((_, i) => i);
+    if (part.type === 'stock') {
+      const keep = new Set();
+      faces.forEach((f, k) => (meta[k].bucket === 'paint' || meta[k].bucket === 'glass') && f.forEach((v) => keep.add(v)));
+      // And one dot per 9 cm patch of it: drag one with SOFT on to move the patch around it.
+      const cells = new Set();
+      ids = [...keep].filter((i) => {
+        const c = verts[i].map((x) => Math.round(x / 0.09)).join(',');
+        if (cells.has(c)) return false;
+        cells.add(c);
+        return true;
+      });
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(ids.flatMap((i) => verts[i]), 3));
+    dots = new THREE.Points(g, dotMat);
+    dots.userData.ids = ids;
+    handles.add(dots);
+  }
+}
+
+// ---------- Dragging: shapes, size handles and corners ----------
 const ray = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+function aim(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  return ray;
+}
+// Where the pointer is on a flat sheet facing the camera through `point`.
+function onSheet(plane, out = new THREE.Vector3()) {
+  return ray.ray.intersectPlane(plane, out);
+}
+// How far along a line (through o, along d) the pointer is.
+function alongLine(o, d) {
+  const u = ray.ray.direction;
+  const w0 = new THREE.Vector3().subVectors(o, ray.ray.origin);
+  const b = d.dot(u);
+  const den = 1 - b * b;
+  if (Math.abs(den) < 1e-4) return null;
+  return (b * u.dot(w0) - d.dot(w0)) / den;
+}
+
+let drag = null;
+function startDrag(e) {
+  if (selected < 0 || e.target !== renderer.domElement || !e.isPrimary) return false;
+  aim(e);
+  const part = design.parts[selected];
+  const camDir = camera.getWorldDirection(new THREE.Vector3());
+  if (mode === 'size') {
+    const hit = ray.intersectObjects(handles.children)[0];
+    if (!hit) return false;
+    const h = hit.object;
+    const m = partMatrix(part);
+    const dir = new THREE.Vector3().setComponent(h.userData.axis, h.userData.sign).transformDirection(m);
+    const box = localBox(part);
+    const opp = h.userData.local.clone();
+    opp.setComponent(h.userData.axis, h.userData.sign > 0 ? box.min.getComponent(h.userData.axis) : box.max.getComponent(h.userData.axis));
+    drag = { kind: 'size', axis: h.userData.axis, o: h.position.clone(), dir, t0: alongLine(h.position, dir) ?? 0, s0: [...part.s], p0: [...part.p], ext: box.max.getComponent(h.userData.axis) - box.min.getComponent(h.userData.axis), opp };
+  } else if (mode === 'shape') {
+    if (!dots) return false;
+    const dist = camera.position.distanceTo(controls.target);
+    ray.params.Points.threshold = dist * 0.03;
+    const hits = ray.intersectObject(dots);
+    if (!hits.length) return false;
+    // The dot nearest the pointer, among those not hidden behind the body.
+    const surface = ray.intersectObjects(meshes[selected])[0];
+    const front = hits.filter((h) => !surface || h.distance < surface.distance + 0.04);
+    const hit = (front.length ? front : hits).sort((a, b) => a.distanceToRay - b.distanceToRay)[0];
+    const world = new THREE.Vector3().fromBufferAttribute(dots.geometry.getAttribute('position'), hit.index);
+    const i = dots.userData.ids[hit.index];
+    const m = partMatrix(part);
+    drag = {
+      kind: 'corner',
+      i,
+      plane: new THREE.Plane().setFromNormalAndCoplanarPoint(camDir, world),
+      start: onSheet(new THREE.Plane().setFromNormalAndCoplanarPoint(camDir, world)) || world.clone(),
+      toLocal: new THREE.Matrix3().setFromMatrix4(m).invert(),
+      corners0: localCorners(part),
+      world0: partMesh(part).verts,
+      edits0: JSON.parse(JSON.stringify(part.edits || {})),
+      mirror: baseMesh(part).mirror,
+    };
+    activeDot.position.copy(world);
+    activeDot.scale.setScalar(dist * 0.012);
+    activeDot.visible = true;
+  } else if (mode === 'move') {
+    const hit = ray.intersectObjects(meshes[selected])[0];
+    if (!hit) return false;
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(camDir, hit.point);
+    drag = { kind: 'move', plane, start: hit.point.clone(), p0: [...part.p], flip: hit.object.userData.mirrored ? -1 : 1 };
+  } else return false;
+  remember();
+  return true;
+}
+
+function moveDrag(e) {
+  aim(e);
+  const part = design.parts[selected];
+  const mm = (v) => Math.round(v * 1000) / 1000;
+  if (drag.kind === 'move') {
+    const p = onSheet(drag.plane);
+    if (!p) return;
+    const d = p.sub(drag.start);
+    part.p = [mm(drag.p0[0] + d.x * drag.flip), mm(Math.max(-0.2, drag.p0[1] + d.y)), mm(drag.p0[2] + d.z)];
+  } else if (drag.kind === 'size') {
+    const t = alongLine(drag.o, drag.dir);
+    if (t == null) return;
+    const grow = t - drag.t0;
+    const a = drag.axis;
+    const min = part.type === 'stock' ? 0.5 : 0.01 / Math.max(1e-6, drag.ext);
+    const max = part.type === 'stock' ? 1.6 : Infinity;
+    part.s = [...drag.s0];
+    part.s[a] = Math.min(max, Math.max(min, (drag.ext * drag.s0[a] + grow) / drag.ext));
+    part.s[a] = Math.round(part.s[a] * 1000) / 1000;
+    // Keep the opposite side where it was.
+    part.p = [...drag.p0];
+    const before = drag.opp.clone().applyMatrix4(partMatrix({ ...part, s: drag.s0 }));
+    const after = drag.opp.clone().applyMatrix4(partMatrix(part));
+    part.p = [mm(drag.p0[0] + before.x - after.x), mm(drag.p0[1] + before.y - after.y), mm(drag.p0[2] + before.z - after.z)];
+  } else if (drag.kind === 'corner') {
+    const p = onSheet(drag.plane);
+    if (!p) return;
+    const dw = p.sub(drag.start);
+    const dl = dw.clone().applyMatrix3(drag.toLocal);
+    const edits = JSON.parse(JSON.stringify(drag.edits0));
+    const R = shapeOpts.soft;
+    const c0 = drag.world0[drag.i];
+    const push = (j, w, mirrored) => {
+      const e = edits[j] || [0, 0, 0];
+      const dx = mirrored ? -dl.x : dl.x;
+      // A corner on the centreline stays on it when both sides move together.
+      const onMiddle = shapeOpts.sym && drag.mirror[j] === j;
+      edits[j] = [e[0] + (onMiddle ? 0 : dx * w), e[1] + dl.y * w, e[2] + dl.z * w].map((v) => Math.round(v * 10000) / 10000);
+    };
+    const done = new Set();
+    drag.world0.forEach((v, j) => {
+      const d = Math.hypot(v[0] - c0[0], v[1] - c0[1], v[2] - c0[2]);
+      // The dot you hold moves all the way; with SOFT, the ones around it less the further off.
+      const w = j === drag.i ? 1 : R > 0 && d < R ? (1 - (d / R) ** 2) ** 2 : 0;
+      if (w <= 0) return;
+      push(j, w, false);
+      done.add(j);
+      const mj = drag.mirror[j];
+      if (shapeOpts.sym && mj >= 0 && mj !== j && !done.has(mj)) {
+        push(mj, w, true);
+        done.add(mj);
+      }
+    });
+    for (const [k, e] of Object.entries(edits)) if (!e[0] && !e[1] && !e[2]) delete edits[k];
+    part.edits = edits;
+    activeDot.position.fromArray(partMesh(part).verts[drag.i]);
+  }
+  rebuild(true);
+}
+
+// Grab before the view controls do, so dragging a shape doesn't also spin the view.
+document.addEventListener(
+  'pointerdown',
+  (e) => {
+    if (drag || !startDrag(e)) return;
+    e.stopPropagation();
+    e.preventDefault();
+    controls.enabled = false;
+  },
+  true,
+);
+window.addEventListener('pointermove', (e) => drag && e.isPrimary && moveDrag(e));
+const endDrag = () => {
+  if (!drag) return;
+  drag = null;
+  controls.enabled = true;
+  activeDot.visible = false;
+  showHandles();
+};
+window.addEventListener('pointerup', endDrag);
+window.addEventListener('pointercancel', endDrag);
+// Handles stay the same size on screen as you zoom.
+controls.addEventListener('change', () => {
+  if (mode === 'size' && !drag) showHandles();
+});
+
+// ---------- Picking a shape by tapping it ----------
 let down = null;
 renderer.domElement.addEventListener('pointerdown', (e) => (down = [e.clientX, e.clientY]));
 renderer.domElement.addEventListener('pointerup', (e) => {
   if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 8) return;
-  const r = renderer.domElement.getBoundingClientRect();
-  ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+  aim(e);
   const hit = ray.intersectObjects(partsGroup.children)[0];
+  // In SHAPE mode a tap that misses the shape keeps it picked (it is easy to miss a dot).
+  if (!hit && mode === 'shape' && selected >= 0) return;
   selected = hit ? hit.object.userData.part : -1;
   showSelection();
 });
+
+// ---------- Shape options ----------
+$('b-sym').onclick = () => {
+  shapeOpts.sym = !shapeOpts.sym;
+  renderPanel();
+};
+for (const b of document.querySelectorAll('[data-soft]'))
+  b.onclick = () => {
+    shapeOpts.soft = +b.dataset.soft;
+    renderPanel();
+  };
+for (const b of document.querySelectorAll('[data-detail]'))
+  b.onclick = () => {
+    const part = design.parts[selected];
+    if ((part.d ?? 2) === +b.dataset.detail) return;
+    remember();
+    part.d = +b.dataset.detail;
+    // A new set of corners: the old reshaping doesn't fit them.
+    if (part.edits) {
+      delete part.edits;
+      toast('More/fewer corners: its reshaping was reset (UNDO brings it back)');
+    }
+    rebuild();
+  };
+$('b-reset-shape').onclick = () => {
+  const part = design.parts[selected];
+  if (!part.edits) return toast('Nothing to reset');
+  remember();
+  delete part.edits;
+  rebuild();
+  toast('Back to its plain shape');
+};
 
 // ---------- Top bar ----------
 function syncTop() {
@@ -606,4 +896,22 @@ renderer.setAnimationLoop(() => {
   controls.update();
   renderer.render(scene, camera);
 });
-window.__builder = { get design() { return design; }, select: (i) => { selected = i; showSelection(); } };
+// For testing: the design, picking a part, and where a roof corner is on screen.
+window.__builder = {
+  get design() {
+    return design;
+  },
+  select: (i) => {
+    selected = i;
+    showSelection();
+  },
+  dotScreen: () => {
+    if (!dots) return null;
+    const { verts } = partMesh(design.parts[selected]);
+    let best = 0;
+    verts.forEach((v, i) => v[1] + v[0] * 0.3 > verts[best][1] + verts[best][0] * 0.3 && (best = i));
+    const p = new THREE.Vector3(...verts[best]).project(camera);
+    const r = renderer.domElement.getBoundingClientRect();
+    return [r.left + ((p.x + 1) / 2) * r.width, r.top + ((1 - p.y) / 2) * r.height];
+  },
+};

@@ -17,7 +17,7 @@ test('Car Builder: the starter car becomes a body the game can draw', () => {
 });
 
 test('Car Builder: a mirrored part gets a copy on the other side, facing out', () => {
-  const part = { type: 'box', p: [0.6, 0.5, 1], s: [0.2, 0.2, 0.2], r: [0, 20, 0], mat: 'trim', mirror: true };
+  const part = { type: 'box', p: [0.6, 0.5, 1], s: [0.2, 0.2, 0.2], r: [0, 20, 0], mat: 'trim', mirror: true, d: 1 };
   const polys = designPolys({ parts: [part] }).trim;
   assert.equal(polys.length, 24); // 12 triangles each side
   const left = polys.filter((p) => p.pts[0][0] > 0);
@@ -54,5 +54,23 @@ test('Car Builder: start from the E30 or the RX-7 body, and build onto it', asyn
     assert.ok(Math.abs(up.paint[0].pts[0][1] - sp.paint[0].pts[0][1] - 0.1) < 1e-9);
   }
   // The E30's round headlamps come along.
-  assert.equal(stockPartPolys({ type: 'stock', model: 'e30', p: [0, 0, 0], s: [1, 1, 1], r: [0, 0, 0] }).head.length, 4);
+  assert.equal(stockPartPolys({ type: 'stock', model: 'e30', p: [0, 0, 0], s: [1, 1, 1], r: [0, 0, 0] }).head.length, 4 * 12); // four round lamps, 12 triangles each
+});
+
+test('Car Builder: dragging a corner reshapes the part, and moves with it', async () => {
+  const { partMesh, baseMesh } = await import('../src/render/shapes/custom.js');
+  const part = { type: 'box', p: [0, 1, 0], s: [2, 1, 4], r: [0, 0, 0], mat: 'paint', d: 1 };
+  const base = baseMesh(part);
+  assert.equal(base.verts.length, 8); // a plain box: 8 corners
+  const i = base.verts.findIndex((v) => v[0] > 0 && v[1] > 0 && v[2] > 0);
+  const before = partMesh(part).verts[i];
+  part.edits = { [i]: [0, 0.2, 0] }; // up a fifth of the height
+  const after = partMesh(part).verts[i];
+  assert.ok(Math.abs(after[1] - before[1] - 0.2) < 1e-9);
+  // Every corner has its mirror image across the middle of the car.
+  assert.ok(base.mirror.every((m) => m >= 0));
+  // A stock body: hundreds of corners, every one welded so faces meeting there move together.
+  await import('../src/render/carModel.js');
+  const e30 = baseMesh({ type: 'stock', model: 'e30' });
+  assert.ok(e30.verts.length > 200, `${e30.verts.length} corners`);
 });
