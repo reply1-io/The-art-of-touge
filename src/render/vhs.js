@@ -74,7 +74,7 @@ const fragmentShader = /* glsl */ `
   uniform float field;    // 0 or 1: which lines are this frame's (interlacing)
   uniform float frame43;  // 0..1: black bars to a 4:3 picture
   uniform float exposure;
-  uniform float grade;    // 0..1: the night tape grade (crushed blacks, blown highlights, no colour)
+  uniform float grade;    // 0..1: the night tape grade (deep blue night, blown warm headlights, halation)
   uniform float barrel;   // wide-angle lens bend (0 = none): straight lines bow out toward the edges
   uniform float fish;     // 0..1: blend from a normal lens to a true (equidistant) fisheye
   uniform float hv;       // half the camera's vertical field of view (radians)
@@ -101,8 +101,8 @@ const fragmentShader = /* glsl */ `
   vec3 develop(vec3 lin) {
     // Night tape: the camera's gain pushed up so the lit road blows out, and the dim moonlit world
     // under the noise floor goes to black.
-    lin *= exposure * (1.0 + 1.6 * grade);
-    lin = max(lin - 0.03 * grade, 0.0) / (1.0 - 0.03 * grade);
+    lin *= exposure * (1.0 + 1.5 * grade);
+    lin = max(lin - 0.014 * grade, 0.0) / (1.0 - 0.014 * grade);
     return pow(clamp(knee(lin), 0.0, 1.0), vec3(1.0 / 2.2));
   }
   // One sample of the picture: this frame's lines, or (interlaced, on the other field's lines) the
@@ -111,7 +111,10 @@ const fragmentShader = /* glsl */ `
     float row = floor(uv.y * res.y);
     float old = useField * step(0.5, mod(row + field, 2.0));
     vec3 c = mix(texture2D(tCur, uv).rgb, texture2D(tPrev, uv).rgb, old);
-    c += texture2D(tBloom, uv).rgb * (0.9 + 1.4 * grade);
+    // The glow, and a wider haze around it (halation: light spreading in the lens and the air).
+    vec2 hz = vec2(10.0, 6.0) / res;
+    vec3 haze = texture2D(tBloom, uv + hz).rgb + texture2D(tBloom, uv - hz).rgb + texture2D(tBloom, uv + hz * vec2(-1.0, 1.0)).rgb + texture2D(tBloom, uv + hz * vec2(1.0, -1.0)).rgb;
+    c += texture2D(tBloom, uv).rgb * (0.9 + 0.9 * grade) + haze * 0.35 * grade;
     return develop(c);
   }
   const vec3 LW = vec3(0.299, 0.587, 0.114);
@@ -204,9 +207,13 @@ const fragmentShader = /* glsl */ `
     // ---- Grade ----
     // A little more colour, like the VX1000; then tape: lifted warm blacks, slightly soft whites.
     float yg = dot(col, LW);
-    col = mix(vec3(yg), col, mix(1.0 + 0.15 * s, 0.2, grade));
-    // Tape: blacks lifted only a hair (night tapes are black), whites a touch soft.
-    col = mix(col, col * 0.95 + vec3(0.012, 0.012, 0.014), s);
+    col = mix(vec3(yg), col, mix(1.0 + 0.15 * s, 0.8, grade));
+    // Night tape colour: the dark goes deep blue, the headlight-lit road and the lights warm
+    // halogen yellow; whites a touch soft.
+    float lo = 1.0 - smoothstep(0.0, 0.3, yg);
+    float hi = smoothstep(0.45, 0.95, yg);
+    col += grade * (lo * vec3(0.004, 0.018, 0.05) + hi * vec3(0.06, 0.025, -0.05));
+    col = mix(col, col * 0.95 + vec3(0.012, 0.014, 0.022), s);
 
     // ---- Tape damage ----
     col = mix(col, vec3(rand(vec2(uv.x * 300.0, row + t))), hs * 0.5 * s);
@@ -219,7 +226,7 @@ const fragmentShader = /* glsl */ `
     col *= 1.0 - 0.07 * s * (0.5 + 0.5 * cos(uv.y * res.y * 6.2832));
     // The lens darkens toward the corners.
     vec2 vq = (vUv - 0.5) * vec2(aspect / 1.5, 1.0);
-    col *= 1.0 - dot(vq, vq) * (0.45 + 0.6 * grade) * s;
+    col *= 1.0 - dot(vq, vq) * (0.45 + 0.3 * grade) * s;
 
     col *= mix(1.0, inside * (1.0 - smoothstep(0.35, 0.75, r2) * barrel * 0.6), step(0.001, barrel));
     col *= lensMask * bars;
