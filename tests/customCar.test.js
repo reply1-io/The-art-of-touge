@@ -48,7 +48,7 @@ test('Car Builder: start from the E30 or the RX-7 body, and build onto it', asyn
     assert.ok(sp, `${model} registered`);
     assert.ok(sp.paint.length > 50 && sp.glass.length > 0 && sp.tail.length > 0, model);
     const shape = customShape({ id: 'custom-x', parts: [part, { type: 'wedge', p: [0, 1.2, -2], s: [1.4, 0.1, 0.3], r: [0, 0, 0], mat: 'black' }] });
-    assert.ok(shape.nose > 1.95 && shape.tail < -1.95, `${model} ${shape.nose} ${shape.tail}`);
+    assert.ok(shape.nose > 1.85 && shape.tail < -1.95, `${model} ${shape.nose} ${shape.tail}`);
     // Moved up 10 cm, every point moves up 10 cm.
     const up = stockPartPolys({ ...part, p: [0, 0.1, 0] });
     assert.ok(Math.abs(up.paint[0].pts[0][1] - sp.paint[0].pts[0][1] - 0.1) < 1e-9);

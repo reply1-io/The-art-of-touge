@@ -19,42 +19,43 @@ const FRONT_AXLE = 1.28;
 const REAR_AXLE = -1.29;
 const WHEEL_R = 0.305;
 const ARCH_R = 0.37;
-const NOSE = 1.99; // front overhang about 0.71 m to the axle (the real car's is close to that)
+const NOSE = 1.83; // short front overhang: the bumper ends about 0.63 m ahead of the front axle
 const TAIL = -2.17;
 
 const HALF_WIDTH = [
-  [1.99, 0.79],
-  [1.97, 0.81],
-  [1.87, 0.82],
+  [1.83, 0.79],
+  [1.81, 0.81],
+  [1.72, 0.82],
   [-1.95, 0.82],
   [-2.12, 0.81],
   [-2.17, 0.79],
 ];
 const BOTTOM = [
-  [1.99, 0.5],
-  [1.978, 0.3],
-  [1.87, 0.22],
+  [1.83, 0.5],
+  [1.818, 0.3],
+  [1.72, 0.22],
   [-1.9, 0.21],
   [-2.1, 0.3],
   [-2.17, 0.5],
 ];
 // Top of the sides / shoulder line: wings along the bonnet, window line, boot.
 const BELT = [
-  [1.99, 0.79],
-  [1.97, 0.82],
-  [1.835, 0.84],
+  [1.83, 0.79],
+  [1.81, 0.82],
+  [1.7, 0.84],
   [0.78, 0.85],
   [0.0, 0.855],
   [-1.5, 0.86],
   [-2.12, 0.86],
   [-2.17, 0.82],
 ];
-// Centreline: bonnet, (cabin floor under the glass), boot lid. A level, straight line from the
-// nose to the tail, so the body stands the same height over the front and rear wheels.
+// Centreline: bonnet, (cabin floor under the glass), boot lid. The bonnet is flat with the wings
+// (no raised crown along the front), rising only towards the windscreen.
 const TOP = [
-  [1.99, 0.8],
-  [1.97, 0.83],
-  [1.835, 0.862],
+  [1.83, 0.8],
+  [1.81, 0.828],
+  [1.7, 0.844],
+  [1.07, 0.85],
   [0.78, 0.885],
   [0.0, 0.905],
   [-1.55, 0.9],
@@ -179,9 +180,9 @@ function greenhousePolys() {
     for (const p of both({ pts: [a.lb, a.lt, b.lt, b.lb], color: pillar ? BLACK : GLASS })) (pillar ? trim : glass).push(p);
     const top = { pts: [a.lt, mirror(a.lt), mirror(b.lt), b.lt], color: screen ? GLASS : WHITE, out: [0, 1, screen ? 0.8 : 0] };
     (screen ? glass : paint).push(top);
-    // Black window frame along the roof edge, and black A-pillars.
-    for (const p of both({ pts: [a.lt, b.lt, off(b.lt, 0.005, -0.035), off(a.lt, 0.005, -0.035)], color: BLACK, out: [1, 0.3, 0] })) trim.push(p);
-    if (screen) for (const p of both({ pts: [off(a.lt, 0, 0.004), off(b.lt, 0, 0.004), off(b.lt, -0.06, 0.004), off(a.lt, -0.06, 0.004)], color: BLACK, out: [0, 1, 0.8] })) trim.push(p);
+    // Body-colour frame along the roof edge, and body-colour A-pillars.
+    for (const p of both({ pts: [a.lt, b.lt, off(b.lt, 0.005, -0.035), off(a.lt, 0.005, -0.035)], out: [1, 0.3, 0] })) paint.push(p);
+    if (screen) for (const p of both({ pts: [off(a.lt, 0, 0.004), off(b.lt, 0, 0.004), off(b.lt, -0.06, 0.004), off(a.lt, -0.06, 0.004)], out: [0, 1, 0.8] })) paint.push(p);
     for (const p of both({ pts: [a.lb, off(a.lb, -0.01, 0.022), off(b.lb, -0.01, 0.022), b.lb], color: BLACK, out: [1, 0.2, 0] })) trim.push(p);
   }
   // C-pillar and rear window.
@@ -298,7 +299,7 @@ function detailPolys() {
   // Door handles and front wing side repeaters.
   for (const side of [1, -1]) {
     trim.push({ pts: [[side * 0.825, 0.79, -0.25], [side * 0.825, 0.81, -0.25], [side * 0.825, 0.81, -0.38], [side * 0.825, 0.79, -0.38]], color: BLACK, out: [side, 0, 0] });
-    trim.push({ pts: [[side * 0.824, 0.66, 1.72], [side * 0.824, 0.69, 1.72], [side * 0.824, 0.69, 1.64], [side * 0.824, 0.66, 1.64]], color: AMBER, out: [side, 0, 0] });
+    trim.push({ pts: [[side * 0.824, 0.66, 1.75], [side * 0.824, 0.69, 1.75], [side * 0.824, 0.69, 1.67], [side * 0.824, 0.66, 1.67]], color: AMBER, out: [side, 0, 0] });
   }
   // Door mirrors at the front corner of the door glass.
   for (const side of [1, -1]) {
