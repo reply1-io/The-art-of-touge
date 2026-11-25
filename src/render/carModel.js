@@ -198,10 +198,10 @@ const LENS_WHITE = [0.85, 0.85, 0.82];
 // Round lamps for the nose: [x, y, radius]. The E30 has two per side in a black surround, the outer
 // (dipped) lamp slightly larger than the inner (main beam).
 export const HEADLAMPS = [
-  [0.6, 0.65, 0.066],
-  [0.405, 0.65, 0.06],
-  [-0.405, 0.65, 0.06],
-  [-0.6, 0.65, 0.066],
+  [0.6, 0.65, 0.08],
+  [0.405, 0.65, 0.074],
+  [-0.405, 0.65, 0.074],
+  [-0.6, 0.65, 0.08],
 ];
 
 function detailPolys() {
