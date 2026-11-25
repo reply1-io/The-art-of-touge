@@ -30,9 +30,11 @@ function boxOf(o) {
 function convert(m) {
   const name = m.name || '';
   if (name === 'Glass') {
-    return new THREE.MeshPhongMaterial({ color: 0x1b2329, transparent: true, opacity: 0.5, shininess: 90, specular: 0x777777, depthWrite: false });
+    // Dark tinted glass you can barely see through, like the game's original E30.
+    return new THREE.MeshPhongMaterial({ color: 0x2a3138, transparent: true, opacity: 0.88, shininess: 60, specular: 0x555555, flatShading: true });
   }
-  const out = new THREE.MeshLambertMaterial({ color: m.color, map: m.map || null, side: m.side });
+  // Flat shading: every panel a crisp facet, in the style of the game's original built-in E30.
+  const out = new THREE.MeshLambertMaterial({ color: m.color, map: m.map || null, side: m.side, flatShading: true });
   if (name === 'Lights_orange') out.emissive.setHex(0x2a0800);
   return out;
 }

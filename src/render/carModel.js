@@ -559,7 +559,7 @@ export class CarModel {
     this.applySetup(TUNABLE_DEFAULTS);
     // The stock E30 swaps its built-in body for the detailed model once that has loaded.
     if (shape === E30_SHAPE) {
-      this.glbPaint = new THREE.MeshPhongMaterial({ color: this.paintMat.color.clone(), shininess: 70, specular: 0x6a6a6a });
+      this.glbPaint = new THREE.MeshPhongMaterial({ color: this.paintMat.color.clone(), shininess: 70, specular: 0x6a6a6a, flatShading: true });
       loadE30(FRONT_AXLE, REAR_AXLE).then((t) => t && this.#attachE30(t));
     }
   }
