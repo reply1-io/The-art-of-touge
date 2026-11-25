@@ -227,40 +227,59 @@
         <span class="osd-date"></span>
         <span class="osd-logo"><b>TOUGE VIDEO</b><small class="osd-road"></small></span>
       </div>
+
       <div id="replay-edit" class="hidden">
-        <div class="replay-pad">
-          <button type="button" data-move="f" data-dir="1" class="pad-f" aria-label="Fly forward">&#9650;</button>
-          <button type="button" data-move="s" data-dir="-1" class="pad-l" aria-label="Fly left">&#9664;</button>
-          <button type="button" data-move="s" data-dir="1" class="pad-r" aria-label="Fly right">&#9654;</button>
-          <button type="button" data-move="f" data-dir="-1" class="pad-b" aria-label="Fly back">&#9660;</button>
+        <div class="replay-pad" aria-label="Fly the camera">
           <button type="button" data-move="u" data-dir="1" class="pad-u">UP</button>
-          <button type="button" data-move="u" data-dir="-1" class="pad-d">DOWN</button>
+          <button type="button" data-move="f" data-dir="1" class="pad-f" aria-label="Forward">&#9650;</button>
+          <button type="button" data-move="s" data-dir="-1" class="pad-l" aria-label="Left">&#9664;</button>
+          <button type="button" data-move="s" data-dir="1" class="pad-r" aria-label="Right">&#9654;</button>
+          <button type="button" data-move="f" data-dir="-1" class="pad-b" aria-label="Back">&#9660;</button>
+          <button type="button" data-move="u" data-dir="-1" class="pad-d">DN</button>
         </div>
         <div class="replay-tools">
-          <button type="button" id="rp-add">+ CAMERA HERE</button>
-          <button type="button" id="rp-clear">CLEAR CAMERAS</button>
-          <div class="choices" id="rp-view">
-            <button type="button" data-view="free">FLY</button>
-            <button type="button" data-view="shots">MY CAMERAS</button>
+          <div class="rt-group">
+            <span class="rt-label">Watch from</span>
+            <div class="rt-seg" id="rp-view">
+              <button type="button" data-view="free">FLYING</button>
+              <button type="button" data-view="shots">MY CAMS</button>
+            </div>
           </div>
-          <button type="button" id="rp-look">LOOK AT CAR: OFF</button>
-          <label class="rp-fov"><span>FOV <b id="rp-fov-val">55&deg;</b></span><input type="range" id="rp-fov" min="10" max="150" step="1" value="55" aria-label="Field of view" /></label>
-          <span class="rp-hint">Drag to look around</span>
+          <div class="rt-group">
+            <span class="rt-label">Cameras <b id="rp-count">0</b></span>
+            <div class="rt-row">
+              <button type="button" id="rp-add">+ ADD HERE</button>
+              <button type="button" id="rp-clear" aria-label="Clear cameras">CLEAR</button>
+            </div>
+          </div>
+          <div class="rt-group">
+            <span class="rt-label">Lens <b id="rp-fov-val">55&deg;</b></span>
+            <input type="range" id="rp-fov" min="10" max="150" step="1" value="55" aria-label="Field of view" />
+            <div class="rt-row">
+              <button type="button" id="rp-fish">10MM FISHEYE</button>
+              <button type="button" id="rp-look">FOLLOW CAR</button>
+            </div>
+          </div>
         </div>
       </div>
+
       <div id="replay-bar">
-        <button type="button" id="rp-restart" aria-label="Back to the start">&#9198;</button>
-        <button type="button" id="rp-play" aria-label="Play or pause">&#10074;&#10074;</button>
-        <input type="range" id="rp-time" min="0" max="1" step="0.001" value="0" aria-label="Replay position" />
-        <span id="rp-clock">0:00</span>
-        <button type="button" id="rp-speed">1&times;</button>
-        <div class="choices" id="rp-mode">
-          <button type="button" data-mode="vhs">VHS</button>
-          <button type="button" data-mode="clean">NO TEXT</button>
-          <button type="button" data-mode="edit">EDIT</button>
+        <div class="rb-row">
+          <button type="button" id="rp-restart" class="rb-icon" aria-label="Back to the start">&#9198;</button>
+          <button type="button" id="rp-play" class="rb-icon" aria-label="Play or pause">&#10074;&#10074;</button>
+          <input type="range" id="rp-time" min="0" max="1" step="0.001" value="0" aria-label="Replay position" />
+          <span id="rp-clock">0:00</span>
+          <button type="button" id="rp-speed" aria-label="Playback speed">1&times;</button>
+          <div class="rt-seg" id="rp-mode">
+            <button type="button" data-mode="vhs">VHS</button>
+            <button type="button" data-mode="clean">CLEAN</button>
+            <button type="button" data-mode="edit">EDIT</button>
+          </div>
+          <button type="button" id="rp-hide" class="rb-icon" aria-label="Hide the controls">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12z" /><circle cx="12" cy="12" r="2.6" /><path d="M4 20L20 4" /></svg>
+          </button>
+          <button type="button" id="rp-exit" aria-label="Exit the replay">EXIT</button>
         </div>
-        <button type="button" id="rp-hide">HIDE UI</button>
-        <button type="button" id="rp-exit">EXIT</button>
       </div>
     </section>
 

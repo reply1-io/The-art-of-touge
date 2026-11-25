@@ -1494,6 +1494,7 @@ body.menu-open #vhs {
 body.in-replay #controls,
 body.in-replay #topbar,
 body.in-replay #hud,
+body.in-replay #vhs-play,
 body.in-replay #road-banner,
 body.in-replay #pause,
 body.in-replay #results,
@@ -1508,6 +1509,10 @@ body.in-replay #chat {
   pointer-events: none;
   font-family: 'VT323', ui-monospace, monospace;
   color: #f4f4ee;
+  --rp-ink: #f4f4ee;
+  --rp-dim: rgba(244, 244, 238, 0.55);
+  --rp-glass: rgba(8, 10, 16, 0.72);
+  --rp-line: rgba(255, 255, 255, 0.16);
 }
 
 #replay-stage {
@@ -1517,6 +1522,13 @@ body.in-replay #chat {
   touch-action: none;
 }
 
+/* Hidden controls: only the picture (and, in VHS, nothing else either). */
+#replay.ui-off #replay-bar,
+#replay.ui-off #replay-edit,
+#replay.ui-off #replay-osd {
+  display: none;
+}
+
 /* The camcorder's on-screen display: white block letters with a dark edge. */
 #replay-osd span {
   position: absolute;
@@ -1524,210 +1536,209 @@ body.in-replay #chat {
   letter-spacing: 0.12em;
   text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.75), -1px -1px 0 rgba(0, 0, 0, 0.5);
 }
-
-#replay-osd .osd-play {
-  top: calc(14px + var(--st, 0px));
-  left: calc(22px + var(--sl));
-}
-
-#replay-osd .osd-counter {
-  top: calc(14px + var(--st, 0px));
-  right: calc(22px + var(--sr));
-}
-
-#replay-osd .osd-cam {
-  top: calc(44px + 4vh);
-  left: calc(22px + var(--sl));
-  font-size: clamp(16px, 4.5vh, 22px);
-}
-
-#replay-osd .osd-date {
-  bottom: calc(70px + var(--sb));
-  left: calc(22px + var(--sl));
-  font-size: clamp(17px, 5vh, 24px);
-}
-
+#replay-osd .osd-play { top: calc(14px + var(--st, 0px)); left: calc(22px + var(--sl)); }
+#replay-osd .osd-counter { top: calc(14px + var(--st, 0px)); right: calc(22px + var(--sr)); }
+#replay-osd .osd-cam { top: calc(44px + 4vh); left: calc(22px + var(--sl)); font-size: clamp(16px, 4.5vh, 22px); }
+#replay-osd .osd-date { bottom: calc(64px + var(--sb)); left: calc(22px + var(--sl)); font-size: clamp(17px, 5vh, 24px); }
 #replay-osd .osd-logo {
-  bottom: calc(70px + var(--sb));
+  bottom: calc(64px + var(--sb));
   right: calc(22px + var(--sr));
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   line-height: 0.9;
 }
+#replay-osd .osd-logo b { font-weight: 400; font-size: clamp(24px, 7vh, 34px); color: #ffd23f; letter-spacing: 0.08em; font-style: italic; }
+#replay-osd .osd-logo small { font-size: clamp(14px, 4vh, 18px); letter-spacing: 0.15em; }
+#replay.no-osd #replay-osd { display: none; }
 
-#replay-osd .osd-logo b {
-  font-weight: 400;
-  font-size: clamp(24px, 7vh, 34px);
-  color: #ffd23f;
+/* Shared controls: square, quiet, amber when on. */
+#replay button {
+  font: 400 17px 'VT323', ui-monospace, monospace;
   letter-spacing: 0.08em;
-  font-style: italic;
+  color: var(--rp-ink);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--rp-line);
+  border-radius: 6px;
+  padding: 0 10px;
+  height: 34px;
+  white-space: nowrap;
+  touch-action: manipulation;
+}
+#replay button.sel,
+#replay button.on {
+  background: #ffa04a;
+  border-color: #ffa04a;
+  color: #14100a;
+}
+#replay input[type='range'] {
+  accent-color: #ffa04a;
 }
 
-#replay-osd .osd-logo small {
-  font-size: clamp(14px, 4vh, 18px);
-  letter-spacing: 0.15em;
+/* Segmented switch (mode, watch from). */
+.rt-seg {
+  display: flex;
+  border: 1px solid var(--rp-line);
+  border-radius: 7px;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+#replay .rt-seg button {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0 9px;
+}
+#replay .rt-seg button + button {
+  border-left: 1px solid var(--rp-line);
+}
+#replay .rt-seg button.sel {
+  background: #ffa04a;
+  color: #14100a;
 }
 
-#replay.no-osd #replay-osd {
-  display: none;
-}
-
+/* The playback bar along the bottom. */
 #replay-bar {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px calc(12px + var(--sr)) calc(8px + var(--sb)) calc(12px + var(--sl));
-  background: linear-gradient(0deg, rgba(4, 6, 12, 0.85), rgba(4, 6, 12, 0.4));
+  padding: 10px calc(12px + var(--sr)) calc(8px + var(--sb)) calc(12px + var(--sl));
+  background: linear-gradient(0deg, rgba(4, 6, 12, 0.9), rgba(4, 6, 12, 0));
   pointer-events: auto;
-  transition: opacity 0.4s;
+  transition: opacity 0.35s;
 }
-
 #replay.bar-hidden #replay-bar {
   opacity: 0;
   pointer-events: none;
 }
-
-#replay-bar button,
-#replay-tools button,
-.replay-tools button {
-  font: 400 18px 'VT323', ui-monospace, monospace;
-  letter-spacing: 0.08em;
-  color: var(--ink);
-  background: rgba(255, 255, 255, 0.07);
-  border: 2px solid rgba(255, 255, 255, 0.25);
-  padding: 3px 9px;
-  white-space: nowrap;
+.rb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
-
-#replay-bar .choices {
-  flex-wrap: nowrap;
-  gap: 4px;
-}
-
-#replay-bar .choices button {
-  flex: 0 0 auto;
+#replay .rb-icon {
+  width: 38px;
+  padding: 0;
   font-size: 16px;
-  padding: 3px 7px;
-  border-width: 2px;
+  display: grid;
+  place-items: center;
 }
-
+#rp-hide svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
 #rp-time {
   flex: 1;
-  min-width: 60px;
-  accent-color: #ffa04a;
+  min-width: 70px;
 }
-
 #rp-clock {
   font-size: 18px;
-  min-width: 3.2em;
+  min-width: 2.6em;
   text-align: right;
+  color: var(--rp-dim);
+}
+#replay #rp-speed {
+  min-width: 46px;
+}
+#replay #rp-exit {
+  border-color: #ffa04a;
+  color: #ffb066;
 }
 
-#rp-exit {
-  border-color: var(--accent) !important;
-  color: var(--accent) !important;
-}
-
-/* Edit mode: a flying pad on the left, tools on the right. */
+/* Edit mode: a flying pad bottom left, a tools panel top right. */
 #replay-edit {
   position: absolute;
-  inset: 0 0 56px 0;
+  inset: 0 0 58px 0;
   pointer-events: none;
 }
-
 .replay-pad {
   position: absolute;
   left: calc(14px + var(--sl));
-  bottom: 18px;
+  bottom: 10px;
   display: grid;
-  grid-template-columns: repeat(3, 52px);
-  grid-template-rows: repeat(3, 46px);
+  grid-template-columns: repeat(3, 46px);
+  grid-template-rows: repeat(3, 42px);
   gap: 5px;
   pointer-events: auto;
 }
-
-.replay-pad button {
-  font: 400 20px 'VT323', ui-monospace, monospace;
+#replay .replay-pad button {
+  height: auto;
+  padding: 0;
+  font-size: 18px;
   color: #ffb066;
-  background: rgba(6, 6, 8, 0.55);
-  border: 2px solid #ffa04a;
-  touch-action: none;
+  background: var(--rp-glass);
+  border: 1px solid rgba(255, 160, 74, 0.6);
   user-select: none;
   -webkit-user-select: none;
+  touch-action: none;
 }
-
-.replay-pad button.on {
-  background: #ffa04a;
-  color: #111;
-}
-
+.pad-u { grid-column: 1; grid-row: 1; font-size: 14px !important; }
 .pad-f { grid-column: 2; grid-row: 1; }
 .pad-l { grid-column: 1; grid-row: 2; }
 .pad-r { grid-column: 3; grid-row: 2; }
 .pad-b { grid-column: 2; grid-row: 3; }
-.pad-u { grid-column: 1; grid-row: 1; font-size: 15px !important; }
-.pad-d { grid-column: 3; grid-row: 3; font-size: 15px !important; }
+.pad-d { grid-column: 3; grid-row: 3; font-size: 14px !important; }
 
 .replay-tools {
   position: absolute;
-  right: calc(14px + var(--sr));
-  top: 12px;
+  top: calc(10px + var(--st, 0px));
+  right: calc(12px + var(--sr));
+  width: 214px;
+  max-height: calc(100% - 20px);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  background: var(--rp-glass);
+  border: 1px solid var(--rp-line);
+  border-radius: 10px;
   pointer-events: auto;
 }
-
-.replay-tools .choices {
-  gap: 4px;
-  flex-wrap: nowrap;
-}
-
-.replay-tools .choices button {
-  font-size: 16px;
-}
-
-.rp-hint {
-  font-size: 15px;
-  color: var(--dim);
-  text-shadow: 0 1px 0 #000;
-}
-
-#replay-bar .choices button.sel {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #111;
-}
-
-#replay.ui-off #replay-bar,
-#replay.ui-off #replay-edit,
-#replay.ui-off #replay-osd {
-  display: none;
-}
-
-.rp-fov {
+.rt-group {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  font-size: 17px;
-  text-shadow: 0 1px 0 #000;
+  gap: 5px;
 }
-
-.rp-fov b {
+.rt-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--rp-dim);
+}
+.rt-label b {
   font-weight: 400;
   color: #ffb066;
+  letter-spacing: 0.06em;
+}
+.rt-row {
+  display: flex;
+  gap: 6px;
+}
+#replay .rt-row button,
+#replay .replay-tools .rt-seg button {
+  flex: 1;
+}
+#replay .replay-tools .rt-seg {
+  width: 100%;
+}
+#rp-fov {
+  width: 100%;
 }
 
-.rp-fov input {
-  width: 170px;
-  accent-color: #ffa04a;
+/* Short screens (phones sideways): tighter. */
+@media (max-height: 420px) {
+  #replay button { height: 30px; font-size: 16px; }
+  #replay .rb-icon { width: 34px; }
+  .replay-pad { grid-template-columns: repeat(3, 42px); grid-template-rows: repeat(3, 36px); }
+  .replay-tools { width: 196px; gap: 7px; padding: 8px 10px 10px; }
 }
 
 .drive-fov input {
@@ -1743,4 +1754,30 @@ body.in-replay #chat {
 
 .drive-fov .map-hint {
   margin: 0;
+}
+
+/* Replay with the controls hidden: no messages over the picture either. */
+body.replay-ui-off #toast {
+  display: none !important;
+}
+
+/* Edit tools: everything fits inside the panel. */
+#replay .replay-tools {
+  box-sizing: border-box;
+  width: 236px;
+  padding: 10px 12px 12px;
+  overflow-x: hidden;
+}
+#replay .replay-tools * {
+  box-sizing: border-box;
+}
+#replay .rt-row button,
+#replay .replay-tools .rt-seg button {
+  min-width: 0;
+  padding: 0 6px;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+}
+@media (max-height: 420px) {
+  #replay .replay-tools { width: 220px; padding: 8px 10px 10px; }
 }

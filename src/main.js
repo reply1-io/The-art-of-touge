@@ -641,7 +641,7 @@ shop.onCar = (id) => {
 const recorder = new Recorder();
 const freeCam = new FreeCam();
 let director = null;
-const rp = { active: false, t: 0, playing: true, speed: 1, mode: 'vhs', view: 'free', lookAtCar: false, idle: 0, from: null, uiOff: false };
+const rp = { active: false, t: 0, playing: true, speed: 1, mode: 'vhs', view: 'free', lookAtCar: false, idle: 0, from: null, uiOff: false, fish: false };
 const rcar = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), wheels: [{}, {}, {}, {}] };
 const rprev = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), wheels: [{}, {}, {}, {}] };
 const rvel = new THREE.Vector3();
@@ -685,6 +685,7 @@ function closeReplay() {
   rp.active = false;
   rp.uiOff = false;
   vhs.barrel = 0;
+  document.body.classList.remove('replay-ui-off');
   $('replay').classList.add('hidden');
   document.body.classList.remove('in-replay');
   for (const k of Object.keys(freeCam.move)) freeCam.move[k] = 0;
@@ -700,6 +701,7 @@ function renderReplayUi() {
   const el = $('replay');
   el.classList.toggle('no-osd', rp.mode !== 'vhs');
   el.classList.toggle('ui-off', rp.uiOff);
+  document.body.classList.toggle('replay-ui-off', rp.uiOff);
   $('rp-fov').value = String(freeCam.fov);
   $('rp-fov-val').textContent = `${Math.round(freeCam.fov)}\u00b0`;
   $('replay-edit').classList.toggle('hidden', rp.mode !== 'edit');
@@ -707,8 +709,9 @@ function renderReplayUi() {
   for (const b of document.querySelectorAll('#rp-view button')) b.classList.toggle('sel', b.dataset.view === rp.view);
   $('rp-play').innerHTML = rp.playing ? '&#10074;&#10074;' : '&#9654;';
   $('rp-speed').textContent = `${rp.speed}\u00d7`;
-  $('rp-look').textContent = `LOOK AT CAR: ${rp.lookAtCar ? 'ON' : 'OFF'}`;
-  $('rp-add').textContent = `+ CAMERA HERE${freeCam.shots.length ? ` (${freeCam.shots.length})` : ''}`;
+  $('rp-look').classList.toggle('on', rp.lookAtCar);
+  $('rp-fish').classList.toggle('on', rp.fish);
+  $('rp-count').textContent = String(freeCam.shots.length);
 }
 
 function replayFrame(dt, now) {
@@ -741,6 +744,8 @@ function replayFrame(dt, now) {
   let wide = false;
   if (rp.mode === 'edit') {
     const shot = rp.view === 'shots' ? freeCam.frameShots(camera, rcar) : -1;
+    // The 10 mm fisheye: your setting while flying, or what each placed camera was set to.
+    wide = shot >= 0 ? !!freeCam.shots[shot].fish : rp.fish;
     if (shot < 0) freeCam.update(dt, camera, rp.lookAtCar ? new THREE.Vector3(rcar.pos.x, rcar.pos.y + 0.6, rcar.pos.z) : null);
     cam = shot + 1;
   } else {
@@ -834,6 +839,7 @@ for (const b of document.querySelectorAll('#rp-view button'))
   });
 $('rp-add').addEventListener('click', () => {
   freeCam.addShot();
+  freeCam.shots[freeCam.shots.length - 1].fish = rp.fish;
   renderReplayUi();
 });
 $('rp-clear').addEventListener('click', () => {
@@ -844,11 +850,14 @@ $('rp-clear').addEventListener('click', () => {
 $('rp-hide').addEventListener('click', () => {
   rp.uiOff = true;
   renderReplayUi();
-  toast('TAP THE PICTURE TO SHOW THE CONTROLS', 1.6);
 });
 $('rp-fov').addEventListener('input', () => {
   freeCam.fov = Number($('rp-fov').value);
   $('rp-fov-val').textContent = `${Math.round(freeCam.fov)}\u00b0`;
+});
+$('rp-fish').addEventListener('click', () => {
+  rp.fish = !rp.fish;
+  renderReplayUi();
 });
 $('rp-look').addEventListener('click', () => {
   rp.lookAtCar = !rp.lookAtCar;
