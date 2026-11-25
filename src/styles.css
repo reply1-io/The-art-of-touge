@@ -1489,3 +1489,219 @@ body.menu-open #vhs {
 .shop-rev.on svg {
   stroke: #111;
 }
+
+/* ---------- Replay: a camcorder tape of your run ---------- */
+body.in-replay #controls,
+body.in-replay #topbar,
+body.in-replay #hud,
+body.in-replay #toast,
+body.in-replay #road-banner,
+body.in-replay #pause,
+body.in-replay #results,
+body.in-replay #chat {
+  display: none !important;
+}
+
+#replay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  font-family: 'VT323', ui-monospace, monospace;
+  color: #f4f4ee;
+}
+
+#replay-stage {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+/* The camcorder's on-screen display: white block letters with a dark edge. */
+#replay-osd span {
+  position: absolute;
+  font-size: clamp(20px, 6vh, 30px);
+  letter-spacing: 0.12em;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.75), -1px -1px 0 rgba(0, 0, 0, 0.5);
+}
+
+#replay-osd .osd-play {
+  top: calc(14px + var(--st, 0px));
+  left: calc(22px + var(--sl));
+}
+
+#replay-osd .osd-counter {
+  top: calc(14px + var(--st, 0px));
+  right: calc(22px + var(--sr));
+}
+
+#replay-osd .osd-cam {
+  top: calc(44px + 4vh);
+  left: calc(22px + var(--sl));
+  font-size: clamp(16px, 4.5vh, 22px);
+}
+
+#replay-osd .osd-date {
+  bottom: calc(70px + var(--sb));
+  left: calc(22px + var(--sl));
+  font-size: clamp(17px, 5vh, 24px);
+}
+
+#replay-osd .osd-logo {
+  bottom: calc(70px + var(--sb));
+  right: calc(22px + var(--sr));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 0.9;
+}
+
+#replay-osd .osd-logo b {
+  font-weight: 400;
+  font-size: clamp(24px, 7vh, 34px);
+  color: #ffd23f;
+  letter-spacing: 0.08em;
+  font-style: italic;
+}
+
+#replay-osd .osd-logo small {
+  font-size: clamp(14px, 4vh, 18px);
+  letter-spacing: 0.15em;
+}
+
+#replay.no-osd #replay-osd {
+  display: none;
+}
+
+#replay-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px calc(12px + var(--sr)) calc(8px + var(--sb)) calc(12px + var(--sl));
+  background: linear-gradient(0deg, rgba(4, 6, 12, 0.85), rgba(4, 6, 12, 0.4));
+  pointer-events: auto;
+  transition: opacity 0.4s;
+}
+
+#replay.bar-hidden #replay-bar {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#replay-bar button,
+#replay-tools button,
+.replay-tools button {
+  font: 400 18px 'VT323', ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.07);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+
+#replay-bar .choices {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
+#replay-bar .choices button {
+  flex: 0 0 auto;
+  font-size: 16px;
+  padding: 3px 7px;
+  border-width: 2px;
+}
+
+#rp-time {
+  flex: 1;
+  min-width: 60px;
+  accent-color: #ffa04a;
+}
+
+#rp-clock {
+  font-size: 18px;
+  min-width: 3.2em;
+  text-align: right;
+}
+
+#rp-exit {
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+}
+
+/* Edit mode: a flying pad on the left, tools on the right. */
+#replay-edit {
+  position: absolute;
+  inset: 0 0 56px 0;
+  pointer-events: none;
+}
+
+.replay-pad {
+  position: absolute;
+  left: calc(14px + var(--sl));
+  bottom: 18px;
+  display: grid;
+  grid-template-columns: repeat(3, 52px);
+  grid-template-rows: repeat(3, 46px);
+  gap: 5px;
+  pointer-events: auto;
+}
+
+.replay-pad button {
+  font: 400 20px 'VT323', ui-monospace, monospace;
+  color: #ffb066;
+  background: rgba(6, 6, 8, 0.55);
+  border: 2px solid #ffa04a;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.replay-pad button.on {
+  background: #ffa04a;
+  color: #111;
+}
+
+.pad-f { grid-column: 2; grid-row: 1; }
+.pad-l { grid-column: 1; grid-row: 2; }
+.pad-r { grid-column: 3; grid-row: 2; }
+.pad-b { grid-column: 2; grid-row: 3; }
+.pad-u { grid-column: 1; grid-row: 1; font-size: 15px !important; }
+.pad-d { grid-column: 3; grid-row: 3; font-size: 15px !important; }
+
+.replay-tools {
+  position: absolute;
+  right: calc(14px + var(--sr));
+  top: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.replay-tools .choices {
+  gap: 4px;
+  flex-wrap: nowrap;
+}
+
+.replay-tools .choices button {
+  font-size: 16px;
+}
+
+.rp-hint {
+  font-size: 15px;
+  color: var(--dim);
+  text-shadow: 0 1px 0 #000;
+}
+
+#replay-bar .choices button.sel {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #111;
+}

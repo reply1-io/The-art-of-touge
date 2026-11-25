@@ -129,6 +129,7 @@
           <button type="button" id="btn-resume" class="big">RESUME</button>
           <button type="button" id="btn-recover" class="big ghost">BACK ON ROAD</button>
           <button type="button" id="btn-home" class="big ghost">GO HOME</button>
+          <button type="button" id="btn-replay" class="big ghost">REPLAY</button>
         </div>
         <div class="field">
           <span class="label">Map <span class="map-hint">Tap a road to go there</span></span>
@@ -212,6 +213,50 @@
       </div>
     </section>
 
+    <section id="replay" class="hidden" aria-label="Replay">
+      <div id="replay-stage"></div>
+      <div id="replay-osd" aria-hidden="true">
+        <span class="osd-play">&#9654; PLAY</span>
+        <span class="osd-counter">0:00:00</span>
+        <span class="osd-cam">CAM 1</span>
+        <span class="osd-date"></span>
+        <span class="osd-logo"><b>TOUGE VIDEO</b><small class="osd-road"></small></span>
+      </div>
+      <div id="replay-edit" class="hidden">
+        <div class="replay-pad">
+          <button type="button" data-move="f" data-dir="1" class="pad-f" aria-label="Fly forward">&#9650;</button>
+          <button type="button" data-move="s" data-dir="-1" class="pad-l" aria-label="Fly left">&#9664;</button>
+          <button type="button" data-move="s" data-dir="1" class="pad-r" aria-label="Fly right">&#9654;</button>
+          <button type="button" data-move="f" data-dir="-1" class="pad-b" aria-label="Fly back">&#9660;</button>
+          <button type="button" data-move="u" data-dir="1" class="pad-u">UP</button>
+          <button type="button" data-move="u" data-dir="-1" class="pad-d">DOWN</button>
+        </div>
+        <div class="replay-tools">
+          <button type="button" id="rp-add">+ CAMERA HERE</button>
+          <button type="button" id="rp-clear">CLEAR CAMERAS</button>
+          <div class="choices" id="rp-view">
+            <button type="button" data-view="free">FLY</button>
+            <button type="button" data-view="shots">MY CAMERAS</button>
+          </div>
+          <button type="button" id="rp-look">LOOK AT CAR: OFF</button>
+          <span class="rp-hint">Drag to look around</span>
+        </div>
+      </div>
+      <div id="replay-bar">
+        <button type="button" id="rp-restart" aria-label="Back to the start">&#9198;</button>
+        <button type="button" id="rp-play" aria-label="Play or pause">&#10074;&#10074;</button>
+        <input type="range" id="rp-time" min="0" max="1" step="0.001" value="0" aria-label="Replay position" />
+        <span id="rp-clock">0:00</span>
+        <button type="button" id="rp-speed">1&times;</button>
+        <div class="choices" id="rp-mode">
+          <button type="button" data-mode="vhs">VHS</button>
+          <button type="button" data-mode="clean">NO TEXT</button>
+          <button type="button" data-mode="edit">EDIT</button>
+        </div>
+        <button type="button" id="rp-exit">EXIT</button>
+      </div>
+    </section>
+
     <section id="teleport" class="screen hidden">
       <div class="panel">
         <h2 id="tp-title">TELEPORT?</h2>
@@ -232,6 +277,7 @@
         <div class="row">
           <button type="button" id="btn-res-retry" class="big">RACE AGAIN</button>
           <button type="button" id="btn-res-free" class="big ghost">FREE DRIVE</button>
+          <button type="button" id="btn-res-replay" class="big ghost">WATCH REPLAY</button>
         </div>
       </div>
     </section>

@@ -38,6 +38,7 @@ import { Shop } from './ui/shop.js';
 import { MapView } from './ui/mapView.js';
 import { MiniMap } from './ui/miniMap.js';
 import { Rain } from './render/rain.js';
+import { Recorder, Director, FreeCam, HZ } from './game/replay.js';
 import { medalTimes, medalFor } from './game/medals.js';
 import { loadSettings, saveSettings, loadTuning, saveTuning } from './settings.js';
 
@@ -625,6 +626,235 @@ shop.onCar = (id) => {
   }
   location.reload();
 };
+// ---------- Replay: the last five minutes, as if filmed on camcorders ----------
+const recorder = new Recorder();
+const freeCam = new FreeCam();
+let director = null;
+const rp = { active: false, t: 0, playing: true, speed: 1, mode: 'vhs', view: 'free', lookAtCar: false, idle: 0, from: null };
+const rcar = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), wheels: [{}, {}, {}, {}] };
+const rWheels = { wheels: [] };
+const rVehicle = { engine: { rpm: 0, running: true, throttleApplied: 0, boost: 0, limiterCut: false, spec: CAR.engine }, trans: { gear: 0, grindTimer: 0, coupling: 1 }, throttlePedal: 0, brakePedal: 0, speed: 0, forwardSpeed: 0, wheels: [{ grounded: true, slipAngle: 0, slipRatio: 0, load: 2800 }] };
+const rExhaust = new ExhaustEvents();
+const tapeTime = (t) => `${Math.floor(t / 3600)}:${String(Math.floor(t / 60) % 60).padStart(2, '0')}:${String(Math.floor(t) % 60).padStart(2, '0')}`;
+
+function openReplay(from) {
+  if (recorder.count < HZ * 2) {
+    toast('NOTHING ON TAPE YET: GO FOR A DRIVE', 2.2);
+    return;
+  }
+  director ??= new Director(mountain.road, mountain.terrain);
+  rWheels.wheels = vehicle.wheels.map((w) => ({ x: w.x, z: w.z, front: w.front, compression: 0, steer: 0, angle: 0 }));
+  rp.active = true;
+  rp.from = from;
+  rp.t = 0;
+  rp.playing = true;
+  rp.idle = 0;
+  director.current = -1;
+  recorder.sample(0, rcar);
+  freeCam.placeBehind(rcar.pos, rcar.quat);
+  // Full picture for the replay, no shift for the touch controls.
+  setMenuQuality(false);
+  camera.clearViewOffset();
+  document.body.classList.add('in-replay');
+  $('replay').classList.remove('hidden');
+  const d = new Date();
+  const hour = { day: '2:14 PM', sunset: '6:47 PM', night: '11:08 PM', rain: '4:32 PM' }[settings.time] || '9:41 PM';
+  $('replay').querySelector('.osd-date').textContent = `${d.toLocaleString('en-US', { month: 'short' }).toUpperCase()}.${String(d.getDate()).padStart(2, '0')} ${d.getFullYear()}  ${hour}`;
+  $('replay').querySelector('.osd-road').textContent = `VOL.03 · ${(mountain.track.name || '').toUpperCase()}`;
+  audio.start();
+  audio.setMuted(!settings.sound);
+  audio.resume();
+  renderReplayUi();
+}
+
+function closeReplay() {
+  rp.active = false;
+  $('replay').classList.add('hidden');
+  document.body.classList.remove('in-replay');
+  for (const k of Object.keys(freeCam.move)) freeCam.move[k] = 0;
+  resize();
+  applySettings();
+  // Back where you came from: the pause menu (or the results), the car as you left it.
+  if (rp.from === 'results') $('results').classList.remove('hidden');
+  pausedFrameDrawn = false;
+  if (paused) audio.suspend();
+}
+
+function renderReplayUi() {
+  const el = $('replay');
+  el.classList.toggle('no-osd', rp.mode !== 'vhs');
+  $('replay-edit').classList.toggle('hidden', rp.mode !== 'edit');
+  for (const b of document.querySelectorAll('#rp-mode button')) b.classList.toggle('sel', b.dataset.mode === rp.mode);
+  for (const b of document.querySelectorAll('#rp-view button')) b.classList.toggle('sel', b.dataset.view === rp.view);
+  $('rp-play').innerHTML = rp.playing ? '&#10074;&#10074;' : '&#9654;';
+  $('rp-speed').textContent = `${rp.speed}\u00d7`;
+  $('rp-look').textContent = `LOOK AT CAR: ${rp.lookAtCar ? 'ON' : 'OFF'}`;
+  $('rp-add').textContent = `+ CAMERA HERE${freeCam.shots.length ? ` (${freeCam.shots.length})` : ''}`;
+}
+
+function replayFrame(dt, now) {
+  const length = recorder.seconds;
+  if (rp.playing) {
+    rp.t += dt * rp.speed;
+    if (rp.t >= length) {
+      rp.t = length;
+      rp.playing = false;
+      renderReplayUi();
+    }
+  }
+  recorder.sample(rp.t, rcar);
+  // The car, as it was.
+  carModel.root.position.copy(rcar.pos);
+  carModel.root.quaternion.copy(rcar.quat);
+  rcar.wheels.forEach((w, k) => Object.assign(rWheels.wheels[k], w));
+  carModel.syncWheels(rWheels);
+  carModel.setLights(timePreset.lights, rcar.brake > 0.1);
+  carModel.updateFx(dt);
+  moon.target.position.copy(rcar.pos);
+  moon.position.copy(rcar.pos).addScaledVector(sunDir, 80);
+  headlight.position.copy(new THREE.Vector3(0, -0.05, 2.1).applyQuaternion(rcar.quat).add(rcar.pos));
+  headlight.target.position.copy(new THREE.Vector3(0, -1.6, 22).applyQuaternion(rcar.quat).add(rcar.pos));
+  // The camera.
+  let cam = 0;
+  if (rp.mode === 'edit') {
+    const shot = rp.view === 'shots' ? freeCam.frameShots(camera, rcar) : -1;
+    if (shot < 0) freeCam.update(dt, camera, rp.lookAtCar ? new THREE.Vector3(rcar.pos.x, rcar.pos.y + 0.6, rcar.pos.z) : null);
+    cam = shot + 1;
+  } else {
+    cam = director.frame(dt, camera, rcar, rp.t).k + 1;
+  }
+  // The engine, from the tape.
+  if (rp.playing) {
+    const e = rVehicle.engine;
+    e.rpm = rcar.rpm;
+    e.throttleApplied = rcar.throttle;
+    rVehicle.throttlePedal = rcar.throttle;
+    rVehicle.brakePedal = rcar.brake;
+    rVehicle.speed = rcar.speed;
+    rVehicle.trans.gear = rcar.gear;
+    rVehicle.wheels[0].slipAngle = Math.atan(0.1 + rcar.slip / 2.2);
+    audio.update(rVehicle, dt, rExhaust.update(rVehicle, dt, tune.exhaust));
+  }
+  // The on-screen display and the bar (which hides itself while you watch, until you tap).
+  const el = $('replay');
+  el.querySelector('.osd-play').innerHTML = rp.playing ? '&#9654; PLAY' : '&#10074;&#10074; PAUSE';
+  el.querySelector('.osd-counter').textContent = tapeTime(rp.t);
+  el.querySelector('.osd-cam').textContent = rp.mode === 'edit' ? (cam > 0 ? `CAM ${cam}` : 'FREE') : director.spots[director.current]?.chase ? 'CHASE' : `CAM ${cam}`;
+  const slider = $('rp-time');
+  if (document.activeElement !== slider) slider.value = String(length ? rp.t / length : 0);
+  $('rp-clock').textContent = `${Math.floor(rp.t / 60)}:${String(Math.floor(rp.t) % 60).padStart(2, '0')}`;
+  rp.idle += dt;
+  el.classList.toggle('bar-hidden', rp.mode !== 'edit' && rp.playing && rp.idle > 3);
+  // The world around the camera, and the picture through the tape.
+  sky.update(camera);
+  mountain.update(camera.position, timePreset.detailRange, timePreset.groundRange, dt);
+  wildlife.update(dt, camera, Math.round(rcar.index));
+  updateWeatherFx(dt);
+  vhs.strength = settings.vhs || rp.mode !== 'edit' ? 0.75 : 0;
+  vhs.render(scene, camera, now / 1000);
+  flare.draw(dt, camera, sunDir, 0, timePreset.flareTint, false);
+}
+
+// Replay controls.
+$('btn-replay').addEventListener('click', () => openReplay('pause'));
+$('btn-res-replay').addEventListener('click', () => {
+  $('results').classList.add('hidden');
+  openReplay('results');
+});
+$('rp-exit').addEventListener('click', closeReplay);
+$('rp-restart').addEventListener('click', () => {
+  rp.t = 0;
+  rp.playing = true;
+  renderReplayUi();
+});
+$('rp-play').addEventListener('click', () => {
+  if (!rp.playing && rp.t >= recorder.seconds - 0.05) rp.t = 0;
+  rp.playing = !rp.playing;
+  if (rp.playing) audio.resume();
+  else audio.suspend();
+  renderReplayUi();
+});
+$('rp-speed').addEventListener('click', () => {
+  rp.speed = { 1: 2, 2: 0.25, 0.25: 0.5, 0.5: 1 }[rp.speed] ?? 1;
+  renderReplayUi();
+});
+$('rp-time').addEventListener('input', () => {
+  rp.t = Number($('rp-time').value) * recorder.seconds;
+  director.current = -1;
+});
+for (const b of document.querySelectorAll('#rp-mode button'))
+  b.addEventListener('click', () => {
+    rp.mode = b.dataset.mode;
+    if (rp.mode === 'edit') freeCam.placeBehind(rcar.pos, rcar.quat);
+    director.current = -1;
+    renderReplayUi();
+  });
+for (const b of document.querySelectorAll('#rp-view button'))
+  b.addEventListener('click', () => {
+    rp.view = b.dataset.view;
+    if (rp.view === 'shots' && !freeCam.shots.length) toast('PLACE A CAMERA FIRST', 1.6);
+    renderReplayUi();
+  });
+$('rp-add').addEventListener('click', () => {
+  freeCam.addShot();
+  renderReplayUi();
+});
+$('rp-clear').addEventListener('click', () => {
+  freeCam.shots.length = 0;
+  rp.view = 'free';
+  renderReplayUi();
+});
+$('rp-look').addEventListener('click', () => {
+  rp.lookAtCar = !rp.lookAtCar;
+  renderReplayUi();
+});
+// Fly buttons: held down to move.
+for (const b of document.querySelectorAll('.replay-pad button')) {
+  const on = (e) => {
+    e.preventDefault();
+    b.setPointerCapture?.(e.pointerId);
+    freeCam.move[b.dataset.move] = Number(b.dataset.dir);
+    b.classList.add('on');
+  };
+  const off = () => {
+    freeCam.move[b.dataset.move] = 0;
+    b.classList.remove('on');
+  };
+  b.addEventListener('pointerdown', on);
+  b.addEventListener('pointerup', off);
+  b.addEventListener('pointercancel', off);
+  b.addEventListener('lostpointercapture', off);
+}
+// The picture: tap to bring the bar back; in edit mode, drag to look around.
+{
+  const stage = $('replay-stage');
+  let last = null;
+  stage.addEventListener('pointerdown', (e) => {
+    rp.idle = 0;
+    last = [e.clientX, e.clientY];
+    stage.setPointerCapture(e.pointerId);
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (!last || rp.mode !== 'edit') return;
+    freeCam.yaw -= (e.clientX - last[0]) * 0.005;
+    freeCam.pitch = Math.max(-1.4, Math.min(1.4, freeCam.pitch - (e.clientY - last[1]) * 0.005));
+    rp.lookAtCar = false;
+    last = [e.clientX, e.clientY];
+  });
+  stage.addEventListener('pointerup', () => (last = null));
+  stage.addEventListener('pointercancel', () => (last = null));
+  $('replay-bar').addEventListener('pointerdown', () => (rp.idle = 0));
+  window.addEventListener('keydown', (e) => {
+    if (!rp.active || rp.mode !== 'edit' || e.repeat) return;
+    const k = { w: ['f', 1], s: ['f', -1], a: ['s', -1], d: ['s', 1], e: ['u', 1], q: ['u', -1] }[e.key.toLowerCase()];
+    if (k) freeCam.move[k[0]] = k[1];
+  });
+  window.addEventListener('keyup', (e) => {
+    const k = { w: 'f', s: 'f', a: 's', d: 's', e: 'u', q: 'u' }[e.key.toLowerCase()];
+    if (k) freeCam.move[k] = 0;
+  });
+}
+
 // ---------- Your place: drive into the workshop ----------
 // Drive through the open workshop door at your cabin and you are in the workshop (the tuning shop);
 // tap Done and you are back on the drive, facing the road.
@@ -861,6 +1091,12 @@ function updateWeather(dt) {
   rain.update(dt, !!p.rain, camera, vehicle.body.linvel());
   // A wet road has about four fifths of the grip.
   vehicle.weatherGrip = p.rain ? 0.8 : 1;
+}
+
+// In a replay: rain still falls round the camera (the car itself is only a recording).
+const still = { x: 0, y: 0, z: 0 };
+function updateWeatherFx(dt) {
+  rain?.update(dt, !!timePreset.rain, camera, still);
 }
 
 // ---------- The name of each road as you drive onto it ----------
@@ -1161,6 +1397,10 @@ function frame(now) {
   dt = Math.min(dt, 0.1);
   fps += (1 / Math.max(dt, 1e-3) - fps) * 0.05;
   if (!vehicle) return;
+  if (rp.active) {
+    replayFrame(dt, now);
+    return;
+  }
 
   const portrait = window.innerHeight > window.innerWidth && matchMedia('(pointer: coarse)').matches;
   const active = running && !paused && !portrait;
@@ -1182,6 +1422,7 @@ function frame(now) {
     }
     if (steps === MAX_STEPS) accumulator = 0;
     locate();
+    recorder.record(dt, vehicle, run.hint);
     if (race.active) {
       if (onRoad.link < 0) roadBanner(roadQ.s);
     } else updateRun(dt);
@@ -1393,7 +1634,7 @@ async function boot() {
   }
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { get revCar() { return revCar; }, get onRoad() { return onRoad; }, get wildlifeDbg() { return wildlife; }, get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { get recorderSeconds() { return recorder.seconds; }, get revCar() { return revCar; }, get onRoad() { return onRoad; }, get wildlifeDbg() { return wildlife; }, get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;
