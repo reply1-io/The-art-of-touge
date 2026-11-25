@@ -62,6 +62,12 @@ function roadSurface(world, road, byHandle) {
   }
 }
 
+// People at the roadside and the cars they came in: solid, so you stop if you hit them.
+export function addCrowdColliders(world, { people, cars }) {
+  for (const p of people) world.createCollider(RAPIER.ColliderDesc.cuboid(0.28, 0.9, 0.22).setTranslation(p.x, p.y + 0.9, p.z).setRotation(yawQuat(p.yaw)));
+  for (const c of cars) world.createCollider(RAPIER.ColliderDesc.cuboid(0.85, 0.7, 2.1).setTranslation(c.x, c.y + 0.7, c.z).setRotation(yawQuat(c.yaw)));
+}
+
 // links: link roads off the loop ([{ road, a, b, sideA, sideB }]): their surfaces, and gaps in the
 // loop's rails and walls where they join.
 export function buildMountainPhysics(world, road, terrain, links = [], { rails = true } = {}) {

@@ -123,3 +123,17 @@ test('Chief Joseph: across the Sunlight Creek Bridge, high over the gorge', asyn
   }
   assert.ok(q.index >= b.i1 + 20, `stopped at s=${q.s}`);
 });
+
+test('Real roads: people at the roadside, never standing on the road', async () => {
+  const { crowdsFor } = await import('../src/world/crowds.js');
+  for (const [id, t] of REAL) {
+    const { road, terrain } = world(t);
+    const { people, cars } = crowdsFor(road, terrain, { seed: road.count });
+    assert.ok(people.length > 60, `${id}: ${people.length} people`);
+    const q = {};
+    for (const p of [...people, ...cars]) {
+      road.query(p.x, p.z, -1, q);
+      assert.ok(Math.abs(q.lateral) > road.w.PAVED + 0.3, `${id}: someone on the road at s=${q.s.toFixed(0)}`);
+    }
+  }
+});
