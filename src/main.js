@@ -86,7 +86,9 @@ scene.add(hemi);
 // Headlights: one spot light that rides on the car and lights the road ahead.
 // A real fall-off (decay 2) and a beam narrow enough to light the road, not blow the trees beside
 // it out to a glowing green.
-const headlight = new THREE.SpotLight(0xfff2d8, 900, 120, 0.46, 0.55, 2);
+// Long reach: a slower fall-off (decay 1.4) and less power close in, so the near road isn't burnt
+// out while the beam still lights the road far ahead.
+const headlight = new THREE.SpotLight(0xfff2d8, 170, 300, 0.42, 0.45, 1.4);
 scene.add(headlight, headlight.target);
 const sky = new Sky(scene);
 const flare = new LensFlare($('flare'));
@@ -773,7 +775,7 @@ function replayFrame(dt, now) {
   moon.target.position.copy(rcar.pos);
   moon.position.copy(rcar.pos).addScaledVector(sunDir, 80);
   headlight.position.copy(new THREE.Vector3(0, -0.05, 2.1).applyQuaternion(rcar.quat).add(rcar.pos));
-  headlight.target.position.copy(new THREE.Vector3(0, -1.6, 22).applyQuaternion(rcar.quat).add(rcar.pos));
+  headlight.target.position.copy(new THREE.Vector3(0, -1.3, 45).applyQuaternion(rcar.quat).add(rcar.pos));
   // The camera.
   let cam = 0;
   let wide = false;
@@ -1786,7 +1788,7 @@ function frame(now) {
   carModel.setLights(timePreset.lights, controls.brake > 0);
   const nose = new THREE.Vector3(0, -0.05, 2.1).applyQuaternion(carModel.root.quaternion).add(carModel.root.position);
   headlight.position.copy(nose);
-  headlight.target.position.copy(new THREE.Vector3(0, -1.6, 22).applyQuaternion(carModel.root.quaternion).add(carModel.root.position));
+  headlight.target.position.copy(new THREE.Vector3(0, -1.3, 45).applyQuaternion(carModel.root.quaternion).add(carModel.root.position));
   if (window.__touge?.debugCam) window.__touge.debugCam(camera, carModel.root);
   else if (!running) titleCamera(dt);
   else rig.update(dt, carModel.root, vehicle.body.linvel());

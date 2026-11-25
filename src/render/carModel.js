@@ -646,8 +646,8 @@ export class CarModel {
     }
     for (const g of this.glows.tail) {
       g.visible = on || braking;
-      g.material.opacity = braking ? 0.95 : 0.45;
-      g.scale.setScalar(braking ? 1.5 : 1.0);
+      g.material.opacity = braking ? 0.75 : 0.4;
+      g.scale.setScalar(braking ? 0.55 : 0.42);
     }
   }
 
@@ -669,7 +669,8 @@ export class CarModel {
       for (const x of xs) {
         const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: tail ? 0xff2a1a : 0xfff2d8, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: tail ? 0.45 : 0.3 }));
         s.position.set(x, c.y, tail ? box.min.z - 0.05 : box.max.z + 0.05);
-        s.scale.setScalar(tail ? 1.0 : 0.75);
+        // A small glow, close round the lamp.
+        s.scale.setScalar(tail ? 0.42 : 0.38);
         s.visible = false;
         o.add(s);
         (tail ? out.tail : out.head).push(s);

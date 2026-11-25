@@ -36,9 +36,9 @@ const bloomShader = /* glsl */ `
       for (int x = -3; x <= 3; x++) {
         vec2 o = vec2(float(x), float(y));
         float w = exp(-dot(o, o) / 6.0);
-        // Stretched sideways: tape smears bright light along the lines.
-        vec3 c = texture2D(tSrc, vUv + o * texel * vec2(4.5, 2.0)).rgb;
-        sum += max(c - 0.6, 0.0) * w; // only the bright light
+        // A little wider than tall: tape smears bright light along the lines.
+        vec3 c = texture2D(tSrc, vUv + o * texel * vec2(1.8, 1.1)).rgb;
+        sum += max(c - 0.9, 0.0) * w; // only the bright light, close round it
         wsum += w;
       }
     }
@@ -112,9 +112,9 @@ const fragmentShader = /* glsl */ `
     float old = useField * step(0.5, mod(row + field, 2.0));
     vec3 c = mix(texture2D(tCur, uv).rgb, texture2D(tPrev, uv).rgb, old);
     // The glow, and a wider haze around it (halation: light spreading in the lens and the air).
-    vec2 hz = vec2(10.0, 6.0) / res;
+    vec2 hz = vec2(4.0, 3.0) / res;
     vec3 haze = texture2D(tBloom, uv + hz).rgb + texture2D(tBloom, uv - hz).rgb + texture2D(tBloom, uv + hz * vec2(-1.0, 1.0)).rgb + texture2D(tBloom, uv + hz * vec2(1.0, -1.0)).rgb;
-    c += texture2D(tBloom, uv).rgb * (0.9 + 0.9 * grade) + haze * 0.35 * grade;
+    c += texture2D(tBloom, uv).rgb * (0.5 + 0.25 * grade) + haze * 0.05 * grade;
     return develop(c);
   }
   const vec3 LW = vec3(0.299, 0.587, 0.114);
