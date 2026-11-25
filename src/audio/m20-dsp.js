@@ -125,7 +125,7 @@ export const ENGINES = {
     idleNoise: 0.4,                            // ...and less turbulence noise at idle, or it hisses
     muff: [300, 620, 0.08, 1200, 1100], body: [80, 6], drone: [165, 1],
     rasp: [900, 0.12, 0.75], rumble: [180, 0.05, 1.35], intake: [300, 0.06, 0.14],
-    itb: { tone: 2.8, air: 3.1 },            // a big V8 breathes harder through its stacks
+    itb: { tone: 2.3, air: 2.5 },            // a big V8 breathes harder through its stacks
     level: 1.4,
   },
   rotary13b: {
@@ -252,18 +252,20 @@ export const ITB = {
                   // cancels and the stacks sing on twice (and three times) the firing note
   stack: [170, 1.2, 6],    // trumpet + runner resonance: Hz, Q, dB (picks out whichever
                           // firing harmonic is near it: 2x and 3x at idle, 2x up the revs)
-  toneLp: 900,    // upper limit of the honk: on the throttle it is round, not airy
+  toneLp: 3000,   // upper limit of the honk: on the throttle it is round, not airy
   tone: 1.8,     // honk level
   air: 2.0,     // induction air under load
-  airBand: [250, 2200],
+  airBand: [400, 3800],
   hiss: 0,       // suction hiss past the nearly shut butterflies (idle, blips, overrun)
   hissBand: [600, 4000],
   idle: 0,       // how much honk is left with the throttles shut
   duck: 3.6,     // how much of the exhaust the stacks cover up under load
   uneven: 1.8,   // cylinder-to-cylinder differences in the stacks: a lumpy, grumpy beat
   jitter: 0.26,   // stroke-to-stroke variation
-  growl: [120, 0.8, 10],  // low growl under the honk: Hz, Q, dB
+  growl: [120, 0.8, 5],  // low growl under the honk: Hz, Q, dB
   tick: 0,       // valve-train tick left with ITBs (the stacks cover it)
+  brass: [900, 0.8, 6],   // the trumpets' brassy bite: Hz, Q, dB
+  top: 7000,     // nothing above this (sharp clicks live up there)
 };
 
 export class M20Dsp {
@@ -287,7 +289,7 @@ export class M20Dsp {
     this.itbOn = 0; this.itbHp = new Biquad(); this.itbLp = new Biquad(); this.itbStack = new Biquad();
     this.itbAirHp = new Biquad(); this.itbAirLp = new Biquad(); this.itbSet = '';
     this.itbHissHp = new Biquad(); this.itbHissLp = new Biquad(); this.itbGrowl = new Biquad();
-    this.itbTop1 = new Biquad().set('lp', 2000, 0.7, 0, fs); this.itbTop2 = new Biquad().set('lp', 2000, 0.7, 0, fs); // no ticking
+    this.itbTop1 = new Biquad(); this.itbTop2 = new Biquad(); this.itbBrass = new Biquad();
     // turbo state: boost and shaft speed 0..1, lift-off envelopes and oscillator phases
     this.T = { on: 0, boost: 0, shaft: 0, armed: false, flut: 0, flutRate: 0, flutPh: 0,
                flutA: 1, whPh: 0, whPh2: 0, whAmp: 0, poof: 0, poofAtk: 1 };
@@ -487,6 +489,8 @@ export class M20Dsp {
         this.itbHp.set('hp', 90, 0.7, 0, fs); this.itbLp.set('lp', I.toneLp, 0.7, 0, fs);
         this.itbStack.set('pk', I.stack[0], I.stack[1], I.stack[2], fs);
         this.itbGrowl.set('pk', I.growl[0], I.growl[1], I.growl[2], fs);
+        this.itbBrass.set('pk', I.brass[0], I.brass[1], I.brass[2], fs);
+        this.itbTop1.set('lp', I.top, 0.7, 0, fs); this.itbTop2.set('lp', I.top, 0.7, 0, fs);
         this.itbAirHp.set('hp', I.airBand[0], 0.6, 0, fs); this.itbAirLp.set('lp', I.airBand[1], 0.6, 0, fs);
         this.itbHissHp.set('hp', I.hissBand[0], 0.6, 0, fs); this.itbHissLp.set('lp', I.hissBand[1], 0.6, 0, fs);
       }
@@ -668,7 +672,7 @@ export class M20Dsp {
         const shutHonk = I.idle * Math.max(0, 1 - Math.max(0, rpm - idle) / 3000); // fades off idle
         const thrI = Math.sqrt(thr); // the stacks take over early in the pedal travel
         const lvl = this.itbOn * ign * (shutHonk + (1 - shutHonk) * thrI) * (0.25 + 0.75 * Math.min(1.3, rpm / 6000));
-        let it = this.itbGrowl.run(this.itbStack.run(this.itbLp.run(this.itbHp.run(itbP)))) * I.tone;
+        let it = this.itbBrass.run(this.itbGrowl.run(this.itbStack.run(this.itbLp.run(this.itbHp.run(itbP))))) * I.tone;
         it += this.itbAirLp.run(this.itbAirHp.run(randn() * itbF)) * I.air * thrI * Math.min(1.4, rpm / 5000);
         it *= lvl;
         // the suck through nearly shut butterflies: at idle, around each blip and on overrun
