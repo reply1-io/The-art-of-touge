@@ -28,6 +28,10 @@
       .axis .val { text-align: center; background: #1b1e24; border-radius: 8px; padding: 10px 4px; font-variant-numeric: tabular-nums; }
       .axis button { font-size: 20px; padding: 4px; }
       .chips button { padding: 7px 9px; min-height: 34px; }
+      @media (orientation: landscape) {
+        #add, #side { top: 64px; bottom: 40px; transform: none; overflow-y: auto; }
+        #add button, #side button { padding: 7px 10px; min-height: 34px; }
+      }
       @media (orientation: portrait) { #panel .chips button { padding: 6px 7px; font-size: 12px; } #panel .row { gap: 4px; } }
       #toast { position: fixed; left: 50%; top: 70px; transform: translateX(-50%); background: #000c; padding: 9px 14px; border-radius: 8px; display: none; z-index: 9; }
       #modal { position: fixed; inset: 0; background: #000a; display: none; align-items: center; justify-content: center; z-index: 8; }
@@ -42,7 +46,8 @@
       @media (orientation: portrait) {
         #add { top: auto; bottom: calc(46px + env(safe-area-inset-bottom)); left: 8px; right: 8px; transform: none; flex-direction: row; flex-wrap: wrap; align-items: center; }
         #add button { flex: 1; padding: 9px 4px; }
-        #side { top: 116px; right: 8px; transform: none; flex-direction: row; }
+        #side { top: 116px; left: 8px; right: 8px; transform: none; flex-direction: row; flex-wrap: wrap; justify-content: flex-end; }
+        #side button { padding: 7px 9px; min-height: 34px; }
       }
       #drawp { position: fixed; left: 0; right: 0; bottom: 0; background: #15181dee; border-top: 1px solid #2c3139; padding: 8px 8px max(8px, env(safe-area-inset-bottom)); display: none; }
       body.drawing #drawp { display: block; }
@@ -91,6 +96,7 @@
     </div>
     <div id="hint">Tap a shape to pick it · then drag it, its handles or its corners · drag empty space to look around · pinch to zoom</div>
     <div id="panel">
+      <div class="lbl" id="pname" style="margin: 0 2px 4px"></div>
       <div class="row chips" id="modes">
         <button type="button" data-mode="move" class="on">MOVE</button>
         <button type="button" data-mode="size">SIZE</button>
@@ -98,6 +104,7 @@
         <button type="button" data-mode="shape">SHAPE</button>
         <button type="button" data-mode="style">STYLE</button>
         <span class="grow" style="flex: 1"></span>
+        <button type="button" id="b-split">SPLIT INTO PIECES</button>
         <button type="button" id="b-dup">COPY</button>
         <button type="button" id="b-del">DELETE</button>
         <button type="button" id="b-done">✕</button>
@@ -138,19 +145,30 @@
         <button type="button" data-view="top">TOP</button>
         <button type="button" data-view="front">FRONT</button>
         <span class="grow" style="flex: 1"></span>
-        <button type="button" id="sk-back">BACK</button>
+        <button type="button" id="sk-undo">UNDO</button>
         <button type="button" id="sk-clear">CLEAR</button>
       </div>
       <div class="row chips">
+        <button type="button" data-tool="pen" class="on">PEN</button>
+        <button type="button" data-tool="erase">ERASER</button>
+        <span class="lbl">SIZE</span>
+        <input type="range" id="sk-size" min="0.005" max="0.3" step="0.005" value="0.02" aria-label="Pen size" style="flex: 1; min-width: 70px" />
+        <span class="lbl" id="sk-size-v">2 cm</span>
+      </div>
+      <div class="row chips">
+        <span class="lbl">STABILITY</span>
+        <input type="range" id="sk-stab" min="0" max="0.9" step="0.05" value="0.4" aria-label="Stability" style="flex: 1; min-width: 70px" />
+        <span class="lbl" id="sk-stab-v">40%</span>
+      </div>
+      <div class="row chips">
         <span class="lbl">THICK</span>
-        <input type="range" id="sk-thick" min="0.01" max="2" step="0.01" value="0.1" aria-label="Thickness" style="flex: 1; min-width: 90px" />
+        <input type="range" id="sk-thick" min="0.01" max="2" step="0.01" value="0.1" aria-label="Thickness" style="flex: 1; min-width: 70px" />
         <span class="lbl" id="sk-thick-v">10 cm</span>
         <button type="button" id="sk-round">ROUNDED</button>
       </div>
-      <p class="lbl" id="sk-hint" style="margin: 4px 2px">Draw the outline with your finger, or tap corner by corner. It closes itself.</p>
       <div class="row chips">
         <button type="button" id="sk-cancel">CANCEL</button>
-        <span class="grow" style="flex: 1"></span>
+        <span class="lbl" style="flex: 1">Draw a closed shape and it fills in. Two fingers to zoom.</span>
         <button type="button" id="sk-save" class="go">SAVE SHAPE</button>
       </div>
     </div>

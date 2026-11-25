@@ -98,3 +98,16 @@ test('Car Builder: a sketched outline becomes a solid shape, facing out, any way
     assert.equal(outward, polys.length, `${view}: ${outward}/${polys.length} facing out`);
   }
 });
+
+test('Car Builder: the E30 and RX-7 come apart in about 50 pieces, covering the whole body', async () => {
+  await import('../src/render/carModel.js');
+  const { stockPieces, splitStock, designPolys } = await import('../src/render/shapes/custom.js');
+  for (const model of ['e30', 'rx7']) {
+    const pieces = stockPieces(model);
+    assert.ok(pieces.length >= 40 && pieces.length <= 60, `${model}: ${pieces.length} pieces`);
+    assert.equal(new Set(pieces.map((p) => p.name)).size, pieces.length, 'every piece has its own name');
+    const whole = { type: 'stock', model, p: [0, 0, 0], s: [1, 1, 1], r: [0, 0, 0], mat: 'paint' };
+    const count = (parts) => Object.values(designPolys({ parts })).reduce((n, l) => n + l.length, 0);
+    assert.equal(count(splitStock(whole)), count([whole]), `${model}: the pieces make the whole body`);
+  }
+});

@@ -82,6 +82,8 @@ export const SKETCH_VIEWS = ['side', 'top', 'front'];
 function sketchGeometry(part) {
   const o = part.o || [];
   const shape = new THREE.Shape(o.map(([a, b]) => new THREE.Vector2(a, b)));
+  // Holes cut through it (part.h: outlines like part.o).
+  for (const hole of part.h || []) shape.holes.push(new THREE.Path(hole.map(([a, b]) => new THREE.Vector2(a, b))));
   const g = new THREE.ExtrudeGeometry(shape, {
     depth: 1,
     steps: detail(part),
@@ -188,26 +190,17 @@ const baseCache = new Map();
 export function baseMesh(part) {
   const key =
     part.type === 'stock'
-      ? `stock:${part.model}`
+      ? `stock:${part.model}:${part.piece ?? 'all'}`
       : part.type === 'sketch'
-        ? `sketch:${part.view}:${detail(part)}:${part.bev ? 1 : 0}:${JSON.stringify(part.o)}`
+        ? `sketch:${part.view}:${detail(part)}:${part.bev ? 1 : 0}:${JSON.stringify(part.o)}:${JSON.stringify(part.h || [])}`
         : `${part.type}:${part.t ?? ''}:${detail(part)}`;
   if (baseCache.has(key)) return baseCache.get(key);
   const tris = [];
   if (part.type === 'stock') {
-    const src = stockPolys(part.model);
-    if (!src) return { verts: [], faces: [], meta: [], mirror: [] };
-    for (const [bucket, list] of Object.entries(src)) {
-      for (const p of list) {
-        for (let k = 1; k < p.pts.length - 1; k++) {
-          let pts = [p.pts[0], p.pts[k], p.pts[k + 1]];
-          // Wind each triangle to face along the polygon's outward direction.
-          const n = normal(pts);
-          if (n[0] * p.out[0] + n[1] * p.out[1] + n[2] * p.out[2] < 0) pts = [pts[0], pts[2], pts[1]];
-          tris.push({ pts, bucket, color: p.color });
-        }
-      }
-    }
+    const all = stockTris(part.model);
+    if (!all) return { verts: [], faces: [], meta: [], mirror: [] };
+    if (part.piece == null) tris.push(...all);
+    else for (const t of stockPieces(part.model)[part.piece]?.tris || []) tris.push(all[t]);
   } else {
     const pos = unitGeometry(part).getAttribute('position');
     for (let i = 0; i < pos.count; i += 3) tris.push({ pts: [0, 1, 2].map((k) => [pos.getX(i + k), pos.getY(i + k), pos.getZ(i + k)]) });
@@ -216,6 +209,135 @@ export function baseMesh(part) {
   baseCache.set(key, mesh);
   return mesh;
 }
+
+// A stock body as triangles, each wound to face out, with what it is (paint, trim, glass, lamps).
+const trisCache = new Map();
+function stockTris(model) {
+  if (trisCache.has(model)) return trisCache.get(model);
+  const src = stockPolys(model);
+  if (!src) return null;
+  const tris = [];
+  for (const [bucket, list] of Object.entries(src)) {
+    for (const p of list) {
+      for (let k = 1; k < p.pts.length - 1; k++) {
+        let pts = [p.pts[0], p.pts[k], p.pts[k + 1]];
+        const n = normal(pts);
+        if (n[0] * p.out[0] + n[1] * p.out[1] + n[2] * p.out[2] < 0) pts = [pts[0], pts[2], pts[1]];
+        tris.push({ pts, bucket, color: p.color });
+      }
+    }
+  }
+  trisCache.set(model, tris);
+  return tris;
+}
+
+// A stock body cut into about 50 pieces you can pick, move or delete one by one: its panels,
+// trim, glass and lamps each grouped into patches that sit together and face the same way
+// (matched left and right), named by where they are.
+const PIECES = { paint: 15, trim: 8, glass: 3, tail: 1, head: 1 };
+const PIECE_NAMES = { paint: 'Panel', trim: 'Trim', glass: 'Glass', tail: 'Taillight', head: 'Headlight' };
+const piecesCache = new Map();
+export function stockPieces(model) {
+  if (piecesCache.has(model)) return piecesCache.get(model);
+  const all = stockTris(model);
+  if (!all) return [];
+  const pieces = [];
+  for (const [bucket, k] of Object.entries(PIECES)) {
+    const ids = [];
+    all.forEach((t, i) => t.bucket === bucket && ids.push(i));
+    if (!ids.length) continue;
+    // What to group by: where it sits (folded left onto right) and which way it faces.
+    const feat = ids.map((i) => {
+      const [a, b, c] = all[i].pts;
+      const m = [(a[0] + b[0] + c[0]) / 3, (a[1] + b[1] + c[1]) / 3, (a[2] + b[2] + c[2]) / 3];
+      const n = normal(all[i].pts);
+      const len = Math.hypot(...n) || 1;
+      const side = m[0] < 0 ? -1 : 1;
+      return { m, area: len / 2, f: [Math.abs(m[0]), m[1], m[2] * 0.6, (n[0] / len) * side * 0.35, (n[1] / len) * 0.35, (n[2] / len) * 0.35] };
+    });
+    const groups = kmeans(feat, Math.min(k, ids.length));
+    groups.forEach((members) => {
+      if (!members.length) return;
+      const mx = members.reduce((s2, j) => s2 + Math.abs(feat[j].m[0]) * feat[j].area, 0) / members.reduce((s2, j) => s2 + feat[j].area, 0);
+      // Patches along the middle of the car stay whole; the rest split into left and right.
+      const halves = mx < 0.25 ? [members] : [members.filter((j) => feat[j].m[0] >= 0), members.filter((j) => feat[j].m[0] < 0)];
+      for (const half of halves) {
+        if (!half.length) continue;
+        const c = [0, 1, 2].map((a) => half.reduce((s2, j) => s2 + feat[j].m[a], 0) / half.length);
+        const where = [c[2] > 1.15 ? 'front' : c[2] < -1.15 ? 'rear' : 'middle', halves.length === 1 ? '' : c[0] > 0 ? 'left' : 'right', c[1] > 1.0 ? 'top' : c[1] < 0.5 ? 'low' : ''].filter(Boolean).join(' ');
+        pieces.push({ bucket, tris: half.map((j) => ids[j]), name: `${PIECE_NAMES[bucket]} · ${where}`, c });
+      }
+    });
+  }
+  // Number repeated names so each piece can be told apart.
+  const seen = {};
+  for (const p of pieces) {
+    seen[p.name] = (seen[p.name] || 0) + 1;
+    if (seen[p.name] > 1) p.name += ` ${seen[p.name]}`;
+  }
+  piecesCache.set(model, pieces);
+  return pieces;
+}
+
+// Group points into k groups that sit together (k-means, the same every time).
+function kmeans(items, k) {
+  const d2 = (a, b) => a.reduce((s2, v, i) => s2 + (v - b[i]) ** 2, 0);
+  const centres = [items[0].f];
+  while (centres.length < k) {
+    let best = 0;
+    let bd = -1;
+    items.forEach((it, i) => {
+      const d = Math.min(...centres.map((c) => d2(it.f, c)));
+      if (d > bd) [bd, best] = [d, i];
+    });
+    centres.push(items[best].f);
+  }
+  let assign = new Int32Array(items.length);
+  for (let iter = 0; iter < 14; iter++) {
+    assign = Int32Array.from(items.map((it) => {
+      let bi = 0;
+      let bd = Infinity;
+      centres.forEach((c, i) => {
+        const d = d2(it.f, c);
+        if (d < bd) [bd, bi] = [d, i];
+      });
+      return bi;
+    }));
+    for (let c = 0; c < k; c++) {
+      let w = 0;
+      const sum = new Array(items[0].f.length).fill(0);
+      items.forEach((it, i) => {
+        if (assign[i] !== c) return;
+        w += it.area;
+        it.f.forEach((v, a) => (sum[a] += v * it.area));
+      });
+      if (w > 0) centres[c] = sum.map((v) => v / w);
+    }
+  }
+  const groups = Array.from({ length: k }, () => []);
+  assign.forEach((g, i) => groups[g].push(i));
+  return groups;
+}
+
+// A whole stock body cut into its pieces, each placed where the body was, keeping its reshaping.
+export function splitStock(part) {
+  const whole = baseMesh(part);
+  const index = new Map(whole.verts.map((v, i) => [KEY(v), i]));
+  return stockPieces(part.model).map((pc, k) => {
+    const piece = { type: 'stock', model: part.model, piece: k, p: [...part.p], s: [...part.s], r: [...part.r], mat: 'paint' };
+    if (part.edits) {
+      const edits = {};
+      baseMesh(piece).verts.forEach((v, i) => {
+        const e = part.edits[index.get(KEY(v))];
+        if (e) edits[i] = e;
+      });
+      if (Object.keys(edits).length) piece.edits = edits;
+    }
+    return piece;
+  });
+}
+
+export const pieceName = (part) => (part.type === 'stock' && part.piece != null ? stockPieces(part.model)[part.piece]?.name : null);
 
 function normal([a, b, c]) {
   const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
