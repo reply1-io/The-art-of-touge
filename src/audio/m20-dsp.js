@@ -104,7 +104,6 @@ export const ENGINES = {
     zing: { harmonics: [[1.5, 1], [3, 0.35]], level: 0.11, from: 2500, to: 7000 },
     rasp: [1400, 0.1, 0.55], rumble: [220, 0.05, 0.6], intake: [420, 0.07, 0.08],
     roar: 0.3, intakeRoar: 0.25,              // much less flow noise than the other engines
-    itb: { tone: 2.0, air: 2.3 },
     level: 0.68,
     factoryTurbo: 'factory',                   // the stock turbo is always there; set({ turbo: 1 }) upgrades it
   },
@@ -125,7 +124,7 @@ export const ENGINES = {
     idleNoise: 0.4,                            // ...and less turbulence noise at idle, or it hisses
     muff: [300, 620, 0.08, 1200, 1100], body: [80, 6], drone: [165, 1],
     rasp: [900, 0.12, 0.75], rumble: [180, 0.05, 1.35], intake: [300, 0.06, 0.14],
-    itb: { tone: 2.3, air: 2.5 },            // a big V8 breathes harder through its stacks
+    itb: { level: 0.7 },
     level: 1.4,
   },
   rotary13b: {
@@ -160,7 +159,7 @@ export const ENGINES = {
     stumble: 0,                                // a rotary's brap is metronome-regular
     mid: [290, 6],                             // third pipe resonance heard on the reference
     rasp: [1300, 0.2, 0.8], rumble: [300, 0.06, 1.0], intake: [600, 0.12, 0.25],
-    itb: { tone: 5.5, air: 5.5 }, // two big ports: needs more to stand over the exhaust
+    itb: { level: 1.7 },                     // its output stage turns everything down
     level: 1.3, post: 0.62,                    // driven harder, then turned down: rounder thumps
   },
 };
@@ -242,31 +241,26 @@ export function randn() { // cheap gaussian-ish
 }
 
 // ITBs (individual throttle bodies, set({ intake: 'itb' })): every cylinder breathes through
-// its own short velocity stack, so the intake is heard directly: a hollow howl on the firing
-// note and twice it (a suction pulse, then the stack's reflection half a firing later), a
-// stack resonance, and a rush of air that rides on each intake stroke. An engine can override
-// any of these with its own `itb: {...}`.
+// its own trumpet, so the intake is heard directly. Each intake stroke pulls one smooth gulp
+// of air through its trumpet; what comes out of the open mouth is the change in that flow.
+// Six smooth gulps a cycle make a deep, clean note on the firing frequency (no sharp edges,
+// so nothing ticks), and because no two trumpets breathe quite alike, a lumpy growl at the
+// engine-cycle rate around it. With the throttles shut they add nothing. An engine can
+// override any of these with its own `itb: {...}`.
 export const ITB = {
-  w: 0.13,       // pulse width, as a share of the firing interval (narrower = brighter)
-  r: 0.45,        // the reflected pulse half a firing later; near 1 the firing note itself
-                  // cancels and the stacks sing on twice (and three times) the firing note
-  stack: [170, 1.2, 6],    // trumpet + runner resonance: Hz, Q, dB (picks out whichever
-                          // firing harmonic is near it: 2x and 3x at idle, 2x up the revs)
-  toneLp: 3000,   // upper limit of the honk: on the throttle it is round, not airy
-  tone: 1.8,     // honk level
-  air: 2.0,     // induction air under load
-  airBand: [400, 3800],
-  hiss: 0,       // suction hiss past the nearly shut butterflies (idle, blips, overrun)
-  hissBand: [600, 4000],
-  idle: 0,       // how much honk is left with the throttles shut
-  duck: 3.6,     // how much of the exhaust the stacks cover up under load
-  uneven: 1.8,   // cylinder-to-cylinder differences in the stacks: a lumpy, grumpy beat
-  jitter: 0.26,   // stroke-to-stroke variation
-  growl: [120, 0.8, 5],  // low growl under the honk: Hz, Q, dB
-  tick: 0,       // valve-train tick left with ITBs (the stacks cover it)
-  brass: [900, 0.8, 6],   // the trumpets' brassy bite: Hz, Q, dB
-  top: 7000,     // nothing above this (sharp clicks live up there)
+  width: 1.5,     // one gulp lasts this many firing intervals
+  skew: 0.8,      // <1: the gulp builds fast and tails off (sets the upper harmonics)
+  uneven: 2.0,    // how differently the trumpets breathe: the growl
+  spread: 10,     // and how far apart in timing (crank degrees)
+  jitter: 0.08,   // stroke-to-stroke variation
+  level: 0.6,     // the note
+  roar: 0.7,      // rush of air through the trumpets
+  roarBand: [300, 4000],
+  duck: 3.6,      // how much of the exhaust the trumpets cover up on the throttle
+  tick: 0,        // valve-train tick left on the throttle
 };
+// how each trumpet differs from the average (firing order), scaled by `uneven`
+const ITB_UNEVEN = [0.26, 0.05, -0.23, -0.22, 0.25, -0.1, 0.15, -0.16];
 
 export class M20Dsp {
   constructor(fs) {
@@ -286,10 +280,8 @@ export class M20Dsp {
     this.envF = 0;
     this.roarLp = new Biquad().set('lp', 3400, 0.6, 0, fs);   // exhaust flow roar (before the muffler)
     this.intakeRoar = new Biquad(); this.zj = 0;
-    this.itbOn = 0; this.itbHp = new Biquad(); this.itbLp = new Biquad(); this.itbStack = new Biquad();
-    this.itbAirHp = new Biquad(); this.itbAirLp = new Biquad(); this.itbSet = '';
-    this.itbHissHp = new Biquad(); this.itbHissLp = new Biquad(); this.itbGrowl = new Biquad();
-    this.itbTop1 = new Biquad(); this.itbTop2 = new Biquad(); this.itbBrass = new Biquad();
+    this.itbOn = 0; this.itbSet = ''; this.itbPrev = 0;
+    this.itbRoarHp = new Biquad(); this.itbRoarLp = new Biquad(); this.itbDc = new Biquad();
     // turbo state: boost and shaft speed 0..1, lift-off envelopes and oscillator phases
     this.T = { on: 0, boost: 0, shaft: 0, armed: false, flut: 0, flutRate: 0, flutPh: 0,
                flutA: 1, whPh: 0, whPh2: 0, whAmp: 0, poof: 0, poofAtk: 1 };
@@ -486,13 +478,8 @@ export class M20Dsp {
       const I = this.E.itb ? { ...ITB, ...this.E.itb } : ITB;
       if (this.itbSet !== this.engine) { // ITB voicing only changes with the engine
         this.itbSet = this.engine; this.I = I;
-        this.itbHp.set('hp', 90, 0.7, 0, fs); this.itbLp.set('lp', I.toneLp, 0.7, 0, fs);
-        this.itbStack.set('pk', I.stack[0], I.stack[1], I.stack[2], fs);
-        this.itbGrowl.set('pk', I.growl[0], I.growl[1], I.growl[2], fs);
-        this.itbBrass.set('pk', I.brass[0], I.brass[1], I.brass[2], fs);
-        this.itbTop1.set('lp', I.top, 0.7, 0, fs); this.itbTop2.set('lp', I.top, 0.7, 0, fs);
-        this.itbAirHp.set('hp', I.airBand[0], 0.6, 0, fs); this.itbAirLp.set('lp', I.airBand[1], 0.6, 0, fs);
-        this.itbHissHp.set('hp', I.hissBand[0], 0.6, 0, fs); this.itbHissLp.set('lp', I.hissBand[1], 0.6, 0, fs);
+        this.itbRoarHp.set('hp', I.roarBand[0], 0.6, 0, fs); this.itbRoarLp.set('lp', I.roarBand[1], 0.6, 0, fs);
+        this.itbDc.set('hp', 45, 0.7, 0, fs);
       }
     }
     const itbT = this.target.intake === 'itb' ? 1 : 0;
@@ -534,11 +521,9 @@ export class M20Dsp {
       const pump = E.pump;                     // air being pushed out with no combustion
       const width = E.width[0] - E.width[1] * thr; // crank degrees; harder hit under load
 
-      let a = 0, b = 0, env = 0, inEnv = 0, hit = 0, itbP = 0, itbF = 0;
+      let a = 0, b = 0, env = 0, inEnv = 0, hit = 0, itbB = 0;
       this.itbOn += (itbT - this.itbOn) * 0.0005;
       const itbAct = this.itbOn > 0.001, I = this.I, sp = cyc / ncyl;
-      // the valve's pressure edge takes about the same time at any speed: narrower at low revs
-      const itbNarrow = itbAct ? Math.sqrt(Math.min(1, Math.max(0.15, rpm / 3000))) : 1;
       for (let k = 0; k < ncyl; k++) {
         // new cycle for this cylinder is detected from crank position alone; the random
         // timing scatter only moves where its pulse lands (otherwise one cycle can trigger twice)
@@ -568,7 +553,7 @@ export class M20Dsp {
           }
           this.tickEnv = 1;
           // every stack breathes a little differently (fixed), and no two strokes are alike
-          this.itbJ[k] = Math.max(0.3, (1 + (this.I?.uneven ?? 0) * (E.cylGain[k] - 1) * 6) * (1 + (this.I?.jitter ?? 0.12) * randn()));
+          if (this.I) this.itbJ[k] = Math.max(0.2, (1 + this.I.uneven * ITB_UNEVEN[k % 8]) * (1 + this.I.jitter * randn()));
         }
         this.lastX[k] = xc;
         let x = xc - this.tjit[k];
@@ -585,11 +570,11 @@ export class M20Dsp {
         // intake valve opens ~360 deg later on the same cylinder
         const xi = x - inLag;
         if (xi > 0 && xi < 180) inEnv += Math.sin(Math.PI * xi / 180);
-        if (itbAct) { // this cylinder's own stack: suction pulse, its reflection, and the air
-          let xs = xi < 0 ? xi + cyc : xi;
-          const s0 = I.w * sp * itbNarrow, c0 = 0.8 * sp, d1 = (xs - c0) / s0, d2 = (xs - c0 - 0.5 * sp) / s0;
-          if (xs < c0 + 0.5 * sp + 4 * s0) itbP += this.itbJ[k] * (Math.exp(-d1 * d1) + I.r * Math.exp(-d2 * d2));
-          if (xs < 240) itbF += Math.sin(Math.PI * xs / 240) * this.itbJ[k];
+        if (itbAct) { // this cylinder's gulp of air through its own trumpet
+          let xs = xi - I.spread * ITB_UNEVEN[(k + 3) % 8];
+          if (xs < 0) xs += cyc;
+          const u = xs / (I.width * sp);
+          if (u < 1) { const g = Math.sin(Math.PI * Math.pow(u, I.skew)); itbB += g * g * this.itbJ[k]; }
         }
       }
 
@@ -667,24 +652,18 @@ export class M20Dsp {
         y += this.starterBp.run(saw + 0.4 * randn()) * 0.35 * st;
       }
 
-      // ITBs: heard straight from the stacks (under the bonnet, so still clear from the cabin)
+      // ITBs: heard straight from the trumpets (under the bonnet, so still clear from the cabin).
+      // The sound out of a trumpet mouth is the change in its flow: louder the faster it turns.
       if (itbAct) {
-        const shutHonk = I.idle * Math.max(0, 1 - Math.max(0, rpm - idle) / 3000); // fades off idle
-        const thrI = Math.sqrt(thr); // the stacks take over early in the pedal travel
-        const lvl = this.itbOn * ign * (shutHonk + (1 - shutHonk) * thrI) * (0.25 + 0.75 * Math.min(1.3, rpm / 6000));
-        let it = this.itbBrass.run(this.itbGrowl.run(this.itbStack.run(this.itbLp.run(this.itbHp.run(itbP))))) * I.tone;
-        it += this.itbAirLp.run(this.itbAirHp.run(randn() * itbF)) * I.air * thrI * Math.min(1.4, rpm / 5000);
-        it *= lvl;
-        // the suck through nearly shut butterflies: at idle, around each blip and on overrun
-        // (it doesn't need the ignition, only the pistons pulling air), pulsing with each stroke
-        const shut = 1 - thr;
-        it += this.itbHissLp.run(this.itbHissHp.run(randn() * itbF)) * I.hiss * this.itbOn * shut * shut *
-              Math.min(1, rpm / 400) * (0.3 + 0.5 * Math.min(1.5, rpm / 3000));
-        // the same intake on every engine (the output stage scales by the engine's level)
-        // the same intake on every engine and exhaust (the output stage scales by their levels;
-        // a loud exhaust shouldn't push the stacks into the limiter)
-        this.itbOut = this.itbTop2.run(this.itbTop1.run(it)) * (1 - 0.35 * Math.min(1, this.target.cabin || 0)) / (E.level * Math.sqrt(X.level));
-      } else this.itbOut = 0;
+        const dB = itbB - this.itbPrev; this.itbPrev = itbB;
+        // ~1 at 6,000 rpm; grows gently with the revs (it would double with them otherwise)
+        const note = dB * (I.width * sp) / (36000 / fs) * Math.pow(6000 / Math.max(600, rpm), 0.75);
+        const thrI = Math.sqrt(thr);                                 // they take over early in the pedal travel
+        const roar = this.itbRoarLp.run(this.itbRoarHp.run(randn() * itbB)) * I.roar * Math.min(1.2, 0.4 + rpm / 7500);
+        const it = (note * I.level + roar) * this.itbOn * ign * thrI;
+        // the same on every engine and exhaust (the output stage scales by their levels)
+        this.itbOut = this.itbDc.run(it) * (1 - 0.35 * Math.min(1, this.target.cabin || 0)) / (E.level * Math.sqrt(X.level));
+      } else { this.itbOut = 0; this.itbPrev = 0; }
 
       // low cut follows the exhaust: louder pipes trade sub mud for punch
       const subT = Math.max(X.sub, E.subMin || 0);
@@ -734,7 +713,7 @@ export class M20Dsp {
       }
       // with ITBs the intake takes over under load: the stacks cover up part of the exhaust
       const itbDuck = itbAct ? 1 - Math.min(0.93, 0.4 * this.itbOn * Math.sqrt(thr) * I.duck) : 1;
-      if (itbAct) y = y * itbDuck + this.itbOut;
+      if (itbAct) y *= itbDuck;
 
       // zing (engines that define it): clean tones locked to the firing, rising with rpm
       if (E.zing) {
@@ -759,6 +738,9 @@ export class M20Dsp {
       let dif = this.roomHp.run(this.roomLp.run(this.refl.read(fs * 0.019)));
       for (const a of this.ap) { const dl = a.d.read(a.n - 1); const v = dif + 0.6 * dl; a.d.write(v); dif = dl - 0.6 * v; }
       y = y * 0.85 + wet * 0.5 + dif * 0.22;
+      // the trumpets go in after the room: they are right in front of you, and a near-pure note
+      // through the ground reflection would swell and vanish as the revs sweep past its notches
+      if (itbAct) y += this.itbOut;
       let o = Math.tanh(y * 0.38 * E.level * X.level) * 1.35 * (E.post || 1); // gentle: mostly linear, only peaks round off
       // soft knee above 0.9 so loud engines never clip the output
       if (o > 0.9) o = 0.9 + 0.1 * Math.tanh((o - 0.9) / 0.1);
