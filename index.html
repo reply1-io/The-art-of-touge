@@ -23,9 +23,10 @@
 
     <div id="controls" class="hidden">
       <div id="steer"><div id="steer-track"></div><div id="steer-knob"></div></div>
-      <button type="button" id="left" class="btn">&#9664;</button>
-      <button type="button" id="right" class="btn">&#9654;</button>
-      <button type="button" id="clutch" class="btn">CLUTCH</button>
+      <!-- No words on the controls: glowing pixel symbols, like the lamps on a dash. -->
+      <button type="button" id="left" class="btn" aria-label="Steer left"><svg class="pxicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 2h1v12h-1zM9 3h1v10H9zM8 4h1v8H8zM7 5h1v6H7zM6 6h1v4H6zM5 7h1v2H5z" fill-rule="evenodd" /></svg></button>
+      <button type="button" id="right" class="btn" aria-label="Steer right"><svg class="pxicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2h1v12H5zM6 3h1v10H6zM7 4h1v8H7zM8 5h1v6H8zM9 6h1v4H9zM10 7h1v2h-1z" fill-rule="evenodd" /></svg></button>
+      <button type="button" id="clutch" class="btn" aria-label="Clutch"><svg class="pxicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2h2v12H4zM10 2h2v12h-2zM1 7h3v2H1zM6 7h4v2H6zM12 7h3v2h-3z" fill-rule="evenodd" /></svg></button>
       <div id="shifter">
         <canvas id="shifter-gate"></canvas>
         <div id="shifter-knob"></div>
@@ -34,20 +35,18 @@
         <button type="button" data-drive="D" class="btn">D</button>
         <button type="button" data-drive="R" class="btn">R</button>
       </div>
-      <button type="button" id="handbrake" class="btn">HAND<br />BRAKE</button>
-      <button type="button" id="brake" class="btn tall"><span>BRAKE</span></button>
-      <button type="button" id="gas" class="btn tall"><span>GAS</span></button>
+      <button type="button" id="handbrake" class="btn" aria-label="Handbrake"><svg class="pxicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h4v1H6zM5 4h1v1H5zM10 4h1v1h-1zM4 5h1v6H4zM11 5h1v6h-1zM5 11h1v1H5zM10 11h1v1h-1zM6 12h4v1H6zM2 4h1v1H2zM1 5h1v6H1zM2 11h1v1H2zM13 4h1v1h-1zM14 5h1v6h-1zM13 11h1v1h-1zM6 5h1v6H6zM7 5h2v1H7zM9 6h1v2H9zM7 8h2v1H7z" fill-rule="evenodd" /></svg></button>
+      <button type="button" id="brake" class="btn tall" aria-label="Brake"><svg class="pxicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h4v1H6zM5 4h1v1H5zM10 4h1v1h-1zM4 5h1v6H4zM11 5h1v6h-1zM5 11h1v1H5zM10 11h1v1h-1zM6 12h4v1H6zM2 4h1v1H2zM1 5h1v6H1zM2 11h1v1H2zM13 4h1v1h-1zM14 5h1v6h-1zM13 11h1v1h-1zM7 5h2v4H7zM7 10h2v1H7z" fill-rule="evenodd" /></svg></button>
+      <button type="button" id="gas" class="btn tall" aria-label="Gas"><svg class="pxicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h8v12H2zM4 4h4v3H4zM1 14h10v1H1zM11 3h1v2h-1zM10 5h2v1h-2zM12 6h1v6h-1zM11 12h1v1h-1z" fill-rule="evenodd" /></svg></button>
       <button type="button" id="start" class="btn hidden">START</button>
     </div>
 
     <div id="topbar" class="hidden">
       <button type="button" id="btn-pause" aria-label="Menu">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 1h12v1H2zM1 2h1v12H1zM14 2h1v12h-1zM2 14h12v1H2zM4 4h8v2H4zM4 7h8v2H4zM4 10h8v2H4z" /></svg>
-        <span>MENU</span>
       </button>
       <button type="button" id="btn-cam" aria-label="Change camera">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 2h3v2h-3zM2 4h12v1H2zM1 5h1v8H1zM14 5h1v8h-1zM2 13h12v1H2zM7 6h2v1H7zM6 7h1v1H6zM9 7h1v1H9zM5 8h1v2H5zM10 8h1v2h-1zM6 10h1v1H6zM9 10h1v1H9zM7 11h2v1H7z" /></svg>
-        <span>CAMERA</span>
       </button>
       <canvas id="minimap" aria-label="Map around the car"></canvas>
     </div>
