@@ -1,6 +1,8 @@
-// The road you drive: the Dragon's Tail, 8 km of corner after corner through the forest.
+// The roads you can drive: the Dragon's Tail, 8 km of corner after corner through the forest, and
+// four real roads (see realRoads.js), each in both directions.
 import { Road } from './road.js';
 import { dragonPoints } from './dragonMap.js';
+import { REAL_TRACKS } from './realRoads.js';
 
 export const TRACKS = {
   dragon: {
@@ -16,4 +18,5 @@ export const TRACKS = {
     // forest about 2 km in.
     stopsOpts: { homeAt: 2000 },
   },
+  ...REAL_TRACKS,
 };

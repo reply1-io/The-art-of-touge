@@ -2,7 +2,7 @@
 // the invisible walls. Rapier only, so it can be tested in Node.
 import RAPIER from '@dimforge/rapier3d-compat';
 import { crossSection, barrierLayout, RAIL, GUTTER_OUT, SHOULDER, JUNCTION } from './road.js';
-import { ZONE_INNER, stationLayout, showLayout, homeLayout } from './stops.js';
+import { ZONE_INNER, stationLayout, showLayout, homeLayout, lotLayout } from './stops.js';
 
 function yawQuat(yaw) {
   return { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) };
@@ -64,7 +64,7 @@ function roadSurface(world, road, byHandle) {
 
 // links: link roads off the loop ([{ road, a, b, sideA, sideB }]): their surfaces, and gaps in the
 // loop's rails and walls where they join.
-export function buildMountainPhysics(world, road, terrain, links = []) {
+export function buildMountainPhysics(world, road, terrain, links = [], { rails = true } = {}) {
   const byHandle = new Map();
   roadSurface(world, road, byHandle);
   for (const l of links) roadSurface(world, l.road, byHandle);
@@ -84,6 +84,8 @@ export function buildMountainPhysics(world, road, terrain, links = []) {
 
   // Guardrails and invisible walls.
   const layout = barrierLayout(road, terrain);
+  // A road with no guardrails (the redwoods of Tunitas Creek): just the trees. Bridges keep theirs.
+  if (!rails) for (const side of [1, -1]) for (let i = 0; i < road.count; i++) if (!terrain.bridgeAt?.(i)) layout.rail[side][i] = 0;
   // Pull-offs and lots: no rail between them and the road, the invisible wall moved out past them,
   // a drivable asphalt surface, a rail round the outer edge, and solid pumps and buildings.
   const zones = terrain.zones || [];
@@ -130,6 +132,10 @@ export function buildMountainPhysics(world, road, terrain, links = []) {
       solid(st.air, 0.3, 0.7, 0.3);
     } else if (z.kind === 'show') {
       solid(showLayout(road, z).cabin, 3.2, 1.8, 2.6);
+    } else if (z.kind === 'lot') {
+      const lay = lotLayout(road, z);
+      for (const c of lay.cars) solid({ ...c, yaw: c.yaw + Math.PI / 2 }, 0.85, 0.7, 2.1);
+      if (z.lot?.label) solid(lay.sign, 1.6, 1.2, 0.15);
     } else if (z.kind === 'home') {
       const h = homeLayout(road, z);
       solid(h.cabin, 3.2, 1.8, 2.6);

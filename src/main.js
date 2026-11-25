@@ -478,7 +478,7 @@ window.addEventListener('resize', () => setTimeout(drawMaps, 100));
 let teleportTo = -1;
 function askTeleport(k) {
   const loop = k < 0;
-  const st = loop ? { name: 'the whole road', s0: 0, s1: mountain.road.length, blurb: 'Start line to finish, the whole Dragon\'s Tail' } : mountain.track.stages[k];
+  const st = loop ? { name: 'the whole road', s0: 0, s1: mountain.road.length, blurb: `Start line to finish, the whole of ${mountain.track.name}` } : mountain.track.stages[k];
   if (!st) return;
   teleportTo = k;
   const touge = settings.driveMode === 'touge';
@@ -514,7 +514,7 @@ $('btn-tp-go').addEventListener('click', () => {
   setPaused(false);
   // The road's banner shows as soon as the car is on it.
   bannerStage = -1;
-  if (teleportTo < 0) toast("DRAGON'S TAIL", 2);
+  if (teleportTo < 0) toast(mountain.track.name.toUpperCase(), 2);
 });
 
 // ---------- Race menu and results ----------

@@ -86,7 +86,9 @@ export class Road {
   // points: map pixels scaled to targetLength, or (opts.world) world metres used as they are.
   // opts.gradeBase / opts.twistGain shape the elevation profile.
   constructor(points, targetLength = 5000, opts = {}) {
-    const { world: inMetres = false, gradeBase = 0.058, twistGain = 1.1, width = 'wide', gradeAt = null, heightAt = null, loop = false, ends = null } = opts;
+    // profile(f): the road's height (m) at fraction f (0..1) of the way along it, for roads built
+    // to a real climb. bankAt(f): how much of the usual banking the road has there (0 = flat).
+    const { world: inMetres = false, gradeBase = 0.058, twistGain = 1.1, width = 'wide', gradeAt = null, heightAt = null, loop = false, ends = null, profile = null, bankAt = null } = opts;
     this.w = WIDTHS[width] || WIDTHS.wide;
     // ---- Plan view: spline, scale to length, resample at STEP ----
     const dense = inMetres ? points : catmullRom(points);
@@ -198,11 +200,16 @@ export class Road {
       for (let i = 0; i < n; i++) this.y[i] = y[i];
       for (let i = 1; i < n; i++) this.grade[i] = (this.y[i - 1] - this.y[i]) / STEP;
       this.grade[0] = this.grade[1];
+    } else if (profile) {
+      const y = smooth(Float64Array.from({ length: n }, (_, i) => profile(i / (n - 1))), 9, 2);
+      for (let i = 0; i < n; i++) this.y[i] = y[i];
+      for (let i = 1; i < n; i++) this.grade[i] = (this.y[i - 1] - this.y[i]) / STEP;
+      this.grade[0] = this.grade[1];
     } else {
       for (let i = 1; i < n; i++) this.y[i] = this.y[i - 1] - this.grade[i] * STEP;
     }
     let bottom = this.y[n - 1];
-    if (heightAt) for (let i = 0; i < n; i++) bottom = Math.min(bottom, this.y[i]);
+    if (heightAt || profile) for (let i = 0; i < n; i++) bottom = Math.min(bottom, this.y[i]);
     for (let i = 0; i < n; i++) this.y[i] -= bottom;
     // ends: [y0, y1] heights the two ends must meet (a link road joining another road), shared out
     // along the road.
@@ -213,11 +220,11 @@ export class Road {
       for (let i = 1; i < n; i++) this.grade[i] = (this.y[i - 1] - this.y[i]) / STEP;
     }
     // The highest point of the road (the summit end of a downhill pass).
-    this.top = heightAt ? Math.max(...this.y) : this.y[0];
+    this.top = heightAt || profile ? Math.max(...this.y) : this.y[0];
     this.loop = loop;
 
     // ---- Banking: corners lean hard into the turn, hairpins most of all (up to about 12 degrees) ----
-    const bankRaw = this.kappa.map((k) => clamp(-k * 3.4, -0.21, 0.21));
+    const bankRaw = this.kappa.map((k, i) => clamp(-k * 3.4 * (bankAt ? bankAt(i / (n - 1)) : 1), -0.21, 0.21));
     this.bank = sm(bankRaw, 13, 2);
 
     // ---- Drainage gutters on the inside of a few medium corners ----

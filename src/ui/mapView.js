@@ -269,8 +269,15 @@ export class MapView {
       g.strokeText(text, x, ty);
       g.fillText(text, x, ty);
     };
-    mark(0, this.stages.length ? '▲ CAR MEET' : '▶ START');
-    mark(t.town?.i ?? r.count - 1, 'VILLAGE', true);
+    if (this.track?.real) {
+      // Real roads: the two ends, and the summit lot or overlooks by name.
+      mark(0, '▶ START');
+      mark(r.count - 1, '■ END', true);
+      for (const z of t.zones || []) if (z.kind === 'lot' && z.i0 > 60 && z.i1 < r.count - 60) mark(Math.round((z.i0 + z.i1) / 2), z.lot.label[0], true);
+    } else {
+      mark(0, this.stages.length ? '▲ CAR MEET' : '▶ START');
+      mark(t.town?.i ?? r.count - 1, 'VILLAGE', true);
+    }
     const home = (t.zones || []).find((z) => z.kind === 'home');
     if (home) mark(Math.round((home.i0 + home.i1) / 2), '\u2302 HOME', true);
     this.baseImage = c;

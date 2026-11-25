@@ -19,7 +19,7 @@ export class Zone {
   constructor(kind, i0, i1, side, width, taper, road) {
     this.inner = road ? road.w.GUTTER_OUT : ZONE_INNER; // where the zone starts, from the centreline
     this.shoulder = road ? road.w.SHOULDER : 5.4;
-    this.kind = kind; // 'pulloff' | 'station' | 'show' | 'home'
+    this.kind = kind; // 'pulloff' | 'station' | 'show' | 'home' | 'lot'
     this.i0 = i0;
     this.i1 = i1;
     this.side = side;
@@ -76,7 +76,34 @@ export function stopsFor(road, opts = {}) {
     return true;
   };
 
-  if (opts.meetAtStart) {
+  // Real roads: named lots (a summit lot, an overlook, a turnaround) put where the road says.
+  // lot: { f (0..1 along the road), len (m), side: 'out' | 'both' | 1 | -1, width, ... }
+  for (const lot of opts.lots?.() ?? []) {
+    const half = Math.round(lot.len / 4);
+    const c = Math.max(half + 2, Math.min(road.count - 3 - half, Math.round(lot.f * (road.count - 1))));
+    const i0 = c - half;
+    const i1 = c + half;
+    let sides = [];
+    if (lot.side === 'both') sides = [1, -1];
+    else if (lot.side === 1 || lot.side === -1) sides = [lot.side];
+    else {
+      // The outside of the bend, if there is room; otherwise whichever side has more.
+      let k = 0;
+      for (let j = i0; j <= i1; j++) k += road.kappa[j];
+      const out = k > 0 ? -1 : 1;
+      const need = lot.width + 10;
+      sides = [room(i0, i1, out, need) || !room(i0, i1, -out, need) ? out : -out];
+    }
+    for (const side of sides) {
+      const z = new Zone('lot', i0, i1, side, lot.width, lot.culdesac ? 3 : 4, road);
+      z.lot = lot;
+      zones.push(z);
+    }
+  }
+
+  if (opts.noStation) {
+    // No gas station or car-show lot on this road.
+  } else if (opts.meetAtStart) {
     // Car meet at the very start: a big lot on the outside of the road, looking out over the land.
     zones.push(new Zone('show', 4, 44, opts.meetSide ?? -1, 24, 4, road));
     const at = Math.round((opts.stationAt ?? road.length / 2) / 2);
@@ -91,7 +118,7 @@ export function stopsFor(road, opts = {}) {
 
     // Car-show lot halfway down: the quietest 80 m near the middle with room beside it.
     const mid = Math.floor(road.count / 2);
-    const show = quietStretch(road, mid - 120, mid + 120, 40, 34);
+    const show = opts.noShow ? null : quietStretch(road, mid - 120, mid + 120, 40, 34);
     if (show) zones.push(new Zone('show', show.i, show.i + 40, show.side, 22, 5, road));
   }
 
@@ -183,4 +210,20 @@ export function showLayout(road, zone) {
   const bays = [];
   for (let f = 0.14; f <= 0.66; f += 0.075) bays.push(zonePoint(road, zone, f, L0 + 16));
   return { bays, cabin: zonePoint(road, zone, 0.84, L0 + 15) };
+}
+
+// A named lot on a real road: the sign by the road at the near end, parked cars along the back,
+// and (Looking Glass Falls) the falls out past the far edge.
+export function lotLayout(road, zone) {
+  const L0 = zone.inner;
+  const lot = zone.lot || {};
+  const back = L0 + Math.max(3, zone.width - 3.2);
+  const cars = [];
+  const n = lot.cars || 0;
+  for (let k = 0; k < n; k++) cars.push(zonePoint(road, zone, 0.3 + (0.45 * (k + 0.5)) / Math.max(1, n), back));
+  return {
+    sign: zonePoint(road, zone, lot.culdesac ? 0.5 : 0.18, L0 + Math.min(zone.width - 1.5, 3.5)),
+    cars,
+    falls: lot.falls ? zonePoint(road, zone, 0.5, L0 + zone.width + 5.5) : null,
+  };
 }

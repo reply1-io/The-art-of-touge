@@ -57,7 +57,7 @@ export class Terrain {
   // lakes: optional (road) => [{ x, z, r, level }] in place of the lake behind the start;
   // peak: optional { x, z, r, rise } cone that tops out the mountain the road circles.
   // links: other roads joining this one ([{ road, a, b }]); the ground is shaped round them too.
-  constructor(main, { cell = 4, margin = 260, relief = 110, lakes = null, peak = null, stops = {}, level = false, town = null, links = [] } = {}) {
+  constructor(main, { cell = 4, margin = 260, relief = 110, lakes = null, peak = null, stops = {}, level = false, town = null, links = [], bridges = [] } = {}) {
     // `road` is every road (the loop and its links); `this.main` is the loop itself, which the
     // lots, the town and the lake placement follow.
     const road = links.length ? new RoadSet(main, links) : main;
@@ -136,6 +136,15 @@ export class Terrain {
     // The town: at the end of the road, or where `town` ({ i, r }) puts it.
     const f = town ? town.i : main.count - 1;
     this.town = { i: f, x: main.x[f], z: main.z[f], r: town?.r ?? 140, level: main.y[f] - 0.3 };
+    // No town on this road: put it far out of the way.
+    if (town?.none) this.town = { i: -1, x: 1e9, z: 1e9, r: 0, level: 0, none: true };
+    // Bridges: a gorge cut across the land under the road from sample i0 to i1.
+    this.bridges = bridges.map((b) => {
+      const m = Math.round((b.i0 + b.i1) / 2);
+      const h = main.heading[m];
+      const half = ((b.i1 - b.i0) * STEP) / 2;
+      return { ...b, m, x: main.x[m], z: main.z[m], fx: Math.sin(h), fz: Math.cos(h), half, floor: Math.min(main.y[b.i0], main.y[b.i1]) - b.depth };
+    });
 
     // Coarse distance to the road (chamfer transform on a 16 m grid). Far from the road the land
     // rises into wooded ridges and falls into valleys; near it, nothing changes.
@@ -334,6 +343,17 @@ export class Terrain {
       h = near.h - 0.7 + (h - (near.h - 0.7)) * t;
       h = this.#levelZones(x, z, near.i, h);
     }
+    // Gorges under the bridges: steep rock sides down to the creek, running across the road.
+    for (const b of this.bridges) {
+      const along = (x - b.x) * b.fx + (z - b.z) * b.fz;
+      const across = Math.abs((x - b.x) * b.fz - (z - b.z) * b.fx);
+      const w = b.half - 6;
+      if (Math.abs(along) > w + 40 || across > 900) continue;
+      const u = Math.abs(along) / w;
+      const g = b.floor + (u < 1 ? Math.pow(u, 3) * (b.depth - 6) : b.depth - 6 + (Math.abs(along) - w) * 2) + fbm(x, z) * 4;
+      const fade = smoothstep(900, 500, across);
+      if (g < h) h += (g - h) * fade;
+    }
     return h;
   }
 
@@ -357,6 +377,12 @@ export class Terrain {
       h += (target - h) * t;
     }
     return h;
+  }
+
+  // Is sample i on a bridge (or its approach)?
+  bridgeAt(i) {
+    for (const b of this.bridges ?? []) if (i >= b.i0 - 4 && i <= b.i1 + 4) return b;
+    return null;
   }
 
   // Is (x, z) in or right by water?
@@ -384,6 +410,7 @@ export class Terrain {
   // Which sides of road sample i drop away (guardrail) or rise (cut): +1 rises, -1 drops, 0 neither.
   sideProfile(i, side) {
     const road = this.main;
+    if (this.bridgeAt(i)) return -1;
     const [x, , z] = road.pointAt(i, side * 22);
     const dh = this.natural(x, z) - road.y[i];
     return dh > 2.5 ? 1 : dh < -2.5 ? -1 : 0;
