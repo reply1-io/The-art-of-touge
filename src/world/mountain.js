@@ -193,9 +193,9 @@ const COLORS = {
 export class Mountain {
   // stage: on a route made of several roads (the world map), which one to start and finish on
   // (-1 for the whole route).
-  constructor(world, scene, trackId = 'world', stage = -1) {
+  constructor(world, scene, trackId = 'dragon', stage = -1) {
     this.scene = scene;
-    this.track = TRACKS[trackId] || TRACKS.world;
+    this.track = TRACKS[trackId] || TRACKS.dragon;
     this.road = this.track.road();
     this.full = { start: this.road.startIndex, finish: this.road.finishIndex };
     this.stage = -1;

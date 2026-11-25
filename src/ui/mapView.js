@@ -40,7 +40,7 @@ export class MapView {
       if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 12) return;
       down = null;
       const k = this.hit(e);
-      if (k >= 0) this.onPick?.(k);
+      if (k !== null) this.onPick?.(k);
     });
   }
 
@@ -82,7 +82,7 @@ export class MapView {
     this.#drawBase();
   }
 
-  // Which road a pointer event is on, or -1.
+  // Which road a pointer event is on (-1: the whole road, when it is just one), or null.
   hit(e) {
     const rect = this.canvas.getBoundingClientRect();
     const px = ((e.clientX - rect.left) / rect.width) * this.canvas.width;
@@ -99,7 +99,8 @@ export class MapView {
         best = i;
       }
     }
-    return best < 0 ? -1 : this.track.stageAt(best * 2);
+    if (best < 0) return null;
+    return this.stages.length ? this.track.stageAt(best * 2) : -1;
   }
 
   #drawBase() {
@@ -268,7 +269,7 @@ export class MapView {
       g.strokeText(text, x, ty);
       g.fillText(text, x, ty);
     };
-    mark(0, '▲ CAR MEET');
+    mark(0, this.stages.length ? '▲ CAR MEET' : '▶ START');
     mark(t.town?.i ?? r.count - 1, 'VILLAGE', true);
     const home = (t.zones || []).find((z) => z.kind === 'home');
     if (home) mark(Math.round((home.i0 + home.i1) / 2), '\u2302 HOME', true);

@@ -446,7 +446,7 @@ function drawMaps() {
   if (!mountain) return;
   for (const b of document.querySelectorAll('.btn-loop')) {
     const md = bestOn(-1).medal;
-    b.textContent = `FULL LOOP · ${(mountain.road.length / 1000).toFixed(0)} KM${md ? ` · ${md.name.toUpperCase()}` : ''}`;
+    b.textContent = `WHOLE ROAD · ${(mountain.road.length / 1000).toFixed(0)} KM${md ? ` · ${md.name.toUpperCase()}` : ''}`;
     b.classList.toggle('sel', mountain.stage < 0);
   }
   for (const m of maps) {
@@ -478,7 +478,7 @@ window.addEventListener('resize', () => setTimeout(drawMaps, 100));
 let teleportTo = -1;
 function askTeleport(k) {
   const loop = k < 0;
-  const st = loop ? { name: 'the full loop', s0: 0, s1: mountain.road.length, blurb: 'All eleven roads, from the car meet round the whole map and back' } : mountain.track.stages[k];
+  const st = loop ? { name: 'the whole road', s0: 0, s1: mountain.road.length, blurb: 'Start line to finish, the whole Dragon\'s Tail' } : mountain.track.stages[k];
   if (!st) return;
   teleportTo = k;
   const touge = settings.driveMode === 'touge';
@@ -514,7 +514,7 @@ $('btn-tp-go').addEventListener('click', () => {
   setPaused(false);
   // The road's banner shows as soon as the car is on it.
   bannerStage = -1;
-  if (teleportTo < 0) toast('FULL LOOP', 2);
+  if (teleportTo < 0) toast("DRAGON'S TAIL", 2);
 });
 
 // ---------- Race menu and results ----------
@@ -848,9 +848,9 @@ function updateWeather(dt) {
   rain ??= new Rain(scene);
   // At night a mist rolls in along the Lakeside road and over any water you pass.
   let want = 0;
-  if (settings.time === 'night' && mountain.track.stages) {
+  if (settings.time === 'night') {
     const pos = vehicle.body.translation();
-    if (mountain.track.stages[mountain.track.stageAt(roadQ.s ?? 0)]?.name === 'Lakeside') want = 1;
+    if (mountain.track.stages?.[mountain.track.stageAt(roadQ.s ?? 0)]?.name === 'Lakeside') want = 1;
     else if (mountain.terrain.inLake(pos.x, pos.z, 90)) want = 0.6;
   }
   mist += (want - mist) * Math.min(1, dt * 0.4);
@@ -1126,7 +1126,7 @@ function titleCamera(dt) {
 }
 
 function updateTitleSub() {
-  const t = TRACKS[settings.map] || TRACKS.world;
+  const t = TRACKS[settings.map] || TRACKS.dragon;
   const time = TIMES[settings.time] || TIMES.night;
   $('title-sub').innerHTML = '';
   const b = document.createElement('b');

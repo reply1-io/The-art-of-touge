@@ -11,7 +11,7 @@ const DEFAULTS = {
   shifter: 'drag', // 'drag' | 'tap'
   vhs: true,
   picture: 'sharp', // 'sharp' | 'retro'
-  map: 'world', // the Kaido Mountain map is the only map now
+  map: 'dragon', // the Dragon's Tail is the only road
   time: 'night', // 'day' | 'sunset' | 'night'
   stage: -1, // world map: which road to start on (-1 = the whole route)
   money: 'unlimited', // 'career' | 'unlimited'
@@ -37,8 +37,8 @@ function write(key, value) {
 }
 
 export function loadSettings() {
-  // Kaido Mountain is the only map; older saves may still name Akina or the standalone Dragon's Tail.
-  return { ...DEFAULTS, ...read(KEY), map: 'world' };
+  // The Dragon's Tail is the only road; older saves may name Akina or Kaido Mountain.
+  return { ...DEFAULTS, ...read(KEY), map: 'dragon', stage: -1 };
 }
 
 export function saveSettings(s) {
