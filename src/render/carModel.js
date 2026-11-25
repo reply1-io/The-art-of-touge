@@ -18,55 +18,48 @@ import { WHITE, BLACK, TRIM, GLASS, CHROME, UNDER, AMBER, polyGeometry, mirror, 
 const FRONT_AXLE = 1.28;
 const REAR_AXLE = -1.29;
 const WHEEL_R = 0.305;
-const ARCH_R = 0.325; // arches close round the tyres
+const ARCH_R = 0.37;
 const NOSE = 1.99; // front overhang about 0.71 m to the axle (the real car's is close to that)
-const TAIL = -2.1;
+const TAIL = -2.17;
 
-// Side profile traced from a reference drawing: long and low, a bonnet falling from the
-// windscreen to the nose, the body top flat from the windscreen back to the tail.
 const HALF_WIDTH = [
   [1.99, 0.79],
   [1.97, 0.81],
   [1.87, 0.82],
   [-1.95, 0.82],
-  [-2.06, 0.81],
-  [-2.1, 0.79],
+  [-2.12, 0.81],
+  [-2.17, 0.79],
 ];
 const BOTTOM = [
   [1.99, 0.5],
   [1.978, 0.3],
   [1.87, 0.22],
   [-1.9, 0.21],
-  [-2.05, 0.3],
-  [-2.1, 0.45],
+  [-2.1, 0.3],
+  [-2.17, 0.5],
 ];
-// Top of the sides / shoulder line, a little under the centreline.
+// Top of the sides / shoulder line: wings along the bonnet, window line, boot.
 const BELT = [
-  [1.99, 0.676],
-  [1.81, 0.696],
-  [1.61, 0.72],
-  [1.41, 0.74],
-  [1.2, 0.761],
-  [1.0, 0.778],
-  [0.8, 0.792],
-  [0.0, 0.798],
-  [-1.52, 0.798],
-  [-2.05, 0.796],
-  [-2.1, 0.77],
+  [1.99, 0.79],
+  [1.97, 0.82],
+  [1.835, 0.84],
+  [0.78, 0.85],
+  [0.0, 0.855],
+  [-1.5, 0.86],
+  [-2.12, 0.86],
+  [-2.17, 0.82],
 ];
-// Centreline: bonnet, (cabin floor under the glass), boot lid.
+// Centreline: bonnet, (cabin floor under the glass), boot lid. A level, straight line from the
+// nose to the tail, so the body stands the same height over the front and rear wheels.
 const TOP = [
-  [1.99, 0.688],
-  [1.81, 0.708],
-  [1.61, 0.732],
-  [1.41, 0.752],
-  [1.2, 0.773],
-  [1.0, 0.79],
-  [0.8, 0.804],
-  [0.0, 0.81],
-  [-1.52, 0.81],
-  [-2.05, 0.808],
-  [-2.1, 0.78],
+  [1.99, 0.8],
+  [1.97, 0.83],
+  [1.835, 0.862],
+  [0.78, 0.885],
+  [0.0, 0.905],
+  [-1.55, 0.9],
+  [-2.12, 0.9],
+  [-2.17, 0.86],
 ];
 
 function section(z) {
@@ -76,7 +69,7 @@ function section(z) {
     if (Math.abs(dz) < ARCH_R) bottom = Math.max(bottom, WHEEL_R + Math.sqrt(ARCH_R * ARCH_R - dz * dz));
   }
   const belt = lerpTable(BELT, z);
-  return { hw: lerpTable(HALF_WIDTH, z), bottom, belt, top: lerpTable(TOP, z), rub: Math.max(bottom + 0.02, 0.4) };
+  return { hw: lerpTable(HALF_WIDTH, z), bottom, belt, top: lerpTable(TOP, z), rub: Math.max(bottom + 0.02, 0.47) };
 }
 
 function ring(z) {
@@ -108,19 +101,19 @@ function bodyPolys() {
     const a = rings[i];
     const b = rings[i + 1];
     // The shell's top surface under the glasshouse is hidden in the in-car view.
-    const inCabin = stations[i] <= 0.72 && stations[i + 1] >= -1.52;
+    const inCabin = stations[i] <= 0.8 && stations[i + 1] >= -1.44;
     for (let k = 0; k < a.length - 1; k++) (inCabin && k >= 3 && k <= 6 ? cabinTop : paint).push({ pts: [a[k], a[k + 1], b[k + 1], b[k]] });
     trim.push({ pts: [a[0], a[a.length - 1], b[b.length - 1], b[0]], color: UNDER, out: [0, -1, 0] });
     // Black rub strip along the doors (skipped over the wheel arches).
     const s0 = section(stations[i]);
     const s1 = section(stations[i + 1]);
-    if (s0.bottom < 0.36 && s1.bottom < 0.36) {
+    if (s0.bottom < 0.4 && s1.bottom < 0.4) {
       for (const p of both({
         pts: [
-          [s0.hw + 0.006, 0.39, stations[i]],
-          [s0.hw + 0.006, 0.43, stations[i]],
-          [s1.hw + 0.006, 0.43, stations[i + 1]],
-          [s1.hw + 0.006, 0.39, stations[i + 1]],
+          [s0.hw + 0.006, 0.46, stations[i]],
+          [s0.hw + 0.006, 0.5, stations[i]],
+          [s1.hw + 0.006, 0.5, stations[i + 1]],
+          [s1.hw + 0.006, 0.46, stations[i + 1]],
         ],
         color: TRIM,
         out: [1, 0, 0],
@@ -151,12 +144,11 @@ function bodyPolys() {
 }
 
 // ---------- Greenhouse: upright E30 glasshouse with thin pillars ----------
-const ROOF_Y = 1.24;
+const ROOF_Y = 1.37;
 const ROOF_HW = 0.6;
-const SCREEN_BASE_Z = 0.72;
-const SCREEN_TOP_Z = 0.2;
-const ROOF_REAR_Z = -0.97;
-const DECK_Z = -1.52; // where the rear pillar and rear window meet the boot lid
+const SCREEN_BASE_Z = 0.78;
+const SCREEN_TOP_Z = 0.02;
+const ROOF_REAR_Z = -1.02;
 
 function cabinTop(z) {
   if (z >= SCREEN_TOP_Z) {
@@ -171,7 +163,7 @@ function greenhousePolys() {
   const paint = [];
   const glass = [];
   const trim = [];
-  const zs = [0.72, 0.55, 0.38, 0.2, -0.46, -0.52, -0.75, -0.97];
+  const zs = [0.78, 0.55, 0.3, 0.02, -0.46, -0.52, -0.78, -1.02];
   const rings = zs.map((z) => {
     const s = section(z);
     const t = cabinTop(z);
@@ -194,10 +186,9 @@ function greenhousePolys() {
   }
   // C-pillar and rear window.
   const r = rings[rings.length - 1];
-  // A straight, raked rear pillar from the end of the roof down to the boot lid.
-  const sC = section(DECK_Z + 0.04);
-  const cBase = [sC.hw * 0.96, sC.belt, DECK_Z + 0.04];
-  const rwBottom = [0.66, section(DECK_Z).top, DECK_Z];
+  const sC = section(-1.42);
+  const cBase = [sC.hw * 0.96, sC.belt, -1.42];
+  const rwBottom = [0.66, section(-1.58).top, -1.58];
   for (const p of both({ pts: [r.lb, r.lt, cBase], out: [1, 0.2, 0] })) paint.push(p);
   for (const p of both({ pts: [r.lt, rwBottom, cBase], out: [0.4, 1, -0.4] })) paint.push(p);
   glass.push({ pts: [[r.lt[0] - 0.02, ROOF_Y - 0.01, ROOF_REAR_Z], [-(r.lt[0] - 0.02), ROOF_Y - 0.01, ROOF_REAR_Z], mirror(rwBottom), rwBottom], color: GLASS, out: [0, 0.6, -1] });
@@ -211,10 +202,10 @@ const LENS_WHITE = [0.85, 0.85, 0.82];
 // Round lamps for the nose: [x, y, radius]. The E30 has two per side in a black surround, the outer
 // (dipped) lamp slightly larger than the inner (main beam).
 export const HEADLAMPS = [
-  [0.6, 0.6, 0.066],
-  [0.405, 0.6, 0.06],
-  [-0.405, 0.6, 0.06],
-  [-0.6, 0.6, 0.066],
+  [0.6, 0.65, 0.066],
+  [0.405, 0.65, 0.06],
+  [-0.405, 0.65, 0.06],
+  [-0.6, 0.65, 0.066],
 ];
 
 function detailPolys() {
@@ -306,18 +297,18 @@ function detailPolys() {
   }
   // Door handles and front wing side repeaters.
   for (const side of [1, -1]) {
-    trim.push({ pts: [[side * 0.825, 0.72, -0.25], [side * 0.825, 0.74, -0.25], [side * 0.825, 0.74, -0.38], [side * 0.825, 0.72, -0.38]], color: BLACK, out: [side, 0, 0] });
-    trim.push({ pts: [[side * 0.824, 0.58, 1.72], [side * 0.824, 0.61, 1.72], [side * 0.824, 0.61, 1.64], [side * 0.824, 0.58, 1.64]], color: AMBER, out: [side, 0, 0] });
+    trim.push({ pts: [[side * 0.825, 0.79, -0.25], [side * 0.825, 0.81, -0.25], [side * 0.825, 0.81, -0.38], [side * 0.825, 0.79, -0.38]], color: BLACK, out: [side, 0, 0] });
+    trim.push({ pts: [[side * 0.824, 0.66, 1.72], [side * 0.824, 0.69, 1.72], [side * 0.824, 0.69, 1.64], [side * 0.824, 0.66, 1.64]], color: AMBER, out: [side, 0, 0] });
   }
   // Door mirrors at the front corner of the door glass.
   for (const side of [1, -1]) {
     const x0 = side * 0.79;
     const x1 = side * 0.95;
     const box = [
-      [[x0, 0.83, 0.62], [x1, 0.84, 0.6], [x1, 0.93, 0.6], [x0, 0.93, 0.62]],
-      [[x0, 0.83, 0.52], [x1, 0.84, 0.52], [x1, 0.93, 0.52], [x0, 0.93, 0.52]],
-      [[x1, 0.84, 0.6], [x1, 0.84, 0.52], [x1, 0.93, 0.52], [x1, 0.93, 0.6]],
-      [[x0, 0.93, 0.62], [x1, 0.93, 0.6], [x1, 0.93, 0.52], [x0, 0.93, 0.52]],
+      [[x0, 0.9, 0.7], [x1, 0.91, 0.68], [x1, 1.0, 0.68], [x0, 1.0, 0.7]],
+      [[x0, 0.9, 0.6], [x1, 0.91, 0.6], [x1, 1.0, 0.6], [x0, 1.0, 0.6]],
+      [[x1, 0.91, 0.68], [x1, 0.91, 0.6], [x1, 1.0, 0.6], [x1, 1.0, 0.68]],
+      [[x0, 1.0, 0.7], [x1, 1.0, 0.68], [x1, 1.0, 0.6], [x0, 1.0, 0.6]],
     ];
     for (const pts of box) trim.push({ pts, color: BLACK });
   }
@@ -587,26 +578,13 @@ function makeWheel(ws, styleId, tyreMat, wallMat) {
 }
 
 // The E30's body as a shape descriptor; other cars (shapes/rx7.js) provide the same fields.
-// The nose and tail details were laid out for a taller body: squeeze their heights to fit
-// (front: 0.25-0.745 m into 0.25-0.68 m; back: 0.2-0.86 m into 0.2-0.8 m).
-function fitDetail() {
-  const d = detailPolys();
-  const squeeze = (y, lo, from, to) => (y > lo ? lo + ((y - lo) * (to - lo)) / (from - lo) : y);
-  for (const k of Object.keys(d)) {
-    for (const p of d[k]) {
-      if (p.pts.every((q) => q[2] > 1.75)) p.pts = p.pts.map(([x, y, z]) => [x, squeeze(y, 0.25, 0.745, 0.68), z]);
-      else if (p.pts.every((q) => q[2] < -1.85)) p.pts = p.pts.map(([x, y, z]) => [x, squeeze(y, 0.2, 0.86, 0.8), z]);
-    }
-  }
-  return d;
-}
 const E30_SHAPE = {
   id: 'e30',
-  build: () => ({ shell: bodyPolys(), cabin: greenhousePolys(), detail: fitDetail() }),
+  build: () => ({ shell: bodyPolys(), cabin: greenhousePolys(), detail: detailPolys() }),
   section,
   nose: NOSE,
   tail: TAIL,
-  plate: { y: 0.66, z: TAIL - 0.014 },
+  plate: { y: 0.7, z: TAIL - 0.014 },
   pipe: [-0.52, 0.27, TAIL + 0.1],
   door: -0.3,
   lamps: HEADLAMPS,
@@ -967,7 +945,7 @@ export class CarModel {
     tex.colorSpace = THREE.SRGBColorSpace;
     const mat = new THREE.MeshLambertMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -2 });
     // Centre of the door, between the rub strip and the shoulder crease.
-    const y = Math.min(0.44 + h / 2, 0.71 - h / 2);
+    const y = 0.47 + h / 2;
     for (const side of [1, -1]) {
       const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
       m.position.set(side * (this.shape.section(this.shape.door).hw + 0.012), y, this.shape.door);
