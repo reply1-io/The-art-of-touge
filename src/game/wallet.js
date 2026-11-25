@@ -11,7 +11,7 @@ export const PRICES = {
   engine: { stock: 0, rotary: 7000 },
   tire: { drift: 360, stock: 0, street: 640, semi: 1100 },
   diff: { open: 150, lsd: 0, welded: 250 },
-  wheel: { bbs: 0, gold: 1800, six: 1400, steel: 250 },
+  wheel: { bbs: 0, gold: 1800, six: 1400, steel: 250, bottlecap: 400, watanabe: 1600, te37: 2200 },
   rim: { 14: 0, 15: 350, 16: 600, 17: 850, 18: 1100, 19: 1400, 20: 1800 },
   stretch: { false: 0, true: 120 },
   exhaust: { stock: 0, street: 650, race: 1100 },

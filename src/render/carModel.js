@@ -316,72 +316,224 @@ function detailPolys() {
 }
 
 // ---------- Wheels: rim face textures per style ----------
+// Drawn on a 256px canvas in 128-unit coordinates (64 = rim edge). Every style gets the polished
+// lip, a shaded dish (darker towards the middle, so the face reads as concave), its spokes, and a
+// hub with four lug nuts on the E30's 4x100 circle.
 const faceCache = new Map();
-function rimTexture(styleId) {
+export function rimTexture(styleId) {
   if (faceCache.has(styleId)) return faceCache.get(styleId);
   const st = WHEELS[styleId] || WHEELS.bbs;
   const c = document.createElement('canvas');
-  c.width = c.height = 128;
+  c.width = c.height = 256;
   const g = c.getContext('2d');
+  g.scale(2, 2);
+  g.translate(64, 64);
   const disc = (r, fill) => {
     g.fillStyle = fill;
     g.beginPath();
-    g.arc(64, 64, r, 0, Math.PI * 2);
+    g.arc(0, 0, r, 0, Math.PI * 2);
     g.fill();
   };
-  disc(64, st.lip); // polished lip
-  disc(54, st.dish);
-  if (st.spokes === 'mesh') {
-    // Cross-spoke mesh: pairs of angled spokes that form diamonds.
-    g.strokeStyle = st.face;
-    g.lineWidth = 4;
-    for (let i = 0; i < 10; i++) {
-      const a = (i / 10) * Math.PI * 2;
-      for (const d of [0.32, -0.32]) {
+  const ring = (r, w, col) => {
+    g.strokeStyle = col;
+    g.lineWidth = w;
+    g.beginPath();
+    g.arc(0, 0, r, 0, Math.PI * 2);
+    g.stroke();
+  };
+  const shadedDish = (r, col) => {
+    const gr = g.createRadialGradient(0, 0, 4, 0, 0, r);
+    gr.addColorStop(0, '#050506');
+    gr.addColorStop(0.75, col);
+    gr.addColorStop(1, col);
+    g.fillStyle = gr;
+    g.beginPath();
+    g.arc(0, 0, r, 0, Math.PI * 2);
+    g.fill();
+  };
+  // A spoke: a straight tapered bar from radius r0 (width w0) to r1 (width w1), at angle a.
+  const spoke = (a, r0, r1, w0, w1, col) => {
+    g.save();
+    g.rotate(a);
+    g.fillStyle = col;
+    g.beginPath();
+    g.moveTo(r0, -w0 / 2);
+    g.lineTo(r1, -w1 / 2);
+    g.lineTo(r1, w1 / 2);
+    g.lineTo(r0, w0 / 2);
+    g.closePath();
+    g.fill();
+    g.restore();
+  };
+  // Hub: a cap, four lug nuts round it.
+  const hub = (r, col, nuts = true) => {
+    disc(r, col);
+    ring(r - 0.8, 1.2, 'rgba(0,0,0,0.35)');
+    if (nuts) {
+      for (let k = 0; k < 4; k++) {
+        const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
+        const x = Math.cos(a) * (r - 4);
+        const y = Math.sin(a) * (r - 4);
+        g.fillStyle = '#1a1b1e';
         g.beginPath();
-        g.moveTo(64 + Math.cos(a) * 14, 64 + Math.sin(a) * 14);
-        g.lineTo(64 + Math.cos(a + d) * 54, 64 + Math.sin(a + d) * 54);
-        g.stroke();
+        g.arc(x, y, 2.6, 0, Math.PI * 2);
+        g.fill();
+        g.fillStyle = '#9a9ca2';
+        g.beginPath();
+        g.arc(x, y, 1.5, 0, Math.PI * 2);
+        g.fill();
       }
     }
-    disc(15, st.face);
-  } else if (st.spokes === 'six') {
-    // Six straight, wide spokes.
-    g.fillStyle = st.face;
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2;
-      g.save();
-      g.translate(64, 64);
-      g.rotate(a);
+  };
+  disc(64, st.lip); // polished lip
+  ring(63, 1.5, 'rgba(255,255,255,0.35)');
+  ring(57, 1.5, 'rgba(0,0,0,0.4)');
+
+  if (st.spokes === 'mesh') {
+    // Basket weave (BBS cross-spoke): two sets of curved spokes crossing into a lattice of
+    // diamonds, between a riveted outer ring and the hub.
+    shadedDish(56, st.dish);
+    g.strokeStyle = st.face;
+    g.lineCap = 'round';
+    // Straight spokes from the hub ring to the outer ring, each leaning one way or the other, so
+    // the two sets cross into a grid of diamonds. A dark line beside each gives it depth.
+    const n = 15;
+    const lean = 0.5;
+    for (const pass of ['shadow', 'face']) {
+      for (const dir of [1, -1]) {
+        for (let i = 0; i < n; i++) {
+          const a0 = (i / n) * Math.PI * 2;
+          const a1 = a0 + dir * lean;
+          g.strokeStyle = pass === 'shadow' ? 'rgba(0,0,0,0.55)' : st.face;
+          g.lineWidth = pass === 'shadow' ? 4.6 : 3;
+          g.beginPath();
+          g.moveTo(Math.cos(a0) * 17, Math.sin(a0) * 17 + (pass === 'shadow' ? 0.8 : 0));
+          g.lineTo(Math.cos(a1) * 55, Math.sin(a1) * 55 + (pass === 'shadow' ? 0.8 : 0));
+          g.stroke();
+        }
+      }
+    }
+    // A shadow line along each spoke so the weave reads as raised.
+    ring(55, 3, st.face);
+    ring(18, 3, st.face);
+    // Rivets round the lip (three-piece wheel).
+    for (let i = 0; i < 32; i++) {
+      const a = (i / 32) * Math.PI * 2;
+      g.fillStyle = '#b8babf';
       g.beginPath();
-      g.moveTo(-6, 0);
-      g.lineTo(-9, 54);
-      g.lineTo(9, 54);
-      g.lineTo(6, 0);
+      g.arc(Math.cos(a) * 59.5, Math.sin(a) * 59.5, 0.9, 0, Math.PI * 2);
       g.fill();
+    }
+    hub(15, st.face);
+    disc(6, st.cap || '#2b2c30');
+  } else if (st.spokes === 'bottlecap') {
+    // Factory "bottle cap": a flat silver face with a ring of short round-ended slots near the
+    // rim (the crimped bottle-cap edge), a stepped centre and a flat metal cap.
+    disc(57, st.face);
+    const gr = g.createRadialGradient(0, 0, 10, 0, 0, 57);
+    gr.addColorStop(0, 'rgba(0,0,0,0.25)');
+    gr.addColorStop(0.6, 'rgba(0,0,0,0)');
+    gr.addColorStop(1, 'rgba(255,255,255,0.12)');
+    g.fillStyle = gr;
+    g.beginPath();
+    g.arc(0, 0, 57, 0, Math.PI * 2);
+    g.fill();
+    const n = 20;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      g.save();
+      g.rotate(a);
+      g.fillStyle = '#0b0b0d';
+      g.beginPath();
+      g.moveTo(33, -2.6);
+      g.lineTo(51, -3.3);
+      g.arc(51, 0, 3.3, -Math.PI / 2, Math.PI / 2);
+      g.lineTo(33, 2.6);
+      g.arc(33, 0, 2.6, Math.PI / 2, -Math.PI / 2);
+      g.fill();
+      // Bright edge on one side of each slot: the pressed lip.
+      g.fillStyle = 'rgba(255,255,255,0.3)';
+      g.fillRect(34, 2.4, 17, 1);
       g.restore();
     }
-    disc(18, st.face);
+    ring(30, 2, 'rgba(0,0,0,0.3)');
+    ring(27, 1.2, 'rgba(255,255,255,0.25)');
+    hub(22, st.face);
+    // The flat metal centre cap over the lugs.
+    disc(13, st.cap || '#c9cbd0');
+    ring(12.5, 1, 'rgba(0,0,0,0.4)');
+    disc(7, '#1f2a44');
+    g.fillStyle = '#e8eaee';
+    g.beginPath();
+    g.moveTo(0, 0);
+    g.arc(0, 0, 7, 0, Math.PI / 2);
+    g.fill();
+    g.beginPath();
+    g.moveTo(0, 0);
+    g.arc(0, 0, 7, Math.PI, Math.PI * 1.5);
+    g.fill();
+    ring(7, 1.2, '#cfd1d6');
+  } else if (st.spokes === 'watanabe') {
+    // Watanabe: eight slender spokes that flare out where they meet the rim, a deep dish, a
+    // domed centre with exposed lug nuts.
+    shadedDish(57, st.dish);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      spoke(a, 15, 48, 6, 5.5, st.face);
+      spoke(a, 46, 57, 5.5, 12, st.face); // flare into the rim
+      // Highlight down one edge.
+      g.save();
+      g.rotate(a);
+      g.fillStyle = 'rgba(255,255,255,0.25)';
+      g.fillRect(16, -3, 32, 1);
+      g.restore();
+    }
+    ring(56, 2.5, st.face);
+    hub(18, st.face);
+    disc(8, st.cap || st.face);
+    ring(8, 1, 'rgba(0,0,0,0.35)');
+  } else if (st.spokes === 'te37') {
+    // TE37-style: wide, flat, straight spokes running right out to the lip, with a step along
+    // their length, and a big flat centre.
+    shadedDish(57, st.dish);
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
+      spoke(a, 14, 57, 15, 19, st.face);
+      // The machined step down each spoke.
+      g.save();
+      g.rotate(a);
+      g.fillStyle = 'rgba(0,0,0,0.22)';
+      g.fillRect(22, -1.2, 33, 2.4);
+      g.fillStyle = 'rgba(255,255,255,0.2)';
+      g.fillRect(22, 1.2, 33, 0.8);
+      g.restore();
+    }
+    ring(56, 3, st.face);
+    hub(21, st.face);
+    disc(9, st.cap || '#1d1e21');
+  } else if (st.spokes === 'six') {
+    // Six straight, wide spokes.
+    shadedDish(57, st.dish);
+    for (let i = 0; i < 6; i++) spoke((i / 6) * Math.PI * 2, 12, 56, 12, 18, st.face);
+    hub(19, st.face);
+    disc(7, '#2b2c30');
   } else {
     // Steel wheel: plain dish with a ring of vent holes and a small cap.
-    disc(54, st.face);
+    disc(57, st.face);
     g.fillStyle = '#060607';
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2;
       g.beginPath();
-      g.ellipse(64 + Math.cos(a) * 36, 64 + Math.sin(a) * 36, 7, 5, a, 0, Math.PI * 2);
+      g.ellipse(Math.cos(a) * 36, Math.sin(a) * 36, 7, 5, a, 0, Math.PI * 2);
       g.fill();
     }
-    g.strokeStyle = '#2e2f33';
-    g.lineWidth = 3;
-    g.beginPath();
-    g.arc(64, 64, 24, 0, Math.PI * 2);
-    g.stroke();
-    disc(12, '#3a3b40');
+    ring(24, 3, '#2e2f33');
+    hub(16, '#3a3b40');
+    disc(6, '#2b2c30');
   }
-  disc(6, '#2b2c30');
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
   faceCache.set(styleId, t);
   return t;
 }
