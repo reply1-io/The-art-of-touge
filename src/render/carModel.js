@@ -8,7 +8,7 @@ import { RX7_SHAPE } from './shapes/rx7.js';
 import { customShape, registerStockShapes } from './shapes/custom.js';
 import { loadDesigns } from '../builder/customStore.js';
 import { paintTexture, addPaintLayer } from './shapes/paintLayer.js';
-import { PLATES, cleanPlate, WHEELS, EXHAUSTS, HEADLIGHTS, TAILLIGHTS, wheelSetup, TUNABLE_DEFAULTS } from '../config.js';
+import { PLATES, WHEELS, EXHAUSTS, HEADLIGHTS, TAILLIGHTS, wheelSetup, TUNABLE_DEFAULTS } from '../config.js';
 
 const GROUND = -0.62; // ground level in body space at static ride height
 
@@ -938,10 +938,9 @@ export class CarModel {
     this.lensMat.color.setHex(head).lerp(new THREE.Color(0xffffff), 0.6);
     this.tailMat.color.setHex((TAILLIGHTS[t.taillights] || TAILLIGHTS.red)[1]);
     this.tailLensMat?.color.setHex(t.taillights === 'smoked' ? 0x5a4a4c : 0xffffff);
-    const plateKey = `${t.plateStyle}|${t.plateText}`;
-    if (this.plateKey !== plateKey) {
-      this.plateKey = plateKey;
-      this.#drawPlate(t);
+    if (!this.plateDrawn) {
+      this.plateDrawn = true;
+      this.#drawPlate();
     }
     const numKey = `${t.numbers}|${t.number}|${t.numberW}|${t.numberH}`;
     if (this.numKey !== numKey) {
@@ -950,45 +949,21 @@ export class CarModel {
     }
   }
 
-  #drawPlate(t) {
-    const st = PLATES[t.plateStyle] || PLATES.white;
+  // Every car wears the same plate: a photo of a real Okinawa plate, drawn crisp and pixelated.
+  #drawPlate() {
+    const st = PLATES.okinawa;
     const c = this.plateCanvas;
     const g = c.getContext('2d');
-    const W = c.width;
-    const H = c.height;
     g.fillStyle = st.bg;
-    g.fillRect(0, 0, W, H);
-    // Pressed rim and the two bolts at the top, like a real plate.
-    g.strokeStyle = 'rgba(0,0,0,0.35)';
-    g.lineWidth = 6;
-    g.strokeRect(5, 5, W - 10, H - 10);
-    g.fillStyle = 'rgba(0,0,0,0.3)';
-    for (const x of [W * 0.22, W * 0.78]) {
-      g.beginPath();
-      g.arc(x, 18, 6, 0, Math.PI * 2);
-      g.fill();
-    }
-    if (st.slash) {
-      // A red bar from corner to corner.
-      g.strokeStyle = st.slash;
-      g.lineWidth = 16;
-      g.beginPath();
-      g.moveTo(8, H - 8);
-      g.lineTo(W - 8, 8);
-      g.stroke();
-    }
-    const text = cleanPlate(t.plateText) || ' ';
-    g.fillStyle = st.ink;
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    let size = 82;
-    g.font = `700 ${size}px 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif`;
-    const fit = W - 30;
-    const wText = g.measureText(text).width;
-    if (wText > fit) size *= fit / wText;
-    g.font = `700 ${size}px 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif`;
-    g.fillText(text, W / 2, H / 2 + 8);
+    g.fillRect(0, 0, c.width, c.height);
     this.plateTex.needsUpdate = true;
+    const img = new Image();
+    img.onload = () => {
+      g.imageSmoothingEnabled = false;
+      g.drawImage(img, 0, 0, c.width, c.height);
+      this.plateTex.needsUpdate = true;
+    };
+    img.src = `${import.meta.env?.BASE_URL ?? './'}${st.image}`;
   }
 
   // Race number boards on both doors: a white square with a black number, size set in the shop.

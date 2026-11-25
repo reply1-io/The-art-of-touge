@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import {
   CAR, BASE_CAR, CARS, ENGINE_SWAPS, carSave, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup,
-  SEATS, RIM_WIDTH_IN, PLATES, cleanPlate, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, HEADLIGHTS, TAILLIGHTS,
+  SEATS, RIM_WIDTH_IN, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, HEADLIGHTS, TAILLIGHTS,
 } from '../config.js';
 import { dynoRun } from '../physics/dyno.js';
 import { money } from '../game/wallet.js';
@@ -953,7 +953,6 @@ export class Shop {
           this.#chips('Headlights', 'headlights', Object.entries(HEADLIGHTS).map(([k, v]) => [k, v[0]])),
           this.#chips('Tail lights', 'taillights', Object.entries(TAILLIGHTS).map(([k, v]) => [k, v[0]])),
         ),
-        this.#section('Licence plate', this.#chips('Colour', 'plateStyle', Object.entries(PLATES).map(([k, v]) => [k, v.name])), this.#plateInput()),
         this.#section(
           'Number boards',
           this.#chips('On the doors', 'numbers', [[false, 'None'], [true, 'Fitted']]),
@@ -1183,26 +1182,6 @@ export class Shop {
   }
 
   // Plate text: up to 7 letters and numbers, upper case as you type.
-  #plateInput() {
-    const wrap = document.createElement('label');
-    wrap.className = 'shop-chips';
-    const name = document.createElement('span');
-    name.textContent = 'Plate text (up to 7)';
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'plate-input';
-    input.maxLength = 7;
-    input.autocapitalize = 'characters';
-    input.spellcheck = false;
-    input.value = cleanPlate(this.tune.plateText);
-    input.addEventListener('input', () => {
-      const v = cleanPlate(input.value);
-      if (input.value !== v) input.value = v;
-      this.#change('plateText', v);
-    });
-    wrap.append(name, input);
-    return wrap;
-  }
 
   // Paint: period colours plus a picker for anything else.
   #paint() {

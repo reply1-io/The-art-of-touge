@@ -411,7 +411,7 @@ export const TUNABLE_DEFAULTS = {
   seats: 'stock',
   offsetFront: 0, // mm the wheel sits out from stock (+ pokes out, - tucks in)
   offsetRear: 0,
-  plateStyle: 'white', // 'white' | 'yellow' | 'red'
+  plateStyle: 'okinawa', // the only plate: a photo of a real Okinawa plate
   plateText: 'AE 318',
   intake: 'stock',
   turbo: 'none',
@@ -486,10 +486,9 @@ export const PAINTS = [
   ['Dakar Yellow', '#e6b72b'],
 ];
 // Licence plates, Japanese style. Text colours follow the real plates.
+// The licence plate: one style, a photo of a real Okinawa plate (dark green on white).
 export const PLATES = {
-  white: { name: 'White', bg: '#f2f1ea', ink: '#1f5a32' },
-  yellow: { name: 'Yellow', bg: '#f2c51e', ink: '#151515' },
-  red: { name: 'White / red', bg: '#f2f1ea', ink: '#151515', slash: '#c8241d' },
+  okinawa: { name: 'Okinawa (JDM)', bg: '#f0f0ea', ink: '#16422a', image: 'textures/plate_okinawa.png' },
 };
 
 // Up to 7 letters, numbers, spaces and dashes, upper case.
