@@ -8,6 +8,7 @@ import { RX7_SHAPE } from './shapes/rx7.js';
 import { customShape, registerStockShapes } from './shapes/custom.js';
 import { loadDesigns } from '../builder/customStore.js';
 import { paintTexture, addPaintLayer } from './shapes/paintLayer.js';
+import { loadE30, makeE30Wheel } from './e30Model.js';
 import { PLATES, cleanPlate, WHEELS, EXHAUSTS, HEADLIGHTS, TAILLIGHTS, wheelSetup, TUNABLE_DEFAULTS } from '../config.js';
 
 const GROUND = -0.62; // ground level in body space at static ride height
@@ -477,6 +478,7 @@ export class CarModel {
     plate.position.set(0, shape.plate.y, shape.plate.z);
     plate.rotation.y = Math.PI;
     body.add(plate);
+    this.plate = plate;
     this.glass = new THREE.Mesh(polyGeometry(cabin.glass), glassMat);
     body.add(this.glass);
     this.shellMats = [this.paintMat, flat];
@@ -555,6 +557,46 @@ export class CarModel {
     this.flameLife = 0;
     this.flameMax = 0;
     this.applySetup(TUNABLE_DEFAULTS);
+    // The stock E30 swaps its built-in body for the detailed model once that has loaded.
+    if (shape === E30_SHAPE) {
+      this.glbPaint = new THREE.MeshPhongMaterial({ color: this.paintMat.color.clone(), shininess: 70, specular: 0x6a6a6a });
+      loadE30(FRONT_AXLE, REAR_AXLE).then((t) => t && this.#attachE30(t));
+    }
+  }
+
+  // Put the detailed model on: hide the built-in body (kept for the in-car view), move the plate,
+  // tailpipe, lamp glows and race numbers onto the model, and fit its wheels.
+  #attachE30(t) {
+    this.e30 = t;
+    const car = t.body.clone(true);
+    car.traverse((o) => {
+      if (!o.isMesh) return;
+      const r = o.userData.role;
+      if (r === 'paint') o.material = this.glbPaint;
+      else if (r === 'head') o.material = this.headMat;
+      else if (r === 'tail') o.material = this.tailMat;
+    });
+    this.glows ??= this.#makeGlows();
+    for (const g of this.glows.head) g.position.z += t.nose - this.shape.nose;
+    for (const g of this.glows.tail) g.position.z += t.tail - this.shape.tail;
+    const keep = new Set([this.cockpit.root, this.numberBoards, this.pipe, this.flameGroup]);
+    this.builtIn = [];
+    const walk = (o) => {
+      if (keep.has(o)) return;
+      if (o.isMesh && !o.isSprite && o !== this.plate) this.builtIn.push(o);
+      for (const c of o.children) walk(c);
+    };
+    walk(this.body);
+    this.body.add(car);
+    this.glb = car;
+    if (t.plate) this.plate.position.set(t.plate.x, t.plate.y, t.plate.z);
+    this.pipe.position.z = t.tail + 0.12;
+    this.#buildPipe(this.exhaustType);
+    this.numberBoards.scale.x = (t.halfWidth + 0.012) / (this.shape.section(this.shape.door).hw + 0.012);
+    this.interior = null;
+    this.setInterior(this.wantInterior ?? false);
+    this.wheelKey = null;
+    this.applySetup(this.tune ?? TUNABLE_DEFAULTS);
   }
 
   // A short burst of flame from the tailpipe (race exhaust).
@@ -611,17 +653,20 @@ export class CarModel {
 
   // Rebuild the wheels for a tuning setup: rim style and size, tyre sidewall and camber.
   applySetup(tune) {
+    this.tune = tune;
     this.#applyLooks(tune);
     if (this.exhaustType !== (tune.exhaust || 'stock')) this.#buildPipe(tune.exhaust || 'stock');
     const ws = wheelSetup(tune);
-    const key = `${tune.wheel}|${ws.rim}|${ws.profile}|${ws.stretched}`;
+    // Factory wheels on the detailed E30 come from the model itself.
+    const fromModel = this.e30 && tune.wheel === 'factory';
+    const key = `${tune.wheel}|${ws.rim}|${ws.profile}|${ws.stretched}|${fromModel ? 'model' : ''}|${ws.width}`;
     for (const w of this.wheels) {
       if (this.wheelKey !== key) {
         if (w.spin) {
           w.camber.remove(w.spin);
-          w.spin.traverse((o) => o.geometry?.dispose());
+          w.spin.traverse((o) => !o.userData.shared && o.geometry?.dispose());
         }
-        w.spin = makeWheel(ws, tune.wheel, this.tyreMat, this.wallMat);
+        w.spin = fromModel ? makeE30Wheel(this.e30, ws) : makeWheel(ws, tune.wheel, this.tyreMat, this.wallMat);
         if (w.side < 0) w.spin.scale.x = -1; // right-hand wheels: rim faces outward
         w.camber.add(w.spin);
       }
@@ -681,6 +726,13 @@ export class CarModel {
   // In-car view: show the cockpit, take the glass out so you can see through it, and draw the
   // inside faces of the shell (pillars, roof edges).
   setInterior(on) {
+    // With the detailed model: outside you see the model, inside the built-in cockpit and shell.
+    this.wantInterior = on;
+    if (this.glb && this.interior !== on) {
+      this.interior = on;
+      this.glb.visible = !on;
+      for (const m of this.builtIn) m.geometry.setDrawRange(0, on ? Infinity : 0);
+    }
     this.cockpit.root.visible = on;
     this.glass.visible = !on;
     this.cabinTop.visible = !on;
@@ -698,6 +750,7 @@ export class CarModel {
     this.cockpit.setSeats(t.seats === 'bucket' ? 'bucket' : 'stock');
     this.paintMat.color.set(t.paint || '#efeee6');
     this.lidMat.color.set(t.paint || '#efeee6');
+    this.glbPaint?.color.set(t.paint || '#efeee6');
     this.headColor = t.headlights || 'white';
     const head = (HEADLIGHTS[this.headColor] || HEADLIGHTS.white)[1];
     this.headMat.color.setHex(head).lerp(new THREE.Color(0xe8ecf0), 0.35);

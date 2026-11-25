@@ -72,3 +72,7 @@ overrun fuel cut and the occasional afterfire on a real lift-off.
   rpm, applied throttle, ignition (stalls run down naturally) and a short crank on restarts.
 - `tools/engine-sound/` — a standalone test page (tach, pedals, scope).
   `python3 tools/engine-sound/build_demo.py` writes a single-file copy.
+
+## Credits
+
+- BMW E30 model: "1986 BMW E30 (FL, LP)" by Krzysztof Stolorz (KrStolorz), from Sketchfab.
