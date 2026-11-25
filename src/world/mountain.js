@@ -1,6 +1,7 @@
 // The mountain's visuals: road (chunked for culling), terrain tiles, guardrails, streetlights at the
 // hairpins, cedar forest, the summit lake, the town at the bottom, and start / finish lines.
 import * as THREE from 'three';
+import { cssGlow } from '../render/softTexture.js';
 import { crossSection, STEP, JUNCTION } from './road.js';
 import { TRACKS } from './tracks.js';
 import { Terrain, noise2 } from './terrain.js';
@@ -51,17 +52,7 @@ function asphaltTexture({ HALF, PAVED }) {
 }
 
 function glowTexture(inner, outer) {
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  const g = c.getContext('2d');
-  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  grad.addColorStop(0, inner);
-  grad.addColorStop(1, outer);
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 64, 64);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  return cssGlow(inner, outer);
 }
 
 function windowsTexture() {
@@ -1510,6 +1501,43 @@ export class Mountain {
   }
 
   // A streetlight at every tight corner (on the outside) and along the start and town.
+  // A patch of road surface round sample i, centred 1.5 m from the middle toward `side`, as a mesh
+  // relative to `base`, with uv running 0..1 across a 20 m circle.
+  #poolGeometry(i, side, base) {
+    const road = this.road;
+    const R = 10;
+    const cx = side * 1.5;
+    const pos = [];
+    const uv = [];
+    const idx = [];
+    const rows = [];
+    const c = road.pointAt(i, cx);
+    for (let j = Math.max(0, i - 6); j <= Math.min(road.count - 1, i + 6); j++) {
+      const row = [];
+      for (let l = -road.w.SHOULDER; l <= road.w.SHOULDER + 0.01; l += road.w.SHOULDER / 4) {
+        const p = road.pointAt(j, l, 0.035);
+        row.push(pos.length / 3);
+        pos.push(p[0] - base[0], p[1] - base[1], p[2] - base[2]);
+        uv.push(0.5 + (p[0] - c[0]) / (2 * R), 0.5 - (p[2] - c[2]) / (2 * R));
+      }
+      rows.push(row);
+    }
+    for (let r = 0; r + 1 < rows.length; r++) {
+      for (let k = 0; k + 1 < rows[r].length; k++) {
+        const a = rows[r][k];
+        const b = rows[r][k + 1];
+        const d = rows[r + 1][k];
+        const e = rows[r + 1][k + 1];
+        idx.push(a, d, b, b, d, e);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    return g;
+  }
+
   #buildStreetlights() {
     this.lampGlows = [];
     const road = this.road;
@@ -1530,13 +1558,13 @@ export class Mountain {
     const poleMat = new THREE.MeshLambertMaterial({ color: 0x55585e });
     const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe2a6 });
     const glow = new THREE.SpriteMaterial({ map: glowTexture('rgba(255,214,140,0.9)', 'rgba(255,170,60,0)'), blending: THREE.AdditiveBlending, depthWrite: false, fog: true });
-    const poolMat = new THREE.MeshBasicMaterial({ map: glowTexture('rgba(255,200,120,0.55)', 'rgba(255,160,60,0)'), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, fog: true });
+    const poolTex = glowTexture('rgba(255,200,120,0.55)', 'rgba(255,160,60,0)');
+    poolTex.wrapS = poolTex.wrapT = THREE.ClampToEdgeWrapping;
+    const poolMat = new THREE.MeshBasicMaterial({ map: poolTex, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, fog: true, side: THREE.DoubleSide });
     const pole = new THREE.CylinderGeometry(0.09, 0.12, 7, 6);
     pole.translate(0, 3.5, 0);
     const arm = new THREE.BoxGeometry(0.08, 0.08, 1.8);
     const head = new THREE.BoxGeometry(0.35, 0.12, 0.6);
-    const pool = new THREE.CircleGeometry(10, 20);
-    pool.rotateX(-Math.PI / 2);
     for (const [i, side] of spots) {
       if (this.inZone(i, side)) continue;
       const base = road.pointAt(i, side * (road.w.RAIL + 0.8));
@@ -1554,9 +1582,9 @@ export class Mountain {
       const s = new THREE.Sprite(glow);
       s.scale.set(7.5, 7.5, 1);
       s.position.copy(hd.position);
-      const p = new THREE.Mesh(pool, poolMat);
-      const c = road.pointAt(i, side * 1.5, 0.03);
-      p.position.set(c[0] - base[0], c[1] - base[1], c[2] - base[2]);
+      // The pool of light lies on the road itself (banked and sloping as it is), not a flat
+      // disc that hangs in the air where the road falls away.
+      const p = new THREE.Mesh(this.#poolGeometry(i, side, base), poolMat);
       g.add(a, hd, s, p);
       this.lampGlows.push(s, p);
       this.#addChunk(g, base[0], base[2], 20);

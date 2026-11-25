@@ -2,6 +2,7 @@
 // Body space matches the physics body: +x left, +y up, +z forward; the origin is the physics body
 // origin, which rides about 0.62 m above the ground.
 import * as THREE from 'three';
+import { softTexture } from './softTexture.js';
 import { Cockpit } from './cockpit.js';
 import { RX7_SHAPE } from './shapes/rx7.js';
 import { customShape, registerStockShapes } from './shapes/custom.js';
@@ -430,17 +431,7 @@ registerStockShapes(SHAPES); // so a Car Builder design can start from either bo
 
 let glowTex = null;
 function glowSpriteTexture() {
-  if (glowTex) return glowTex;
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  const g = c.getContext('2d');
-  const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  grd.addColorStop(0, 'rgba(255,255,255,1)');
-  grd.addColorStop(0.25, 'rgba(255,255,255,0.45)');
-  grd.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grd;
-  g.fillRect(0, 0, 64, 64);
-  glowTex = new THREE.CanvasTexture(c);
+  glowTex ??= softTexture([255, 255, 255], [[0, 1], [0.25, 0.45], [1, 0]]);
   return glowTex;
 }
 
@@ -670,9 +661,9 @@ export class CarModel {
       const w = box.max.x - box.min.x;
       const xs = w > 0.6 ? [box.min.x + 0.18, box.max.x - 0.18] : [c.x];
       for (const x of xs) {
-        const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: tail ? 0xff2a1a : 0xfff2d8, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: tail ? 0.45 : 0.85 }));
+        const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: tail ? 0xff2a1a : 0xfff2d8, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: tail ? 0.45 : 0.3 }));
         s.position.set(x, c.y, tail ? box.min.z - 0.05 : box.max.z + 0.05);
-        s.scale.setScalar(tail ? 1.0 : 1.6);
+        s.scale.setScalar(tail ? 1.0 : 0.75);
         s.visible = false;
         o.add(s);
         (tail ? out.tail : out.head).push(s);

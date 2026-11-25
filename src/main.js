@@ -1891,7 +1891,7 @@ async function boot() {
   }
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { THREE, get directorDbg() { return director; }, droneFrame, droneStart, recorder, freeCam, replayState: rp, get recorderSeconds() { return recorder.seconds; }, get revCar() { return revCar; }, get onRoad() { return onRoad; }, get wildlifeDbg() { return wildlife; }, get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { get smokeDbg() { return smoke; }, THREE, get directorDbg() { return director; }, droneFrame, droneStart, recorder, freeCam, replayState: rp, get recorderSeconds() { return recorder.seconds; }, get revCar() { return revCar; }, get onRoad() { return onRoad; }, get wildlifeDbg() { return wildlife; }, get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;
