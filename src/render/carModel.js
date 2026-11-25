@@ -40,22 +40,17 @@ const BOTTOM = [
 ];
 // Top of the sides / shoulder line: wings along the bonnet, window line, boot.
 const BELT = [
-  [1.83, 0.79],
-  [1.81, 0.82],
-  [1.7, 0.84],
+  [1.83, 0.788],
   [0.78, 0.85],
   [0.0, 0.855],
   [-1.5, 0.86],
   [-2.12, 0.86],
   [-2.17, 0.82],
 ];
-// Centreline: bonnet, (cabin floor under the glass), boot lid. The bonnet is flat with the wings
-// (no raised crown along the front), rising only towards the windscreen.
+// Centreline: bonnet, (cabin floor under the glass), boot lid. The bonnet is one straight,
+// angled line from the windscreen down to the nose, with a square front edge (no roll-over).
 const TOP = [
   [1.83, 0.8],
-  [1.81, 0.828],
-  [1.7, 0.844],
-  [1.07, 0.85],
   [0.78, 0.885],
   [0.0, 0.905],
   [-1.55, 0.9],
