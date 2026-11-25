@@ -210,6 +210,7 @@ function detailPolys() {
   const tail = [];
   const grille = []; // textured with horizontal slats
   const kidney = []; // textured with the kidney grille photo
+  const tailLens = []; // textured with the tail lamp photo
   const zn = NOSE + 0.006;
   const front = (x0, x1, y0, y1, z, color) => trim.push({ pts: [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], color, out: [0, 0, 1] });
   // One black band across the whole nose: both pairs of headlamps and the grille sit in it.
@@ -268,15 +269,10 @@ function detailPolys() {
     const o = side * 0.775;
     const a = side * 0.69;
     const i = side * 0.29;
-    rear(o, a, 0.6, 0.8, AMBER);
-    rear(a, i, 0.6, 0.8, RED, tail);
-    const ribs = [];
-    for (const y of [0.667, 0.733]) ribs.push([a, i, y - 0.006, y + 0.006]);
-    for (let k = 1; k < 4; k++) {
-      const x = a + ((i - a) * k) / 4;
-      ribs.push([x - 0.006, x + 0.006, 0.6, 0.8]);
-    }
-    for (const [x0, x1, y0, y1] of ribs) trim.push({ pts: [[x0, y0, zt - 0.007], [x1, y0, zt - 0.007], [x1, y1, zt - 0.007], [x0, y1, zt - 0.007]], color: BLACK, out: [0, 0, -1] });
+    // One lens per side carrying the photo of a real facelift lamp (amber outside, red, white
+    // reverse light inside).
+    void a;
+    rear(o, i, 0.6, 0.8, RED, tailLens);
   }
 
   // The "Sicke": the sharp shoulder crease that runs nose to tail just below the window line.
@@ -305,7 +301,7 @@ function detailPolys() {
     ];
     for (const pts of box) trim.push({ pts, color: BLACK });
   }
-  return { trim, chrome, tail, paint: dam, grille, kidney };
+  return { trim, chrome, tail, paint: dam, grille, kidney, tailLens };
 }
 
 // ---------- Wheels: rim face textures per style ----------
@@ -585,29 +581,32 @@ const E30_SHAPE = {
 export const SHAPES = { e30: E30_SHAPE, rx7: RX7_SHAPE };
 registerStockShapes(SHAPES); // so a Car Builder design can start from either body
 
-// What the paint reflects: a soft, dim sky over a bright horizon line and dark ground, so panels
-// facing up catch a sheen and the sides pick up a horizon streak, as on a real car at dusk.
-let envTex = null;
-function paintEnv() {
-  if (envTex || typeof document === 'undefined') return envTex;
-  const c = document.createElement('canvas');
-  c.width = 64;
-  c.height = 32;
-  const g = c.getContext('2d');
-  const gr = g.createLinearGradient(0, 0, 0, 32);
-  gr.addColorStop(0, '#0b0e14');
-  gr.addColorStop(0.38, '#1c222d');
-  gr.addColorStop(0.47, '#8a8780');
-  gr.addColorStop(0.5, '#2a2622');
-  gr.addColorStop(0.56, '#000000');
-  gr.addColorStop(1, '#000000');
-  g.fillStyle = gr;
-  g.fillRect(0, 0, 64, 32);
-  envTex = new THREE.CanvasTexture(c);
-  envTex.mapping = THREE.EquirectangularReflectionMapping;
-  envTex.colorSpace = THREE.SRGBColorSpace;
-  return envTex;
+// Real reflections: each car keeps a tiny cube map of what is around it (the garage, the road, the
+// trees, other cars' lights), re-captured every few frames, and its paint reflects that.
+const REFLECTORS = new Set();
+let reflectTick = 0;
+const _rp = new THREE.Vector3();
+function inScene(o, scene) {
+  while (o) {
+    if (o === scene) return true;
+    o = o.parent;
+  }
+  return false;
 }
+// Called once per frame before the scene is drawn.
+export function updateReflections(renderer, scene) {
+  reflectTick++;
+  for (const m of REFLECTORS) {
+    if ((reflectTick + m.reflectPhase) % REFLECT_EVERY !== 0 || !inScene(m.root, scene)) continue;
+    m.root.visible = false; // the car mustn't reflect its own inside
+    m.root.getWorldPosition(_rp);
+    m.cubeCam.position.set(_rp.x, _rp.y + 0.7, _rp.z);
+    m.cubeCam.updateMatrixWorld(true);
+    m.cubeCam.update(renderer, scene);
+    m.root.visible = true;
+  }
+}
+const REFLECT_EVERY = 20;
 
 const frontTex = {};
 function frontTexture(name, repeat) {
@@ -665,7 +664,11 @@ export class CarModel {
     const white = (polys) => polys.map((p) => ({ ...p, color: [1, 1, 1] }));
     // Glossy paint: a sharp specular highlight where the light catches each panel.
     // Glossy paint: a tight, bright highlight (clear coat) and a soft reflection of sky and ground.
-    const gloss = { shininess: 140, specular: 0x9a9a9a, envMap: paintEnv(), combine: THREE.AddOperation, reflectivity: 0.5 };
+    this.cubeRT = new THREE.WebGLCubeRenderTarget(64, { generateMipmaps: false });
+    this.cubeCam = new THREE.CubeCamera(0.3, 80, this.cubeRT);
+    this.reflectPhase = REFLECTORS.size * 7;
+    REFLECTORS.add(this);
+    const gloss = { shininess: 140, specular: 0x9a9a9a, envMap: this.cubeRT.texture, combine: THREE.MixOperation, reflectivity: 0.22 };
     this.paintMat = new THREE.MeshPhongMaterial({ color: 0xefeee6, vertexColors: true, flatShading: true, ...gloss });
     body.add(new THREE.Mesh(polyGeometry(white([...shell.paint, ...cabin.paint, ...(detail.paint || [])])), this.paintMat));
     this.cabinTop = new THREE.Mesh(polyGeometry(white(shell.cabinTop)), this.paintMat);
@@ -702,6 +705,17 @@ export class CarModel {
       return g;
     };
     if (detail.grille?.length) body.add(new THREE.Mesh(flatUV(detail.grille, 0, 0.5, 0.565, 0.74), new THREE.MeshLambertMaterial({ map: frontTexture('grille', true), flatShading: true })));
+    if (detail.tailLens?.length) {
+      // u runs from the outer end of each lamp (0) to the inner end (1), so both sides read
+      // amber outside, white inside.
+      const g = polyGeometry(detail.tailLens);
+      const p = g.attributes.position;
+      const uv = [];
+      for (let i = 0; i < p.count; i++) uv.push((Math.abs(p.getX(i)) - 0.775) / (0.29 - 0.775), (p.getY(i) - 0.6) / 0.2);
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      this.tailLensMat = new THREE.MeshLambertMaterial({ map: frontTexture('taillamp', false), emissiveMap: frontTexture('taillamp_glow', false), emissive: 0x000000 });
+      body.add(new THREE.Mesh(g, this.tailLensMat));
+    }
     if (detail.kidney?.length) body.add(new THREE.Mesh(flatUV(detail.kidney, 0.145, -0.145, 0.572, 0.738), new THREE.MeshLambertMaterial({ map: frontTexture('kidney', false), flatShading: true })));
     if (detail.head?.length) body.add(new THREE.Mesh(polyGeometry(detail.head), this.headMat));
     // Body-colour parts that are not part of the shell mesh (pop-up lids).
@@ -856,6 +870,7 @@ export class CarModel {
     this.headMat.emissive.setHex(on ? head : 0x000000);
     this.lensMat.emissive.setHex(on ? head : 0x000000);
     this.tailMat.emissive.setHex(braking ? 0xff1a1a : on ? 0x550000 : 0x000000);
+    this.tailLensMat?.emissive.setHex(braking ? 0xff1a1a : on ? 0x550000 : 0x000000);
     // A soft glow round each lamp.
     this.glows ??= this.#makeGlows();
     for (const g of this.glows.head) {
@@ -877,8 +892,8 @@ export class CarModel {
     const box = new THREE.Box3();
     this.root.updateMatrixWorld(true);
     this.root.traverse((o) => {
-      if (!o.isMesh || (o.material !== this.headMat && o.material !== this.lensMat && o.material !== this.tailMat)) return;
-      const tail = o.material === this.tailMat;
+      if (!o.isMesh || (o.material !== this.headMat && o.material !== this.lensMat && o.material !== this.tailMat && o.material !== this.tailLensMat)) return;
+      const tail = o.material === this.tailMat || o.material === this.tailLensMat;
       o.geometry.computeBoundingBox();
       box.copy(o.geometry.boundingBox);
       const c = box.getCenter(new THREE.Vector3());
@@ -922,6 +937,7 @@ export class CarModel {
     this.headMat.color.setHex(head).lerp(new THREE.Color(0xe8ecf0), 0.35);
     this.lensMat.color.setHex(head).lerp(new THREE.Color(0xffffff), 0.6);
     this.tailMat.color.setHex((TAILLIGHTS[t.taillights] || TAILLIGHTS.red)[1]);
+    this.tailLensMat?.color.setHex(t.taillights === 'smoked' ? 0x5a4a4c : 0xffffff);
     const plateKey = `${t.plateStyle}|${t.plateText}`;
     if (this.plateKey !== plateKey) {
       this.plateKey = plateKey;

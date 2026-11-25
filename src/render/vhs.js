@@ -15,6 +15,7 @@
 // strength 0 is a clean picture at screen resolution (with the same light and glow); 1 is full.
 // Also the wide-angle and fisheye lenses for replays.
 import * as THREE from 'three';
+import { updateReflections } from './carModel.js';
 
 const vertexShader = /* glsl */ `
   varying vec2 vUv;
@@ -381,6 +382,7 @@ export class VhsRenderer {
     this.cur ^= 1;
     const cur = this.frames[this.cur];
     const prev = this.frames[this.cur ^ 1];
+    updateReflections(r, scene);
     r.setRenderTarget(cur);
     r.render(scene, camera);
     // The lingering light: what the picture is made from from here on.

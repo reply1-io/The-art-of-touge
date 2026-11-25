@@ -36,7 +36,7 @@ function stockPolys(model) {
     paint: fix([...shell.paint, ...(shell.cabinTop || []), ...(cabin.paint || []), ...(detail.paint || [])], [1, 1, 1]),
     trim: fix([...shell.trim, ...(cabin.trim || []), ...(detail.trim || []), ...(detail.chrome || []), ...(detail.grille || []), ...(detail.kidney || [])]),
     glass: fix(cabin.glass),
-    tail: fix(detail.tail),
+    tail: fix([...(detail.tail || []), ...(detail.tailLens || [])]),
     // Round headlamps (E30) with their chrome rings.
     head: (shape.lamps || []).map(([x, y, r]) => disc(x, y, shape.nose + 0.014, r, [0.91, 0.93, 0.94])),
   };
