@@ -19,6 +19,7 @@ const fragmentShader = /* glsl */ `
   uniform vec2 res;       // size of the low-resolution buffer in pixels
   uniform float time;
   uniform float strength; // 0 = clean pixels only, 1 = full VHS
+  uniform float barrel;   // wide-angle lens bend (0 = none): straight lines bow out toward the edges
   varying vec2 vUv;
 
   float rand(vec2 c) {
@@ -31,6 +32,13 @@ const fragmentShader = /* glsl */ `
 
   void main() {
     vec2 uv = vUv;
+    // A very wide camcorder lens: the picture bows out, the corners fall off into black.
+    vec2 cc = uv - 0.5;
+    cc.x *= res.x / res.y;
+    float r2 = dot(cc, cc);
+    vec2 bent = 0.5 + (uv - 0.5) * (1.0 - barrel * 0.35) * (1.0 + barrel * r2);
+    float inside = step(0.0, bent.x) * step(bent.x, 1.0) * step(0.0, bent.y) * step(bent.y, 1.0);
+    uv = mix(uv, bent, step(0.001, barrel));
     float row = floor(uv.y * res.y);
 
     // Tracking band: a soft noisy stripe that rolls slowly up the picture.
@@ -69,6 +77,7 @@ const fragmentShader = /* glsl */ `
     col += band * 0.18 * rand(vec2(row * 3.1, floor(time * 30.0)));
     col *= 1.0 - 0.1 * strength * step(0.5, fract(uv.y * res.y * 0.5));
 
+    col *= mix(1.0, inside * (1.0 - smoothstep(0.35, 0.75, r2) * barrel * 0.6), step(0.001, barrel));
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
   }
 `;
@@ -78,6 +87,7 @@ export class VhsRenderer {
     this.renderer = renderer;
     this.pixelSize = pixelSize;
     this.strength = 1;
+    this.barrel = 0; // wide-angle lens bend, for camcorder shots
     this.target = new THREE.WebGLRenderTarget(4, 4, {
       minFilter: THREE.NearestFilter,
       magFilter: THREE.NearestFilter,
@@ -92,6 +102,7 @@ export class VhsRenderer {
         res: { value: new THREE.Vector2(4, 4) },
         time: { value: 0 },
         strength: { value: 1 },
+        barrel: { value: 0 },
       },
       depthTest: false,
       depthWrite: false,
@@ -115,6 +126,7 @@ export class VhsRenderer {
     const r = this.renderer;
     this.material.uniforms.time.value = time;
     this.material.uniforms.strength.value = this.strength;
+    this.material.uniforms.barrel.value = this.barrel;
     r.setRenderTarget(this.target);
     r.render(scene, camera);
     r.setRenderTarget(null);

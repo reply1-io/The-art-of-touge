@@ -52,6 +52,26 @@ export class TyreSmoke {
     p.s.visible = true;
   }
 
+  // How much smoke a wheel is making (0 when gripping), as update() works it out.
+  static amountFor(w) {
+    if (!w.grounded || !w.contact || w.surface === 'grass') return 0;
+    const lat = Math.max(0, Math.abs(Math.tan(w.slipAngle)) - 0.25);
+    const spin = Math.max(0, Math.abs(w.slipRatio) - 0.3);
+    const slipSpeed = Math.abs(w.omega * 0.3 - w.vx) + Math.abs(w.vy);
+    return Math.min(1.5, (lat * 3 + spin * 1.5) * Math.min(1, slipSpeed / 6));
+  }
+
+  // Smoke from wheel k at (x, y, z) making `amount` (from amountFor), the car moving at vel: for
+  // replays, where the wheels are a recording rather than the simulation.
+  puff(k, x, y, z, amount, vel, dt) {
+    if (amount < 0.05) return;
+    this.carry[k] += amount * dt * 22;
+    while (this.carry[k] >= 1) {
+      this.carry[k] -= 1;
+      this.#emit(x, y, z, Math.min(1, amount), vel);
+    }
+  }
+
   // vehicle: the simulation. Wheels that slide or spin produce puffs in proportion.
   update(dt, vehicle) {
     const v = vehicle.body.linvel();

@@ -1,20 +1,21 @@
 // Replays: the last five minutes of your driving, kept as snapshots of the car (where it was, how
 // its wheels sat, the revs and pedals) about 30 times a second, and played back three ways:
 //
-// - VHS: as if people along the road were filming you on camcorders. Each one stands at the
-//   roadside, follows you as you come past (a little shaky, zooming in when you are far away),
-//   then the tape cuts to the next. Now and then it cuts to a chase car following you instead.
+// - VHS: as if the crowd along the road were filming you on camcorders. Most stand right at the
+//   edge with a 10 mm wide-angle lens, so the car fills the picture as it rushes past; a few stand
+//   further back and zoom in. Each follows you, a little shaky, then the tape cuts to the next.
 // - The same clips with no on-screen text (main.js hides the overlay).
-// - Edit: fly a free camera anywhere, drop cameras of your own, then play and watch from where you
-//   are, or cut between your cameras, each following the car.
+// - Edit: fly a free camera anywhere (it goes where it is pointed), drop cameras of your own, then
+//   play and watch from where you are, or cut between your cameras, each following the car.
 import * as THREE from 'three';
+import { TyreSmoke } from '../render/smoke.js';
 
 export const HZ = 30;
 const SECONDS = 300;
 const N = HZ * SECONDS; // frames kept
 // One frame: position (3), rotation (4), speed, rpm, throttle, brake, gear, road sample, tyre slip,
-// then compression, steer and spin for each of the four wheels.
-const F = 14 + 12;
+// then compression, steer and spin for each of the four wheels, then how much smoke each makes.
+const F = 14 + 12 + 4;
 
 export class Recorder {
   constructor() {
@@ -63,6 +64,7 @@ export class Recorder {
       d[o + 14 + k * 3] = w.compression;
       d[o + 15 + k * 3] = w.steer;
       d[o + 16 + k * 3] = w.angle;
+      d[o + 26 + k] = TyreSmoke.amountFor(w);
     });
     this.head = (this.head + 1) % N;
     this.count = Math.min(N, this.count + 1);
@@ -101,6 +103,7 @@ export class Recorder {
       out.wheels[w].compression = lerp(14 + w * 3);
       out.wheels[w].steer = lerp(15 + w * 3);
       out.wheels[w].angle = lerp(16 + w * 3);
+      out.wheels[w].smoke = lerp(26 + w);
     }
     return out;
   }
@@ -114,79 +117,67 @@ const mulberry = (seed) => () => {
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 };
 
-// The people filming: one every 60 m of road, on whichever side has room to stand, at head height.
-// Every fourth spot is a chase car instead.
+// The crowd filming: someone every 40 m of road, on whichever side has room to stand. Most are
+// right at the edge (just behind the rail) with a 10 mm wide-angle lens held low; about one in
+// four stands further back on the bank and zooms in.
 export class Director {
   constructor(road, terrain) {
     this.road = road;
     this.terrain = terrain;
     this.spots = [];
     const rand = mulberry(318);
-    for (let i = 20; i < road.count - 10; i += 30) {
+    for (let i = 16; i < road.count - 10; i += 20) {
+      const wide = rand() > 0.25;
       let best = null;
       for (const side of rand() < 0.5 ? [1, -1] : [-1, 1]) {
-        const l = road.w.RAIL + 2 + rand() * 4;
+        const l = wide ? road.w.RAIL + 0.5 + rand() * 1.2 : road.w.RAIL + 3 + rand() * 4;
         const [x, y, z] = road.pointAt(i, side * l);
         const g = terrain.heightAt(x, z);
         // Not up on a cutting or down a drop where you could not see the road.
-        if (Math.abs(g - y) > 3) continue;
-        best = { i, x, y: Math.max(g, y) + 1.55 + rand() * 0.3, z, side };
+        if (Math.abs(g - y) > (wide ? 1.5 : 3)) continue;
+        best = { i, x, y: Math.max(g, y) + (wide ? 0.9 + rand() * 0.6 : 1.55 + rand() * 0.3), z, side, wide };
         break;
       }
-      this.spots.push(best ? { ...best, chase: this.spots.length % 4 === 3 } : { i, chase: true });
+      // Nowhere to stand: the spot before films for longer.
+      this.spots.push(best || { ...(this.spots[this.spots.length - 1] || { i, x: road.x[i], y: road.y[i] + 6, z: road.z[i], wide: false }), i });
     }
     this.shake = mulberry(7);
     this.look = new THREE.Vector3();
-    this.lookVel = new THREE.Vector3();
-    this.chasePos = new THREE.Vector3();
     this.current = -1;
   }
 
   // Which spot films the car when it is at road sample i: the next one it is driving toward,
-  // until it is past.
+  // until it is just past.
   spotFor(i) {
-    const k = Math.max(0, Math.min(this.spots.length - 1, Math.floor((i - 20 + 22) / 30)));
-    return k;
+    return Math.max(0, Math.min(this.spots.length - 1, Math.floor((i - 16 + 6) / 20)));
   }
 
-  // Aim `camera` for the car at `car` (from Recorder.sample). Returns the spot number (for the CAM
-  // label) and whether it just cut.
+  // Aim `camera` for the car at `car` (from Recorder.sample). Returns the spot number, whether it
+  // just cut, and whether it is a wide-angle shot (for the lens bend).
   frame(dt, camera, car, t) {
     const k = this.spotFor(car.index);
     const cut = k !== this.current;
     this.current = k;
     const s = this.spots[k];
-    const target = new THREE.Vector3(car.pos.x, car.pos.y + 0.6, car.pos.z);
-    if (s.chase) {
-      // A car following yours: behind and a little above, swaying as it keeps up.
-      const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(car.quat);
-      fwd.y = 0;
-      fwd.normalize();
-      const want = target.clone().addScaledVector(fwd, -9.5).add(new THREE.Vector3(0, 1.9, 0));
-      if (cut) this.chasePos.copy(want);
-      this.chasePos.lerp(want, Math.min(1, dt * 3));
-      camera.position.copy(this.chasePos);
-      camera.position.x += Math.sin(t * 1.7) * 0.15;
-      camera.position.y += Math.sin(t * 2.3) * 0.08;
-      if (cut) this.look.copy(target);
-      this.look.lerp(target, Math.min(1, dt * 6));
-      camera.lookAt(this.look);
-      camera.fov = 62;
+    const target = new THREE.Vector3(car.pos.x, car.pos.y + 0.5, car.pos.z);
+    camera.position.set(s.x, s.y, s.z);
+    // Handheld: the aim lags behind the car a touch and wobbles, more for the close ones.
+    if (cut) this.look.copy(target);
+    this.look.lerp(target, Math.min(1, dt * (s.wide ? 7 : 5)));
+    camera.lookAt(this.look);
+    const wob = (s.wide ? 0.012 : 0.005) + Math.min(0.012, car.speed / 2500);
+    camera.rotation.x += Math.sin(t * 7.1) * wob + (this.shake() - 0.5) * wob;
+    camera.rotation.y += Math.sin(t * 5.3) * wob;
+    camera.rotation.z += Math.sin(t * 3.7) * wob * 0.8;
+    if (s.wide) {
+      camera.fov = 104; // about a 10 mm lens on a camcorder
     } else {
-      camera.position.set(s.x, s.y, s.z);
-      // Handheld: the aim lags behind the car a touch, with a little wobble.
-      if (cut) this.look.copy(target);
-      this.look.lerp(target, Math.min(1, dt * 5));
-      camera.lookAt(this.look);
-      const wob = 0.004 + Math.min(0.01, car.speed / 3000);
-      camera.rotation.x += Math.sin(t * 7.1) * wob + (this.shake() - 0.5) * wob;
-      camera.rotation.y += Math.sin(t * 5.3) * wob;
       // Zoom in on the car when it is far off, out as it rushes past.
       const dist = camera.position.distanceTo(target);
       camera.fov = THREE.MathUtils.clamp((Math.atan(5.5 / Math.max(dist, 1)) * 2 * 180) / Math.PI, 14, 60);
     }
     camera.updateProjectionMatrix();
-    return { k, cut };
+    return { k, cut, wide: s.wide };
   }
 }
 
@@ -197,6 +188,7 @@ export class FreeCam {
     this.yaw = 0;
     this.pitch = -0.15;
     this.move = { f: 0, s: 0, u: 0 }; // forward, sideways, up: -1..1 from the buttons and keys
+    this.fov = 55; // degrees, 10..150
     this.shots = []; // [{ pos, yaw, pitch }]
   }
 
@@ -207,25 +199,29 @@ export class FreeCam {
     this.pitch = -0.2;
   }
 
+  // Flies where it is pointed (forward and back go up and down with the view, too). lookAt: keep
+  // turned toward that point as you fly.
   update(dt, camera, lookAt = null) {
+    if (lookAt) {
+      const d = lookAt.clone().sub(this.pos);
+      this.yaw = Math.atan2(-d.x, -d.z);
+      this.pitch = Math.asin(THREE.MathUtils.clamp(d.y / Math.max(d.length(), 1e-3), -1, 1));
+    }
     const speed = 14;
-    const f = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    const cp = Math.cos(this.pitch);
+    const f = new THREE.Vector3(-Math.sin(this.yaw) * cp, Math.sin(this.pitch), -Math.cos(this.yaw) * cp);
     const r = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     this.pos.addScaledVector(f, this.move.f * speed * dt).addScaledVector(r, this.move.s * speed * dt);
     this.pos.y += this.move.u * speed * 0.6 * dt;
     camera.position.copy(this.pos);
-    if (lookAt) {
-      camera.lookAt(lookAt);
-    } else {
-      camera.rotation.order = 'YXZ';
-      camera.rotation.set(this.pitch, this.yaw, 0);
-    }
-    camera.fov = 55;
+    camera.rotation.order = 'YXZ';
+    camera.rotation.set(this.pitch, this.yaw, 0);
+    camera.fov = this.fov;
     camera.updateProjectionMatrix();
   }
 
   addShot() {
-    this.shots.push({ pos: this.pos.clone(), yaw: this.yaw, pitch: this.pitch });
+    this.shots.push({ pos: this.pos.clone(), yaw: this.yaw, pitch: this.pitch, fov: this.fov });
   }
 
   // Of your cameras, the nearest to the car, looking at it.
@@ -235,8 +231,8 @@ export class FreeCam {
     if (!best) return -1;
     camera.position.copy(best.pos);
     camera.lookAt(car.pos.x, car.pos.y + 0.6, car.pos.z);
-    const dist = best.pos.distanceTo(car.pos);
-    camera.fov = THREE.MathUtils.clamp((Math.atan(6 / Math.max(dist, 1)) * 2 * 180) / Math.PI, 18, 60);
+    // Each camera keeps the field of view it was placed with.
+    camera.fov = best.fov ?? 55;
     camera.updateProjectionMatrix();
     return this.shots.indexOf(best);
   }

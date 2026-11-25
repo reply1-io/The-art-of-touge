@@ -2,7 +2,7 @@
 import './styles.css';
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { CAR, partsSetup } from './config.js';
+import { CAR, partsSetup, wheelSetup } from './config.js';
 import { Vehicle } from './physics/vehicle.js';
 import { Engine } from './physics/engine.js';
 import { SoftBarrier } from './physics/barrier.js';
@@ -630,8 +630,11 @@ shop.onCar = (id) => {
 const recorder = new Recorder();
 const freeCam = new FreeCam();
 let director = null;
-const rp = { active: false, t: 0, playing: true, speed: 1, mode: 'vhs', view: 'free', lookAtCar: false, idle: 0, from: null };
+const rp = { active: false, t: 0, playing: true, speed: 1, mode: 'vhs', view: 'free', lookAtCar: false, idle: 0, from: null, uiOff: false };
 const rcar = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), wheels: [{}, {}, {}, {}] };
+const rprev = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), wheels: [{}, {}, {}, {}] };
+const rvel = new THREE.Vector3();
+const noWheels = { body: { linvel: () => rvel }, wheels: [] };
 const rWheels = { wheels: [] };
 const rVehicle = { engine: { rpm: 0, running: true, throttleApplied: 0, boost: 0, limiterCut: false, spec: CAR.engine }, trans: { gear: 0, grindTimer: 0, coupling: 1 }, throttlePedal: 0, brakePedal: 0, speed: 0, forwardSpeed: 0, wheels: [{ grounded: true, slipAngle: 0, slipRatio: 0, load: 2800 }] };
 const rExhaust = new ExhaustEvents();
@@ -669,6 +672,8 @@ function openReplay(from) {
 
 function closeReplay() {
   rp.active = false;
+  rp.uiOff = false;
+  vhs.barrel = 0;
   $('replay').classList.add('hidden');
   document.body.classList.remove('in-replay');
   for (const k of Object.keys(freeCam.move)) freeCam.move[k] = 0;
@@ -683,6 +688,9 @@ function closeReplay() {
 function renderReplayUi() {
   const el = $('replay');
   el.classList.toggle('no-osd', rp.mode !== 'vhs');
+  el.classList.toggle('ui-off', rp.uiOff);
+  $('rp-fov').value = String(freeCam.fov);
+  $('rp-fov-val').textContent = `${Math.round(freeCam.fov)}\u00b0`;
   $('replay-edit').classList.toggle('hidden', rp.mode !== 'edit');
   for (const b of document.querySelectorAll('#rp-mode button')) b.classList.toggle('sel', b.dataset.mode === rp.mode);
   for (const b of document.querySelectorAll('#rp-view button')) b.classList.toggle('sel', b.dataset.view === rp.view);
@@ -703,6 +711,9 @@ function replayFrame(dt, now) {
     }
   }
   recorder.sample(rp.t, rcar);
+  // How fast it was going (for the smoke), from a moment before.
+  recorder.sample(Math.max(0, rp.t - 1 / HZ), rprev);
+  rvel.copy(rcar.pos).sub(rprev.pos).multiplyScalar(HZ);
   // The car, as it was.
   carModel.root.position.copy(rcar.pos);
   carModel.root.quaternion.copy(rcar.quat);
@@ -716,13 +727,28 @@ function replayFrame(dt, now) {
   headlight.target.position.copy(new THREE.Vector3(0, -1.6, 22).applyQuaternion(rcar.quat).add(rcar.pos));
   // The camera.
   let cam = 0;
+  let wide = false;
   if (rp.mode === 'edit') {
     const shot = rp.view === 'shots' ? freeCam.frameShots(camera, rcar) : -1;
     if (shot < 0) freeCam.update(dt, camera, rp.lookAtCar ? new THREE.Vector3(rcar.pos.x, rcar.pos.y + 0.6, rcar.pos.z) : null);
     cam = shot + 1;
   } else {
-    cam = director.frame(dt, camera, rcar, rp.t).k + 1;
+    const f = director.frame(dt, camera, rcar, rp.t);
+    cam = f.k + 1;
+    wide = f.wide;
   }
+  // The 10 mm camcorder shots bend at the edges.
+  vhs.barrel = wide ? 0.55 : 0;
+  // Tyre smoke from the wheels that were sliding, where they were.
+  if (rp.playing) {
+    const r = wheelSetup(tune).radius;
+    rcar.wheels.forEach((w, k) => {
+      const ww = rWheels.wheels[k];
+      const p = new THREE.Vector3(ww.x, CAR.wheelMountY - CAR.suspensionRest + w.compression - r, ww.z).applyQuaternion(rcar.quat).add(rcar.pos);
+      smoke.puff(k, p.x, p.y, p.z, w.smoke || 0, rvel, dt * rp.speed);
+    });
+  }
+  smoke.update(rp.playing ? dt * rp.speed : 0, noWheels);
   // The engine, from the tape.
   if (rp.playing) {
     const e = rVehicle.engine;
@@ -739,7 +765,7 @@ function replayFrame(dt, now) {
   const el = $('replay');
   el.querySelector('.osd-play').innerHTML = rp.playing ? '&#9654; PLAY' : '&#10074;&#10074; PAUSE';
   el.querySelector('.osd-counter').textContent = tapeTime(rp.t);
-  el.querySelector('.osd-cam').textContent = rp.mode === 'edit' ? (cam > 0 ? `CAM ${cam}` : 'FREE') : director.spots[director.current]?.chase ? 'CHASE' : `CAM ${cam}`;
+  el.querySelector('.osd-cam').textContent = rp.mode === 'edit' ? (cam > 0 ? `CAM ${cam}` : 'FREE') : `CAM ${cam}`;
   const slider = $('rp-time');
   if (document.activeElement !== slider) slider.value = String(length ? rp.t / length : 0);
   $('rp-clock').textContent = `${Math.floor(rp.t / 60)}:${String(Math.floor(rp.t) % 60).padStart(2, '0')}`;
@@ -804,6 +830,15 @@ $('rp-clear').addEventListener('click', () => {
   rp.view = 'free';
   renderReplayUi();
 });
+$('rp-hide').addEventListener('click', () => {
+  rp.uiOff = true;
+  renderReplayUi();
+  toast('TAP THE PICTURE TO SHOW THE CONTROLS', 1.6);
+});
+$('rp-fov').addEventListener('input', () => {
+  freeCam.fov = Number($('rp-fov').value);
+  $('rp-fov-val').textContent = `${Math.round(freeCam.fov)}\u00b0`;
+});
 $('rp-look').addEventListener('click', () => {
   rp.lookAtCar = !rp.lookAtCar;
   renderReplayUi();
@@ -829,10 +864,20 @@ for (const b of document.querySelectorAll('.replay-pad button')) {
 {
   const stage = $('replay-stage');
   let last = null;
+  let downAt = null;
   stage.addEventListener('pointerdown', (e) => {
     rp.idle = 0;
     last = [e.clientX, e.clientY];
+    downAt = [e.clientX, e.clientY];
     stage.setPointerCapture(e.pointerId);
+  });
+  // A tap (not a drag) on the picture brings hidden controls back.
+  stage.addEventListener('pointerup', (e) => {
+    if (rp.uiOff && downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 10) {
+      rp.uiOff = false;
+      renderReplayUi();
+    }
+    downAt = null;
   });
   stage.addEventListener('pointermove', (e) => {
     if (!last || rp.mode !== 'edit') return;
@@ -1634,7 +1679,7 @@ async function boot() {
   }
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { get recorderSeconds() { return recorder.seconds; }, get revCar() { return revCar; }, get onRoad() { return onRoad; }, get wildlifeDbg() { return wildlife; }, get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { recorder, freeCam, replayState: rp, get recorderSeconds() { return recorder.seconds; }, get revCar() { return revCar; }, get onRoad() { return onRoad; }, get wildlifeDbg() { return wildlife; }, get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;
