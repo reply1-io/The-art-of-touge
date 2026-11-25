@@ -1682,8 +1682,7 @@ export class Mountain {
     const crown = spruceCrown();
     const rwCrown = redwoodCrown();
     const rwTrunk = redwoodTrunk();
-    const leafy = broadCrown();
-    const limbs = broadTrunk();
+    const BROAD_VARIANTS = [5, 17, 29].map((seed) => [broadTrunk(seed), broadCrown(seed)]);
     const bush = new THREE.IcosahedronGeometry(1, 0);
     const trunkMat = new THREE.MeshLambertMaterial({ color: 0x3b2a1e, vertexColors: true, flatShading: true });
     const redwoodMat = new THREE.MeshLambertMaterial({ color: 0x7a3c24, vertexColors: true, flatShading: true });
@@ -1697,83 +1696,115 @@ export class Mountain {
     const col = new THREE.Color();
     const v = new THREE.Vector3();
     const sc = new THREE.Vector3();
+    // Every tree its own pose: any compass direction, a size from 70% to 135% of its slot, a
+    // wider or narrower crown, and a slight lean (most nearly upright, a few leaning more).
+    const hash = (x, z, k) => {
+      const t = Math.sin(x * 12.9898 + z * 78.233 + k * 37.719) * 43758.5453;
+      return t - Math.floor(t);
+    };
+    const qYaw = new THREE.Quaternion();
+    const leanAxis = new THREE.Vector3();
+    const pose = (x, z, h0, maxLean) => {
+      qYaw.setFromAxisAngle(Y_AXIS, hash(x, z, 1) * Math.PI * 2);
+      const b = hash(x, z, 2) * Math.PI * 2;
+      leanAxis.set(Math.cos(b), 0, Math.sin(b));
+      q.setFromAxisAngle(leanAxis, maxLean * hash(x, z, 3) ** 2).multiply(qYaw);
+      const size = 0.7 + hash(x, z, 4) * 0.65;
+      return { h: h0 * size, wd: 0.82 + hash(x, z, 5) * 0.36 };
+    };
+    // A point up the tree's own (leaning) axis.
+    const lift = new THREE.Vector3();
+    const up = (x, y, z, d) => v.set(x, y, z).add(lift.set(0, d, 0).applyQuaternion(q));
     let total = 0;
     for (const [k, g] of groups) {
       const group = new THREE.Group();
       if (g.trees.length) {
         const trunks = new THREE.InstancedMesh(trunk, trunkMat, g.trees.length);
         const crowns = new THREE.InstancedMesh(crown, needleMat, g.trees.length);
-        g.trees.forEach(([x, y, z, h, tint = 0, sh = 1], n) => {
-          const w = tint === 1 ? 0.15 : tint === 2 ? 0.28 : 0.19;
-          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(1, h * 0.35, 1)));
+        g.trees.forEach(([x, y, z, h0, tint = 0, sh = 1], n) => {
+          const { h, wd } = pose(x, z, h0, tint === 2 ? 0.09 : 0.05);
+          const w = (tint === 1 ? 0.15 : tint === 2 ? 0.28 : 0.19) * wd;
+          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(0.8 + h * 0.02, h * 0.35, 0.8 + h * 0.02)));
           trunks.setColorAt(n, col.setRGB(sh, sh, sh));
-          crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.16, z), q.setFromAxisAngle(Y_AXIS, x * 2.3 + z), sc.set(h * w * 1.35, h * 0.88, h * w * 1.35)));
-          q.identity();
+          crowns.setMatrixAt(n, m.compose(up(x, y, z, h * 0.16), q, sc.set(h * w * 1.35, h * 0.88, h * w * 1.35)));
           const b = (0.75 + noise2(x * 3, z * 3) * 0.5) * sh;
           // Cedar green; lodgepole and spruce darker and bluer; wind-stunted trees at treeline.
           if (tint === 1) crowns.setColorAt(n, col.setRGB(0.07 * b, 0.17 * b, 0.13 * b));
           else if (tint === 2) crowns.setColorAt(n, col.setRGB(0.1 * b, 0.2 * b, 0.14 * b));
           else crowns.setColorAt(n, col.setRGB(0.1 * b, 0.22 * b, 0.13 * b));
         });
+        q.identity();
         group.add(trunks, crowns);
       }
+      // Broadleaf trees (maples and the rest) come in three branch patterns, so neighbours differ.
+      const leafVariants = (list, color) => {
+        for (let k = 0; k < BROAD_VARIANTS.length; k++) {
+          const mine = list.filter(([x, , z]) => Math.floor(hash(x, z, 9) * BROAD_VARIANTS.length) === k);
+          if (!mine.length) continue;
+          const [tg, cg] = BROAD_VARIANTS[k];
+          const trunks = new THREE.InstancedMesh(tg, trunkMat, mine.length);
+          const crowns = new THREE.InstancedMesh(cg, leafMat, mine.length);
+          mine.forEach((t, n) => {
+            const [x, y, z, h0] = t;
+            const sh = t.sh ?? 1;
+            const { h, wd } = pose(x, z, h0, 0.08);
+            const flat = (t.flat ?? 1) * wd;
+            m.compose(v.set(x, y, z), q, sc.set(h * flat, h, h * flat));
+            trunks.setMatrixAt(n, m);
+            crowns.setMatrixAt(n, m);
+            trunks.setColorAt(n, col.setRGB(sh, sh, sh));
+            crowns.setColorAt(n, color(t, col));
+          });
+          q.identity();
+          group.add(trunks, crowns);
+        }
+      };
       if (g.maples.length) {
-        const trunks = new THREE.InstancedMesh(limbs, trunkMat, g.maples.length);
-        const crowns = new THREE.InstancedMesh(leafy, leafMat, g.maples.length);
         const autumn = [
           [0.62, 0.16, 0.08],
           [0.72, 0.32, 0.08],
           [0.74, 0.5, 0.12],
           [0.5, 0.13, 0.1],
         ];
-        g.maples.forEach(([x, y, z, h, sh = 1], n) => {
-          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h, h, h)));
-          trunks.setColorAt(n, col.setRGB(sh, sh, sh));
-          crowns.setMatrixAt(n, m.compose(v.set(x, y, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h, h, h)));
-          q.identity();
+        const list = g.maples.map(([x, y, z, h, sh = 1]) => Object.assign([x, y, z, h], { sh }));
+        leafVariants(list, (t, c) => {
+          const [x, , z] = t;
           const [r, gg, b] = autumn[Math.floor(noise2(x * 0.9, z * 0.9) * 4) % 4];
-          const k2 = (0.8 + noise2(x * 3, z * 2) * 0.35) * sh;
-          crowns.setColorAt(n, col.setRGB(r * k2, gg * k2, b * k2));
+          const k2 = (0.8 + noise2(x * 3, z * 2) * 0.35) * t.sh;
+          return c.setRGB(r * k2, gg * k2, b * k2);
         });
-        group.add(trunks, crowns);
       }
       if (g.redwoods.length) {
         // Redwoods: thick red-brown trunks, bare for the first third, then a narrow dark crown.
         const trunks = new THREE.InstancedMesh(rwTrunk, redwoodMat, g.redwoods.length);
         const crowns = new THREE.InstancedMesh(rwCrown, sprayMat, g.redwoods.length);
-        g.redwoods.forEach(([x, y, z, h, sh = 1], n) => {
-          const r = 2.2 + noise2(x, z) * 2.2;
+        g.redwoods.forEach(([x, y, z, h0, sh = 1], n) => {
+          const { h, wd } = pose(x, z, h0, 0.025);
+          const r = (2.2 + noise2(x, z) * 2.2) * (h / h0);
           trunks.setColorAt(n, col.setRGB(sh, sh, sh));
-          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q.setFromAxisAngle(Y_AXIS, x + z), sc.set(r, h * 0.85, r)));
-          q.identity();
-          crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.3, z), q.setFromAxisAngle(Y_AXIS, z * 1.3), sc.set(h * 0.15, h * 0.7, h * 0.15)));
-          q.identity();
+          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(r, h * 0.85, r)));
+          crowns.setMatrixAt(n, m.compose(up(x, y, z, h * 0.3), q, sc.set(h * 0.15 * wd, h * 0.7, h * 0.15 * wd)));
           const b = (0.75 + noise2(x * 3, z * 3) * 0.45) * sh;
           crowns.setColorAt(n, col.setRGB(0.07 * b, 0.17 * b, 0.1 * b));
         });
+        q.identity();
         group.add(trunks, crowns);
       }
       if (g.broad.length) {
-        // Broadleaf trees: round crowns. Appalachian hardwoods, coastal oaks, junipers, aspens.
-        const trunks = new THREE.InstancedMesh(limbs, trunkMat, g.broad.length);
-        const crowns = new THREE.InstancedMesh(leafy, leafMat, g.broad.length);
+        // Broadleaf trees. Appalachian hardwoods, coastal oaks (wide), junipers, aspens.
         const tints = [
           [0.13, 0.27, 0.09],
           [0.2, 0.25, 0.12],
           [0.16, 0.2, 0.13],
           [0.42, 0.5, 0.16],
         ];
-        g.broad.forEach(([x, y, z, h, tint, sh = 1], n) => {
-          const flat = tint === 1 ? 1.5 : 1;
-          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h * flat, h, h * flat)));
-          trunks.setColorAt(n, col.setRGB(sh, sh, sh));
-          crowns.setMatrixAt(n, m.compose(v.set(x, y, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h * flat, h, h * flat)));
-          q.identity();
-          const [r, gg, b] = tints[tint];
-          const k2 = (0.78 + noise2(x * 3, z * 2) * 0.4) * sh;
-          crowns.setColorAt(n, col.setRGB(r * k2, gg * k2, b * k2));
+        const list = g.broad.map(([x, y, z, h, tint, sh = 1]) => Object.assign([x, y, z, h], { tint, sh, flat: tint === 1 ? 1.5 : 1 }));
+        leafVariants(list, (t, c) => {
+          const [x, , z] = t;
+          const [r, gg, b] = tints[t.tint];
+          const k2 = (0.78 + noise2(x * 3, z * 2) * 0.4) * t.sh;
+          return c.setRGB(r * k2, gg * k2, b * k2);
         });
-        group.add(trunks, crowns);
       }
       if (g.bushes.length) {
         const bushes = new THREE.InstancedMesh(bush, bushMat, g.bushes.length);
