@@ -7,6 +7,7 @@ import { Cockpit } from './cockpit.js';
 import { RX7_SHAPE } from './shapes/rx7.js';
 import { customShape, registerStockShapes } from './shapes/custom.js';
 import { loadDesigns } from '../builder/customStore.js';
+import { paintTexture, addPaintLayer } from './shapes/paintLayer.js';
 import { PLATES, cleanPlate, WHEELS, EXHAUSTS, HEADLIGHTS, TAILLIGHTS, wheelSetup, TUNABLE_DEFAULTS } from '../config.js';
 
 const GROUND = -0.62; // ground level in body space at static ride height
@@ -521,6 +522,11 @@ export class CarModel {
     });
     this.pop = 0;
     this.popTarget = 0;
+    // A built car's drawing (from the Car Builder's DRAW), over its paint, trim, glass and lamps.
+    if (design?.paintLayer?.length && typeof document !== 'undefined') {
+      const { tex } = paintTexture(design.paintLayer);
+      for (const m of [this.paintMat, flat, glassMat, this.tailMat, this.headMat]) addPaintLayer(m, tex);
+    }
 
     this.tyreMat = new THREE.MeshLambertMaterial({ color: 0x151517 });
     this.wallMat = new THREE.MeshLambertMaterial({ color: 0x1f1f22, side: THREE.DoubleSide });

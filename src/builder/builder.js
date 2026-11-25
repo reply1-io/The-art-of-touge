@@ -7,6 +7,7 @@ import { CARS } from '../config.js';
 import { CarModel } from '../render/carModel.js';
 import { copies, MATS, starterParts, STOCK_NAMES, partMesh, triLook, baseMesh, localCorners, partMatrix } from '../render/shapes/custom.js';
 import { loadDesigns, saveDesign, deleteDesign, newId } from './customStore.js';
+import { paintTexture, addPaintLayer, drawStroke, strokePoint } from '../render/shapes/paintLayer.js';
 
 const $ = (id) => document.getElementById(id);
 const DRAFT = 'touge.builderDraft.v1';
@@ -104,6 +105,14 @@ scene.add(selBox);
 for (const m of [paintMat, glassMat, headMat, tailMat]) Object.assign(m, { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
 const trimMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
 const BUCKET_MAT = { paint: paintMat, glass: glassMat, head: headMat, tail: tailMat, trim: trimMat };
+// The drawing on the car (DRAW): one texture over every surface.
+const art = paintTexture(design.paintLayer);
+for (const m of Object.values(BUCKET_MAT)) addPaintLayer(m, art.tex);
+function repaint() {
+  art.ctx.clearRect(0, 0, art.canvas.width, art.canvas.height);
+  for (const st of design.paintLayer || []) drawStroke(art.ctx, st);
+  art.tex.needsUpdate = true;
+}
 
 // A part's meshes: one per kind of surface (paint, trim, glass, lamps), for itself and its copy.
 function partMeshes(part, i) {
@@ -139,6 +148,7 @@ function rebuild(light = false) {
   partsGroup.clear();
   meshes = design.parts.map((part, i) => partMeshes(part, i));
   paintMat.color.set(design.paint);
+  if (!light) repaint();
   showSelection(light);
   saveDraft();
 }
@@ -614,6 +624,14 @@ function moveDrag(e) {
 document.addEventListener(
   'pointerdown',
   (e) => {
+    if (drawing) {
+      if (!stroke && startStroke(e)) {
+        e.stopPropagation();
+        e.preventDefault();
+        controls.enabled = false;
+      }
+      return;
+    }
     if (drag || !startDrag(e)) return;
     e.stopPropagation();
     e.preventDefault();
@@ -621,8 +639,17 @@ document.addEventListener(
   },
   true,
 );
-window.addEventListener('pointermove', (e) => drag && e.isPrimary && moveDrag(e));
+window.addEventListener('pointermove', (e) => {
+  if (stroke && e.isPrimary) moveStroke(e);
+  else if (drag && e.isPrimary) moveDrag(e);
+});
 const endDrag = () => {
+  if (stroke) {
+    stroke = null;
+    controls.enabled = true;
+    saveDraft();
+    return;
+  }
   if (!drag) return;
   drag = null;
   controls.enabled = true;
@@ -680,6 +707,128 @@ $('b-reset-shape').onclick = () => {
   rebuild();
   toast('Back to its plain shape');
 };
+
+// ---------- Drawing on the car ----------
+let drawing = false;
+let stroke = null;
+const brush = { kind: 'hard', r: 0.03, hue: 0.1, sat: 0.75, dark: 0, color: '#e8a33a' };
+
+// Where the pointer is on the car, and which way the body faces there.
+function hitCar(e) {
+  if (e.target !== renderer.domElement) return null;
+  aim(e);
+  const hit = ray.intersectObjects(partsGroup.children)[0];
+  if (!hit) return null;
+  return strokePoint(hit.point.toArray(), hit.face.normal.toArray());
+}
+function startStroke(e) {
+  if (!e.isPrimary) return false;
+  const pt = hitCar(e);
+  if (!pt) return false;
+  remember();
+  stroke = { c: brush.color, r: brush.r, h: brush.kind === 'soft' ? 0 : 1, ...(brush.kind === 'erase' ? { e: 1 } : {}), d: [pt] };
+  (design.paintLayer ??= []).push(stroke);
+  drawStroke(art.ctx, stroke);
+  art.tex.needsUpdate = true;
+  return true;
+}
+function moveStroke(e) {
+  const pt = hitCar(e);
+  if (!pt) return;
+  const last = stroke.d[stroke.d.length - 1];
+  if (Math.hypot(pt[0] - last[0], pt[1] - last[1], pt[2] - last[2]) < stroke.r * 0.4) return;
+  // A big jump (from one panel over a gap to another) starts a fresh line instead of a bridge.
+  if (Math.hypot(pt[0] - last[0], pt[1] - last[1], pt[2] - last[2]) > 0.4) {
+    stroke = { ...stroke, d: [pt] };
+    design.paintLayer.push(stroke);
+    drawStroke(art.ctx, stroke);
+  } else {
+    stroke.d.push(pt);
+    drawStroke(art.ctx, { ...stroke, d: [last, pt] });
+  }
+  art.tex.needsUpdate = true;
+}
+
+function setDrawing(on) {
+  drawing = on;
+  if (on) selected = -1;
+  document.body.classList.toggle('drawing', on);
+  $('b-draw').classList.toggle('on', on);
+  showSelection();
+}
+$('b-draw').onclick = () => setDrawing(!drawing);
+$('b-draw-done').onclick = () => setDrawing(false);
+for (const b of document.querySelectorAll('[data-brush]'))
+  b.onclick = () => {
+    brush.kind = b.dataset.brush;
+    for (const x of document.querySelectorAll('[data-brush]')) x.classList.toggle('on', x === b);
+  };
+$('bsize').oninput = (e) => {
+  brush.r = +e.target.value / 2;
+  $('bsize-v').textContent = `${Math.round(+e.target.value * 100)} cm`;
+};
+brush.r = +$('bsize').value / 2;
+
+// The colour wheel: round the edge is the hue, in toward the middle it fades to white. The
+// darkness slider takes it down toward black.
+const wheel = $('wheel');
+function drawWheel() {
+  const g = wheel.getContext('2d');
+  const W = wheel.width;
+  const img = g.createImageData(W, W);
+  const c = new THREE.Color();
+  for (let y = 0; y < W; y++) {
+    for (let x = 0; x < W; x++) {
+      const dx = (x - W / 2) / (W / 2);
+      const dy = (y - W / 2) / (W / 2);
+      const r = Math.hypot(dx, dy);
+      const k = (y * W + x) * 4;
+      if (r > 1) continue;
+      c.setHSL((Math.atan2(dy, dx) / (Math.PI * 2) + 1) % 1, 1, 1 - r * 0.5);
+      img.data.set([c.r * 255, c.g * 255, c.b * 255, 255], k);
+    }
+  }
+  g.putImageData(img, 0, 0);
+  // Where the colour is picked.
+  const a = brush.hue * Math.PI * 2;
+  const rr = (brush.sat * W) / 2;
+  g.strokeStyle = '#000';
+  g.lineWidth = 3;
+  g.beginPath();
+  g.arc(W / 2 + Math.cos(a) * rr, W / 2 + Math.sin(a) * rr, 9, 0, Math.PI * 2);
+  g.stroke();
+  g.strokeStyle = '#fff';
+  g.lineWidth = 1.5;
+  g.stroke();
+}
+function updateColour() {
+  const c = new THREE.Color().setHSL(brush.hue, 1, 1 - brush.sat * 0.5);
+  c.multiplyScalar(1 - brush.dark);
+  brush.color = '#' + c.getHexString();
+  $('swatch').style.background = brush.color;
+  $('swatch-hex').textContent = brush.color.toUpperCase();
+}
+function pickWheel(e) {
+  const r = wheel.getBoundingClientRect();
+  const dx = (e.clientX - r.left - r.width / 2) / (r.width / 2);
+  const dy = (e.clientY - r.top - r.height / 2) / (r.height / 2);
+  brush.hue = (Math.atan2(dy, dx) / (Math.PI * 2) + 1) % 1;
+  brush.sat = Math.min(1, Math.hypot(dx, dy));
+  updateColour();
+  drawWheel();
+}
+wheel.addEventListener('pointerdown', (e) => {
+  wheel.setPointerCapture(e.pointerId);
+  pickWheel(e);
+});
+wheel.addEventListener('pointermove', (e) => e.buttons && pickWheel(e));
+$('dark').oninput = (e) => {
+  brush.dark = +e.target.value;
+  updateColour();
+};
+brush.sat = 0.75;
+drawWheel();
+updateColour();
 
 // ---------- Top bar ----------
 function syncTop() {

@@ -44,6 +44,12 @@
         #add button { flex: 1; padding: 9px 4px; }
         #side { top: 116px; right: 8px; transform: none; flex-direction: row; }
       }
+      #drawp { position: fixed; left: 0; right: 0; bottom: 0; background: #15181dee; border-top: 1px solid #2c3139; padding: 8px 8px max(8px, env(safe-area-inset-bottom)); display: none; }
+      body.drawing #drawp { display: block; }
+      body.drawing #add, body.drawing #side, body.drawing #panel, body.drawing #hint { display: none !important; }
+      #wheel { width: 120px; height: 120px; border-radius: 50%; touch-action: none; }
+      #dark { width: 100%; }
+      #swatch { width: 44px; height: 30px; border-radius: 8px; border: 1px solid #3a404a; }
       #hint { position: fixed; left: 0; right: 0; bottom: max(10px, env(safe-area-inset-bottom)); text-align: center; color: #8b93a0; pointer-events: none; }
     </style>
   </head>
@@ -73,6 +79,7 @@
       <button type="button" data-add="rx7">RX-7 BODY</button>
     </div>
     <div id="side">
+      <button type="button" id="b-draw">DRAW</button>
       <button type="button" id="b-ghost">GHOST</button>
       <button type="button" id="b-wheels" class="on">WHEELS</button>
       <button type="button" id="b-view">VIEW</button>
@@ -118,6 +125,26 @@
           <button type="button" id="b-mirror">MIRROR L/R</button>
           <span class="lbl" id="taper-lbl">TOP</span>
           <input type="range" id="taper" min="0.2" max="1" step="0.05" aria-label="Taper" />
+        </div>
+      </div>
+    </div>
+    <div id="drawp">
+      <div class="row chips">
+        <button type="button" data-brush="hard" class="on">HARD</button>
+        <button type="button" data-brush="soft">SOFT</button>
+        <button type="button" data-brush="erase">ERASE</button>
+        <span class="lbl">SIZE</span>
+        <input type="range" id="bsize" min="0.005" max="0.3" step="0.005" value="0.03" aria-label="Brush size" style="flex: 1; min-width: 80px" />
+        <span class="lbl" id="bsize-v">3 cm</span>
+        <button type="button" id="b-draw-done">DONE</button>
+      </div>
+      <div class="row" style="align-items: stretch">
+        <canvas id="wheel" width="240" height="240" aria-label="Colour wheel"></canvas>
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 8px; justify-content: center">
+          <span class="lbl">DARKNESS</span>
+          <input type="range" id="dark" min="0" max="1" step="0.01" value="0" aria-label="Darkness" />
+          <div class="row" style="margin: 0"><div id="swatch"></div><span class="lbl" id="swatch-hex">#E8A33A</span></div>
+          <span class="lbl">Drag on the car to draw. Drag off it to turn the view.</span>
         </div>
       </div>
     </div>
