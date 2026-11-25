@@ -340,16 +340,46 @@ body {
   display: none;
 }
 
-#vhs-play {
+/* The camcorder's display: plain white blocky letters with a hard black edge, like a DV camera's
+   date stamp, a little soft from the tape. */
+#vhs span {
   position: absolute;
+  font: 400 clamp(17px, 4.6vh, 26px) 'VT323', ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  color: #f2f2ee;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.85), 0 0 3px rgba(255, 255, 255, 0.35), 1px 0 0 rgba(255, 0, 60, 0.35), -1px 0 0 rgba(0, 180, 255, 0.3);
+  opacity: 0.9;
+}
+#vhs-rec {
   top: max(10px, env(safe-area-inset-top, 0px));
   left: 50%;
   transform: translateX(-50%);
-  font: 400 clamp(18px, 5vh, 28px) 'VT323', ui-monospace, monospace;
-  letter-spacing: 0.15em;
-  color: #ffb066;
-  text-shadow: 0 0 6px rgba(255, 140, 26, 0.95), 0 0 16px rgba(255, 110, 10, 0.6), 1px 0 0 rgba(255, 0, 80, 0.45), -1px 0 0 rgba(0, 200, 255, 0.35);
-  opacity: 0.9;
+  white-space: nowrap;
+}
+#vhs-rec b {
+  font-weight: 400;
+  margin-left: 0.6em;
+}
+#vhs-rec i {
+  display: inline-block;
+  width: 0.55em;
+  height: 0.55em;
+  margin-right: 0.35em;
+  border-radius: 50%;
+  background: #ff2a1f;
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.8);
+  animation: rec-blink 1s steps(1) infinite;
+}
+@keyframes rec-blink {
+  50% {
+    opacity: 0;
+  }
+}
+#vhs-date {
+  bottom: max(14px, env(safe-area-inset-bottom, 0px));
+  right: max(18px, env(safe-area-inset-right, 0px));
+  text-align: right;
+  line-height: 1.05;
 }
 
 @keyframes vhs-flicker {

@@ -1,9 +1,16 @@
-// Low-resolution render plus a VHS tape look.
+// The picture as if filmed on a Sony VX1000 (MiniDV) and dubbed to a worn VHS tape.
 //
-// The scene is drawn into an off-screen buffer at a fraction of the screen resolution (each game
-// pixel is about 2 screen points), then stretched to the screen with hard pixel edges through a
-// shader that adds the tape artefacts: red/blue channels pulled apart, smeared colour, line wobble,
-// grain, a slow rolling tracking band, scanlines and a slightly washed-out grade.
+// The scene is drawn with real light levels (bright things brighter than white) into a buffer of
+// about 480 lines, like DV. A small blurred copy of its brightest parts makes the glow around the
+// sun, lamps and headlights. Then one pass makes the video:
+//   camera: highlights roll off then clip like a camcorder sensor; edges get the bright and dark
+//     halos of camcorder sharpening; dark areas get gain noise
+//   DV: interlaced fields (every other line is from the frame before, so fast pans comb); colour
+//     at a quarter of the detail, smeared and lagging to the right
+//   VHS: lines wobble and the tape stretches; a tracking band rolls up the picture; the bottom
+//     lines tear (head switching); white dropout streaks; colour noise; lifted, warm blacks
+// strength 0 is a clean picture at screen resolution (with the same light and glow); 1 is full.
+// Also the wide-angle and fisheye lenses for replays.
 import * as THREE from 'three';
 
 const vertexShader = /* glsl */ `
@@ -14,11 +21,38 @@ const vertexShader = /* glsl */ `
   }
 `;
 
+// The glow: the brightest light, blurred, at a sixth of the size.
+const bloomShader = /* glsl */ `
+  uniform sampler2D tSrc;
+  uniform vec2 texel; // one source pixel
+  varying vec2 vUv;
+  void main() {
+    vec3 sum = vec3(0.0);
+    float wsum = 0.0;
+    for (int y = -3; y <= 3; y++) {
+      for (int x = -3; x <= 3; x++) {
+        vec2 o = vec2(float(x), float(y));
+        float w = exp(-dot(o, o) / 6.0);
+        vec3 c = texture2D(tSrc, vUv + o * texel * 2.5).rgb;
+        sum += max(c - 0.85, 0.0) * w; // only what is brighter than nearly white
+        wsum += w;
+      }
+    }
+    gl_FragColor = vec4(sum / wsum, 1.0);
+  }
+`;
+
 const fragmentShader = /* glsl */ `
-  uniform sampler2D tDiffuse;
-  uniform vec2 res;       // size of the low-resolution buffer in pixels
+  uniform sampler2D tCur;
+  uniform sampler2D tPrev;
+  uniform sampler2D tBloom;
+  uniform vec2 res;       // size of the picture buffer in pixels
+  uniform vec2 screen;    // size of the screen in pixels
   uniform float time;
-  uniform float strength; // 0 = clean pixels only, 1 = full VHS
+  uniform float strength; // 0 = clean, 1 = full camcorder and tape
+  uniform float field;    // 0 or 1: which lines are this frame's (interlacing)
+  uniform float frame43;  // 0..1: black bars to a 4:3 picture
+  uniform float exposure;
   uniform float barrel;   // wide-angle lens bend (0 = none): straight lines bow out toward the edges
   uniform float fish;     // 0..1: blend from a normal lens to a true (equidistant) fisheye
   uniform float hv;       // half the camera's vertical field of view (radians)
@@ -31,14 +65,53 @@ const fragmentShader = /* glsl */ `
   float rand(vec2 c) {
     return fract(sin(dot(c, vec2(12.9898, 78.233))) * 43758.5453);
   }
+  float noise1(float x) {
+    float i = floor(x);
+    return mix(rand(vec2(i, 1.7)), rand(vec2(i + 1.0, 1.7)), smoothstep(0.0, 1.0, fract(x)));
+  }
 
-  vec3 sampleSRGB(vec2 uv) {
-    return linearToOutputTexel(texture2D(tDiffuse, uv)).rgb;
+  // The camera's response: straight up to 80% of white, then a soft shoulder into a hard clip.
+  vec3 knee(vec3 x) {
+    vec3 hi = 0.8 + 0.2 * (1.0 - exp(-(x - 0.8) * 5.0));
+    return mix(x, hi, step(0.8, x));
+  }
+  // Light (linear) to the picture's levels (gamma), through the camera.
+  vec3 develop(vec3 lin) {
+    return pow(clamp(knee(lin * exposure), 0.0, 1.0), vec3(1.0 / 2.2));
+  }
+  // One sample of the picture: this frame's lines, or (interlaced, on the other field's lines) the
+  // frame before's, with the glow.
+  vec3 pic(vec2 uv, float useField) {
+    float row = floor(uv.y * res.y);
+    float old = useField * step(0.5, mod(row + field, 2.0));
+    vec3 c = mix(texture2D(tCur, uv).rgb, texture2D(tPrev, uv).rgb, old);
+    c += texture2D(tBloom, uv).rgb * 0.9;
+    return develop(c);
+  }
+  const vec3 LW = vec3(0.299, 0.587, 0.114);
+  vec3 toYC(vec3 c) {
+    float y = dot(c, LW);
+    return vec3(y, (c.b - y) * 0.564, (c.r - y) * 0.713);
+  }
+  vec3 fromYC(vec3 y) {
+    return vec3(y.x + 1.403 * y.z, y.x - 0.344 * y.y - 0.714 * y.z, y.x + 1.773 * y.y);
   }
 
   void main() {
     vec2 uv = vUv;
-    float aspect = res.x / res.y;
+    float s = strength;
+    float aspect = screen.x / screen.y;
+
+    // 4:3 picture in the middle of a wider screen.
+    float bars = 1.0;
+    if (frame43 > 0.001 && aspect > 4.0 / 3.0) {
+      float w = (4.0 / 3.0) / aspect;
+      float x = (uv.x - 0.5) / w;
+      bars = step(abs(x), 0.5);
+      uv.x = mix(uv.x, x + 0.5, frame43);
+      aspect = mix(aspect, 4.0 / 3.0, frame43);
+    }
+
     // Fisheye lens: each point on screen looks out at an angle in proportion to its distance from the
     // centre (instead of the tangent a normal lens uses), so the middle swells and the edges crowd in.
     float lensMask = 1.0;
@@ -50,12 +123,9 @@ const fragmentShader = /* glsl */ `
       float theta = r * hv;
       vec2 eq = r > 1e-4 ? p / r * tan(min(theta, 1.5)) / tan(hv) : p;
       vec2 src = mix(p, eq, fish);
-      // Beyond 86 degrees off-axis the lens sees nothing the picture holds: black.
       lensMask *= 1.0 - step(1.5, theta) * fish;
-      // A round image circle, closing in to touch the top and bottom of the screen.
       float rc = mix(3.0, 1.0, circle);
       lensMask *= 1.0 - smoothstep(rc - 0.03, rc + 0.01, length(p0));
-      // The lens hood: dark rounded corners growing inward.
       vec2 q = p0 / vec2(aspect, 1.0);
       float rh = mix(1.5, 1.0, hood);
       lensMask *= 1.0 - smoothstep(rh - 0.25, rh, length(q * vec2(1.0, 0.92))) * step(0.001, hood);
@@ -64,51 +134,79 @@ const fragmentShader = /* glsl */ `
     }
     // A very wide camcorder lens: the picture bows out, the corners fall off into black.
     vec2 cc = uv - 0.5;
-    cc.x *= res.x / res.y;
+    cc.x *= aspect;
     float r2 = dot(cc, cc);
     vec2 bent = 0.5 + (uv - 0.5) * (1.0 - barrel * 0.35) * (1.0 + barrel * r2);
     float inside = step(0.0, bent.x) * step(bent.x, 1.0) * step(0.0, bent.y) * step(bent.y, 1.0);
     uv = mix(uv, bent, step(0.001, barrel));
+
     float row = floor(uv.y * res.y);
+    float t = time;
+    // ---- Tape transport ----
+    // Every line jitters sideways a little, and the whole picture sways as the tape stretches.
+    float jit = (rand(vec2(row, floor(t * 30.0))) - 0.5) * 0.9;
+    float sway = (noise1(uv.y * 6.0 + t * 1.3) - 0.5) * 2.2 + sin(t * 0.9 + uv.y * 2.0) * 0.6;
+    // The tracking band: a noisy stripe that rolls slowly up the picture.
+    float bandPos = 1.0 - fract(t * 0.045);
+    float band = smoothstep(0.05, 0.0, abs(uv.y - bandPos));
+    float tear = band * (rand(vec2(row * 1.7, floor(t * 30.0))) - 0.5) * 9.0;
+    // Head switching: the bottom lines are torn sideways and noisy.
+    float hs = smoothstep(0.035, 0.0, uv.y);
+    float hsShift = hs * (14.0 + rand(vec2(row, floor(t * 30.0))) * 10.0);
+    uv.x += (jit + sway + tear + hsShift) * s / res.x;
 
-    // Tracking band: a soft noisy stripe that rolls slowly up the picture.
-    float bandPos = 1.0 - fract(time * 0.05);
-    float band = smoothstep(0.045, 0.0, abs(uv.y - bandPos)) * strength;
-
-    // Each line jitters sideways a little; inside the band it tears more.
-    float wobble = (rand(vec2(row, floor(time * 24.0))) - 0.5) * 0.7 * strength;
-    wobble += band * (rand(vec2(row * 1.7, time)) - 0.5) * 7.0;
-    uv.x += wobble / res.x;
-
-    // Snap to the low-resolution pixel grid.
-    vec2 px = (floor(uv * res) + 0.5) / res;
     vec2 one = vec2(1.0 / res.x, 0.0);
+    float useField = step(0.2, s);
+    // ---- The picture: sharp brightness, soft smeared colour ----
+    vec3 c0 = pic(uv, useField);
+    vec3 cl = pic(uv - one, useField);
+    vec3 cr = pic(uv + one, useField);
+    float y0 = dot(c0, LW);
+    // Camcorder sharpening: bright and dark halos along edges.
+    float yBlur = dot(cl + cr, LW) * 0.5;
+    float yS = y0 + (y0 - yBlur) * mix(0.0, 1.3, s);
+    // Colour at a quarter of the detail, smeared and lagging to the right (DV, then tape).
+    vec3 ch = vec3(0.0);
+    float wsum = 0.0;
+    for (int k = -3; k <= 3; k++) {
+      float w = 1.0 - abs(float(k)) / 4.0;
+      vec3 yc = toYC(pic(uv + one * (float(k) * 1.6 - 2.5 * s), useField));
+      ch += yc * w;
+      wsum += w;
+    }
+    ch /= wsum;
+    vec3 yc0 = toYC(c0);
+    vec2 chroma = mix(yc0.yz, ch.yz, s);
+    // Colour noise: slow blotches of wrong colour, stretched along the lines.
+    vec2 cn = vec2(noise1(uv.x * 40.0 + row * 0.13 + t * 37.0), noise1(uv.x * 40.0 + row * 0.13 + t * 41.0 + 9.0)) - 0.5;
+    chroma += cn * 0.035 * s;
+    vec3 col = fromYC(vec3(yS, chroma));
 
-    // Red and blue pulled apart, colour smeared to the right like a tape chroma signal.
-    vec3 c = sampleSRGB(px);
-    float r = sampleSRGB(px + one * 1.5 * strength).r;
-    float b = sampleSRGB(px - one * 1.5 * strength).b;
-    vec3 shifted = vec3(r, c.g, b);
-    vec3 smear = (sampleSRGB(px - one) + sampleSRGB(px - one * 2.0)) * 0.5;
-    const vec3 lumaW = vec3(0.299, 0.587, 0.114);
-    float luma = dot(shifted, lumaW);
-    vec3 chroma = mix(shifted, smear, 0.45 * strength) - dot(mix(shifted, smear, 0.45 * strength), lumaW);
-    vec3 col = mix(c, luma + chroma, strength);
+    // ---- Grade ----
+    // A little more colour, like the VX1000; then tape: lifted warm blacks, slightly soft whites.
+    float yg = dot(col, LW);
+    col = mix(vec3(yg), col, 1.0 + 0.15 * s);
+    col = mix(col, col * 0.93 + vec3(0.035, 0.028, 0.035), s);
+    // Gain noise: grain, much heavier in the dark.
+    float g = rand(vUv * screen + fract(t * 7.0) * 100.0) - 0.5;
+    col += g * (0.03 + 0.09 * (1.0 - smoothstep(0.0, 0.45, yg))) * s;
 
-    // Tape grade: a touch warm with gently lifted blacks.
-    vec3 graded = col * 0.95 + vec3(0.02, 0.016, 0.022);
-    col = mix(col, graded, strength);
-    // Punch: more contrast (deeper shadows, brighter highlights) and a little more colour.
-    col = clamp((col - 0.5) * 1.16 + 0.5, 0.0, 1.0);
-    col = mix(vec3(dot(col, lumaW)), col, 1.12);
-
-    // Grain, band noise and scanlines.
-    col += (rand(vUv * res + fract(time) * 100.0) - 0.5) * 0.05 * strength;
-    col += band * 0.18 * rand(vec2(row * 3.1, floor(time * 30.0)));
-    col *= 1.0 - 0.1 * strength * step(0.5, fract(uv.y * res.y * 0.5));
+    // ---- Tape damage ----
+    col += band * s * (0.2 * rand(vec2(row * 3.1, floor(t * 30.0))) - 0.04);
+    col = mix(col, vec3(rand(vec2(uv.x * 300.0, row + t))), hs * 0.5 * s);
+    // Dropouts: now and then a white streak along part of a line.
+    float drop = step(0.9975, rand(vec2(floor(row / 2.0), floor(t * 15.0))));
+    float dx = rand(vec2(row, floor(t * 15.0) + 3.0));
+    drop *= step(dx, uv.x) * step(uv.x, dx + 0.05 + 0.15 * rand(vec2(row, 7.0)));
+    col = mix(col, vec3(0.95), drop * s);
+    // The lines of the picture, faintly.
+    col *= 1.0 - 0.07 * s * (0.5 + 0.5 * cos(uv.y * res.y * 6.2832));
+    // The lens darkens toward the corners.
+    vec2 vq = (vUv - 0.5) * vec2(aspect / 1.5, 1.0);
+    col *= 1.0 - dot(vq, vq) * 0.45 * s;
 
     col *= mix(1.0, inside * (1.0 - smoothstep(0.35, 0.75, r2) * barrel * 0.6), step(0.001, barrel));
-    col *= lensMask;
+    col *= lensMask * bars;
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
   }
 `;
@@ -142,6 +240,9 @@ export function fishZoom(fish, hv, aspect, cy = 0.5) {
   return lo;
 }
 
+// Lines in the picture when filmed (DV): about 480.
+export const DV_LINES = 480;
+
 export class VhsRenderer {
   constructor(renderer, pixelSize = 2) {
     this.renderer = renderer;
@@ -149,20 +250,44 @@ export class VhsRenderer {
     this.strength = 1;
     this.barrel = 0; // wide-angle lens bend, for camcorder shots
     this.lens = { fish: 0, hood: 0, circle: 0, cy: 0.5 }; // fisheye lens; cy: lens centre height on screen
-    this.target = new THREE.WebGLRenderTarget(4, 4, {
-      minFilter: THREE.NearestFilter,
-      magFilter: THREE.NearestFilter,
+    this.frame43 = 0; // 1: a 4:3 picture with black bars, like the camcorder
+    this.exposure = 1;
+    this.css = [4, 4];
+    // Real light levels where the device can store them (bright things brighter than white).
+    const gl = renderer.getContext();
+    const hdr = renderer.capabilities.isWebGL2 && !!(gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float'));
+    const opts = {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
       depthBuffer: true,
+      type: hdr ? THREE.HalfFloatType : THREE.UnsignedByteType,
+    };
+    this.frames = [new THREE.WebGLRenderTarget(4, 4, opts), new THREE.WebGLRenderTarget(4, 4, opts)];
+    // Without real light levels, keep the picture's precision in the dark (decoded when read).
+    if (!hdr) for (const f of this.frames) f.texture.colorSpace = THREE.SRGBColorSpace;
+    this.cur = 0;
+    this.bloomTarget = new THREE.WebGLRenderTarget(4, 4, { ...opts, depthBuffer: false });
+    this.bloomMat = new THREE.ShaderMaterial({
+      vertexShader,
+      fragmentShader: bloomShader,
+      uniforms: { tSrc: { value: null }, texel: { value: new THREE.Vector2() } },
+      depthTest: false,
+      depthWrite: false,
     });
-    this.target.texture.colorSpace = THREE.SRGBColorSpace;
     this.material = new THREE.ShaderMaterial({
       vertexShader,
       fragmentShader,
       uniforms: {
-        tDiffuse: { value: this.target.texture },
+        tCur: { value: null },
+        tPrev: { value: null },
+        tBloom: { value: this.bloomTarget.texture },
         res: { value: new THREE.Vector2(4, 4) },
+        screen: { value: new THREE.Vector2(4, 4) },
         time: { value: 0 },
         strength: { value: 1 },
+        field: { value: 0 },
+        frame43: { value: 0 },
+        exposure: { value: 1 },
         barrel: { value: 0 },
         fish: { value: 0 },
         hv: { value: 0.5 },
@@ -179,31 +304,59 @@ export class VhsRenderer {
     this.scene = new THREE.Scene();
     this.scene.add(this.quad);
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    this.filmed = null;
   }
 
-  // Size in CSS pixels of the visible canvas.
+  // Size in CSS pixels of the visible canvas. Filmed (strength above 0): about 480 lines, like DV.
+  // Clean: the screen's resolution (or half, with pixelSize 2).
   setSize(width, height) {
-    const w = Math.max(1, Math.ceil(width / this.pixelSize));
-    const h = Math.max(1, Math.ceil(height / this.pixelSize));
-    this.target.setSize(w, h);
+    this.css = [width, height];
+    this.filmed = this.strength > 0.001;
+    let h = Math.max(1, Math.ceil(height / this.pixelSize));
+    if (this.filmed) h = Math.min(h * Math.min(2, window.devicePixelRatio || 1), DV_LINES / (this.pixelSize > 1 ? 1.4 : 1));
+    h = Math.max(1, Math.round(h));
+    const w = Math.max(1, Math.round((h * width) / height));
+    for (const f of this.frames) f.setSize(w, h);
+    this.bloomTarget.setSize(Math.max(1, Math.round(w / 6)), Math.max(1, Math.round(h / 6)));
     this.material.uniforms.res.value.set(w, h);
+    const dpr = this.renderer.getPixelRatio();
+    this.material.uniforms.screen.value.set(width * dpr, height * dpr);
   }
 
   render(scene, camera, time) {
     const r = this.renderer;
-    this.material.uniforms.time.value = time;
-    this.material.uniforms.strength.value = this.strength;
-    this.material.uniforms.barrel.value = this.barrel;
+    // Switching between filmed and clean changes the picture's size.
+    if (this.filmed !== this.strength > 0.001) this.setSize(...this.css);
     const u = this.material.uniforms;
+    u.time.value = time;
+    u.strength.value = this.strength;
+    u.barrel.value = this.barrel;
     u.fish.value = this.lens.fish;
     u.hood.value = this.lens.hood;
     u.circle.value = this.lens.circle;
+    u.frame43.value = this.frame43;
+    u.exposure.value = this.exposure;
     const hv = ((camera.fov ?? 60) * Math.PI) / 360;
     u.hv.value = hv;
     u.cy.value = this.lens.cy ?? 0.5;
     u.zoom.value = this.lens.fish > 0.001 ? fishZoom(this.lens.fish, hv, u.res.value.x / u.res.value.y, u.cy.value) : 1;
-    r.setRenderTarget(this.target);
+    // This frame into one buffer; the last frame stays in the other (for the interlaced lines).
+    this.cur ^= 1;
+    const cur = this.frames[this.cur];
+    const prev = this.frames[this.cur ^ 1];
+    r.setRenderTarget(cur);
     r.render(scene, camera);
+    // The glow.
+    this.bloomMat.uniforms.tSrc.value = cur.texture;
+    this.bloomMat.uniforms.texel.value.set(1 / cur.width, 1 / cur.height);
+    this.quad.material = this.bloomMat;
+    r.setRenderTarget(this.bloomTarget);
+    r.render(this.scene, this.camera);
+    // The video.
+    this.quad.material = this.material;
+    u.tCur.value = cur.texture;
+    u.tPrev.value = prev.texture;
+    u.field.value = this.cur;
     r.setRenderTarget(null);
     r.render(this.scene, this.camera);
   }

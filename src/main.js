@@ -297,7 +297,8 @@ function applySettings() {
   for (const el of document.querySelectorAll('.drive-fov input')) el.value = String(rig.userFov);
   for (const el of document.querySelectorAll('.drive-fov b')) el.textContent = `${rig.userFov}\u00b0`;
   audio.setMuted(!settings.sound);
-  vhs.strength = settings.vhs ? 0.45 : 0;
+  // The camcorder look: heavy while driving (a filmed run), off for a clean picture.
+  vhs.strength = settings.vhs ? 0.85 : 0;
   // Picture: 'sharp' renders at screen resolution, 'retro' at half (chunky pixels).
   vhs.pixelSize = menuQuality || settings.picture === 'retro' ? 2 : 1;
   vhs.setSize(window.innerWidth, window.innerHeight);
@@ -853,7 +854,7 @@ function replayFrame(dt, now) {
   mountain.update(camera.position, timePreset.detailRange, timePreset.groundRange, dt);
   wildlife.update(dt, camera, Math.round(rcar.index));
   updateWeatherFx(dt);
-  vhs.strength = settings.vhs || rp.mode !== 'edit' ? 0.75 : 0;
+  vhs.strength = settings.vhs || rp.mode !== 'edit' ? 1 : 0;
   vhs.render(scene, camera, now / 1000);
   flare.draw(dt, camera, sunDir, 0, timePreset.flareTint, false);
 }
@@ -1638,8 +1639,27 @@ function droneStart() {
   for (const id of ['title', 'vhs', 'loading']) $(id)?.classList.add('hidden');
 }
 
+// The camcorder's display: a tape counter running while you drive, and the date and time stamp.
+let osdTape = 0;
+let osdShown = '';
+function updateOsd(dt) {
+  if (!settings.vhs || $('vhs').classList.contains('hidden')) return;
+  osdTape += dt;
+  const t = Math.floor(osdTape);
+  const d = new Date();
+  const h = d.getHours();
+  const text = `${Math.floor(t / 3600)}:${String(Math.floor(t / 60) % 60).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}|${d.toLocaleString('en-US', { month: 'short' }).toUpperCase()}. ${d.getDate()} ${d.getFullYear()}|${(h % 12) || 12}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+  if (text === osdShown) return;
+  osdShown = text;
+  const [tc, date, clock] = text.split('|');
+  $('vhs-tc').textContent = tc;
+  $('vhs-date').innerHTML = `${clock}<br>${date}`;
+}
+let osdLast = 0;
 function frame(now) {
   requestAnimationFrame(frame);
+  updateOsd(Math.min(0.1, Math.max(0, (now - osdLast) / 1000)));
+  osdLast = now;
   if (dronePause) return;
   let dt = (now - last) / 1000;
   last = now;

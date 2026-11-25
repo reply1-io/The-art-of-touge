@@ -59,7 +59,11 @@
       <div id="chat-log"></div>
       <input type="text" id="chat-input" maxlength="80" placeholder="Say something" aria-label="Chat message" />
     </div>
-    <div id="vhs" aria-hidden="true"><span id="vhs-play">&#9654; PLAY</span></div>
+    <div id="vhs" aria-hidden="true">
+      <!-- The camcorder's display, burned into the tape: recording, the tape counter, the date. -->
+      <span id="vhs-rec"><i></i>REC <b id="vhs-tc">0:00:00</b></span>
+      <span id="vhs-date"></span>
+    </div>
 
     <section id="title" class="screen side">
       <div class="brand">
