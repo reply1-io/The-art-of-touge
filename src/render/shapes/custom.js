@@ -34,7 +34,7 @@ function stockPolys(model) {
   const disc = (x, y, z, r, color) => ({ pts: Array.from({ length: 14 }, (_, k) => [x + Math.cos((k / 14) * Math.PI * 2) * r, y + Math.sin((k / 14) * Math.PI * 2) * r, z]), color, out: [0, 0, 1] });
   const res = {
     paint: fix([...shell.paint, ...(shell.cabinTop || []), ...(cabin.paint || []), ...(detail.paint || [])], [1, 1, 1]),
-    trim: fix([...shell.trim, ...(cabin.trim || []), ...(detail.trim || []), ...(detail.chrome || [])]),
+    trim: fix([...shell.trim, ...(cabin.trim || []), ...(detail.trim || []), ...(detail.chrome || []), ...(detail.grille || []), ...(detail.kidney || [])]),
     glass: fix(cabin.glass),
     tail: fix(detail.tail),
     // Round headlamps (E30) with their chrome rings.

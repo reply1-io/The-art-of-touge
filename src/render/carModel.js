@@ -208,21 +208,18 @@ function detailPolys() {
   const trim = [];
   const chrome = [];
   const tail = [];
+  const grille = []; // textured with horizontal slats
+  const kidney = []; // textured with the kidney grille photo
   const zn = NOSE + 0.006;
   const front = (x0, x1, y0, y1, z, color) => trim.push({ pts: [[x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z]], color, out: [0, 0, 1] });
   // One black band across the whole nose: both pairs of headlamps and the grille sit in it.
-  front(0.785, -0.785, 0.565, 0.74, zn, BLACK);
-  // Twin kidneys: chrome frames standing slightly proud, black slats inside.
-  for (const x of [0.075, -0.075]) {
+  grille.push({ pts: [[0.785, 0.565, zn], [-0.785, 0.565, zn], [-0.785, 0.74, zn], [0.785, 0.74, zn]], color: BLACK, out: [0, 0, 1] });
+  // Twin kidneys: one face carrying the photo of both, standing slightly proud, chrome sides.
+  {
     const z = zn + 0.02;
-    chrome.push({ pts: [[x + 0.07, 0.572, z], [x + 0.066, 0.738, z], [x - 0.066, 0.738, z], [x - 0.07, 0.572, z]], color: CHROME, out: [0, 0, 1] });
-    trim.push({ pts: [[x + 0.056, 0.584, z + 0.004], [x + 0.052, 0.726, z + 0.004], [x - 0.052, 0.726, z + 0.004], [x - 0.056, 0.584, z + 0.004]], color: BLACK, out: [0, 0, 1] });
-    for (let k = 0; k < 4; k++) {
-      const sx = x - 0.036 + k * 0.024;
-      chrome.push({ pts: [[sx + 0.004, 0.59, z + 0.008], [sx + 0.004, 0.72, z + 0.008], [sx - 0.004, 0.72, z + 0.008], [sx - 0.004, 0.59, z + 0.008]], color: CHROME, out: [0, 0, 1] });
-    }
-    // Sides of the kidney frame so it reads as a raised part.
-    for (const sgn of [1, -1]) chrome.push({ pts: [[x + sgn * 0.07, 0.572, zn], [x + sgn * 0.07, 0.572, z], [x + sgn * 0.066, 0.738, z], [x + sgn * 0.066, 0.738, zn]], color: CHROME, out: [sgn, 0, 0] });
+    kidney.push({ pts: [[0.145, 0.572, z], [-0.145, 0.572, z], [-0.145, 0.738, z], [0.145, 0.738, z]], color: BLACK, out: [0, 0, 1] });
+    for (const sgn of [1, -1]) chrome.push({ pts: [[sgn * 0.145, 0.572, zn], [sgn * 0.145, 0.572, z], [sgn * 0.145, 0.738, z], [sgn * 0.145, 0.738, zn]], color: CHROME, out: [sgn, 0, 0] });
+    chrome.push({ pts: [[0.145, 0.738, zn], [0.145, 0.738, z], [-0.145, 0.738, z], [-0.145, 0.738, zn]], color: CHROME, out: [0, 1, 0] });
   }
   // Chrome-style bumpers with a black rubber strip, standing proud of the body.
   // Bumpers are body colour (painted with the car), with a black rubber strip along the face.
@@ -252,7 +249,7 @@ function detailPolys() {
   dam.push({ pts: [[0.81, 0.25, zd], [0.81, 0.445, NOSE + 0.03], [-0.81, 0.445, NOSE + 0.03], [-0.81, 0.25, zd]], out: [0, -0.15, 1] });
   for (const side of [1, -1]) dam.push({ pts: [[side * 0.81, 0.25, zd], [side * 0.81, 0.445, NOSE + 0.03], [side * 0.81, 0.445, NOSE - 0.08], [side * 0.81, 0.25, NOSE - 0.08]], out: [side, 0, 0] });
   for (const [x0, x1] of [[0.62, 0.36], [0.2, -0.2], [-0.36, -0.62]]) {
-    trim.push({ pts: [[x0, 0.3, zd + 0.004], [x0, 0.36, zd - 0.0], [x1, 0.36, zd - 0.0], [x1, 0.3, zd + 0.004]], color: BLACK, out: [0, -0.15, 1] });
+    grille.push({ pts: [[x0, 0.3, zd + 0.004], [x0, 0.36, zd - 0.0], [x1, 0.36, zd - 0.0], [x1, 0.3, zd + 0.004]], color: BLACK, out: [0, -0.15, 1] });
   }
   trim.push({ pts: [[0.8, 0.235, zd + 0.01], [0.8, 0.258, zd + 0.005], [-0.8, 0.258, zd + 0.005], [-0.8, 0.235, zd + 0.01]], color: BLACK, out: [0, -0.3, 1] });
 
@@ -308,7 +305,7 @@ function detailPolys() {
     ];
     for (const pts of box) trim.push({ pts, color: BLACK });
   }
-  return { trim, chrome, tail, paint: dam };
+  return { trim, chrome, tail, paint: dam, grille, kidney };
 }
 
 // ---------- Wheels: rim face textures per style ----------
@@ -588,6 +585,19 @@ const E30_SHAPE = {
 export const SHAPES = { e30: E30_SHAPE, rx7: RX7_SHAPE };
 registerStockShapes(SHAPES); // so a Car Builder design can start from either body
 
+const frontTex = {};
+function frontTexture(name, repeat) {
+  if (frontTex[name] || typeof document === 'undefined') return frontTex[name] || null;
+  const t = new THREE.TextureLoader().load(`${import.meta.env?.BASE_URL ?? './'}textures/${name}.png`);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.magFilter = THREE.NearestFilter;
+  t.minFilter = THREE.NearestFilter;
+  t.generateMipmaps = false;
+  if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  frontTex[name] = t;
+  return t;
+}
+
 let lensTex = null;
 function lensTexture() {
   if (lensTex || typeof document === 'undefined') return lensTex;
@@ -655,6 +665,18 @@ export class CarModel {
     this.cockpit = new Cockpit();
     body.add(this.cockpit.root);
     body.add(new THREE.Mesh(polyGeometry(detail.tail), this.tailMat));
+    // Textured front parts: slatted grille panel and vents, and the kidney grille, mapped flat
+    // onto the nose (u across, v up).
+    const flatUV = (polys, u0, u1, v0, v1) => {
+      const g = polyGeometry(polys);
+      const p = g.attributes.position;
+      const uv = [];
+      for (let i = 0; i < p.count; i++) uv.push((p.getX(i) - u0) / (u1 - u0), (p.getY(i) - v0) / (v1 - v0));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      return g;
+    };
+    if (detail.grille?.length) body.add(new THREE.Mesh(flatUV(detail.grille, 0, 0.5, 0.565, 0.74), new THREE.MeshLambertMaterial({ map: frontTexture('grille', true), flatShading: true })));
+    if (detail.kidney?.length) body.add(new THREE.Mesh(flatUV(detail.kidney, 0.145, -0.145, 0.572, 0.738), new THREE.MeshLambertMaterial({ map: frontTexture('kidney', false), flatShading: true })));
     if (detail.head?.length) body.add(new THREE.Mesh(polyGeometry(detail.head), this.headMat));
     // Body-colour parts that are not part of the shell mesh (pop-up lids).
     this.lidMat = new THREE.MeshPhongMaterial({ color: 0xefeee6, flatShading: true, shininess: 70, specular: 0x6a6a6a });
