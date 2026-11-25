@@ -192,38 +192,24 @@ body {
   background-repeat: no-repeat;
 }
 
-/* Right-hand stack: the shifter sits right above the gas pedal, the handbrake right above the
-   brake. */
+/* Right-hand stack: shift down above the brake, shift up above the gas (side by side), and the
+   handbrake above shift up. */
 #shifter {
   position: absolute;
-  right: calc(2.5vw + var(--sr) - 1vw);
-  bottom: calc(3vh + 42vh + 1vh + var(--sb));
-  width: 16vw;
-  height: 40vh;
-  min-width: 100px;
-  min-height: 130px;
-}
-
-/* The sequential shifter: shift up on top, the gear in the middle, shift down below. */
-#shifter {
+  right: calc(2.5vw + var(--sr));
+  bottom: calc(3vh + 42vh + 2vh + var(--sb));
+  width: calc(14vw + 2vw + 14vw);
+  height: 17vh;
+  min-height: 56px;
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 10px;
+  flex-direction: row-reverse;
+  gap: 2vw;
 }
 #shifter .btn {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-#shift-gear {
-  text-align: center;
-  font: 400 clamp(22px, 6vh, 34px) / 1 'VT323', ui-monospace, monospace;
-  color: #ffc58a;
-  text-shadow: var(--pxglow);
-  -webkit-font-smoothing: none;
-  pointer-events: none;
 }
 /* A gear that won't go in: the button flashes red. */
 .btn.grind {
@@ -290,10 +276,11 @@ body {
 
 #handbrake {
   position: absolute;
-  right: calc(2.5vw + 14vw + 2vw + var(--sr));
-  bottom: calc(3vh + 42vh + 2vh + var(--sb));
+  right: calc(2.5vw + var(--sr));
+  bottom: calc(3vh + 42vh + 2vh + 17vh + 2vh + var(--sb));
   width: 14vw;
-  height: 22vh;
+  height: 17vh;
+  min-height: 56px;
   font-size: clamp(14px, 3.6vh, 20px);
   line-height: 1;
 }
