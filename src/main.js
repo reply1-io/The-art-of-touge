@@ -689,6 +689,8 @@ function openReplay(from) {
 function closeReplay() {
   rp.active = false;
   rp.uiOff = false;
+  rp.lastCam = null;
+  audio.setSpatial();
   vhs.barrel = 0;
   Object.assign(vhs.lens, { fish: 0, hood: 0, circle: 0, cy: 0.5 });
   document.body.classList.remove('replay-ui-off');
@@ -800,6 +802,23 @@ function replayFrame(dt, now) {
     rVehicle.speed = rcar.speed;
     rVehicle.trans.gear = rcar.gear;
     rVehicle.wheels[0].slipAngle = Math.atan(0.1 + rcar.slip / 2.2);
+    // Heard from where the camera is: louder and clearer close by, panned left or right, and
+    // the pitch rising as the car comes at you and dropping as it goes past (Doppler).
+    const toCar = rcar.pos.clone().sub(camera.position);
+    const d = Math.max(0.5, toCar.length());
+    toCar.divideScalar(d);
+    const camVel = camera.position.clone().sub(rp.lastCam ?? camera.position).divideScalar(Math.max(dt, 1e-3));
+    rp.lastCam = camera.position.clone();
+    if (camVel.length() > 60) camVel.set(0, 0, 0); // a cut to another camera, not movement
+    const closing = -rvel.clone().sub(camVel).dot(toCar); // m/s toward the camera
+    const doppler = Math.max(0.7, Math.min(1.45, 343 / (343 - Math.max(-120, Math.min(120, closing)))));
+    e.rpm = rcar.rpm * doppler;
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    audio.setSpatial({
+      gain: Math.min(1, 9 / (d + 3)),
+      pan: toCar.dot(right) * 0.9,
+      cutoff: Math.max(700, 20000 * Math.exp(-d / 45)),
+    });
     audio.update(rVehicle, dt, rExhaust.update(rVehicle, dt, tune.exhaust));
   }
   // The on-screen display and the bar (which hides itself while you watch, until you tap).

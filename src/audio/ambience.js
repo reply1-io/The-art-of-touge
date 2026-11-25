@@ -20,7 +20,7 @@ export class Ambience {
     const ctx = a.ctx;
     this.out = ctx.createGain();
     this.out.gain.value = 1;
-    this.out.connect(a.master);
+    this.out.connect(a.world ?? a.master);
     // Echo off the mountain: a slow delay with a little feedback and the highs rolled off.
     this.echo = ctx.createDelay(1.5);
     this.echo.delayTime.value = 0.42;
