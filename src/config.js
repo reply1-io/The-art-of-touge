@@ -1,3 +1,4 @@
+import { loadDesigns } from './builder/customStore.js';
 // BMW E30 325i (1988, M20B25 2.5 straight-six). Numbers follow the real car where known.
 // Values in TUNABLE can be changed live from the dev tuning panel.
 
@@ -142,6 +143,14 @@ const RX7 = {
 };
 
 export const CARS = { e30: E30, rx7: RX7 };
+
+// Cars you made in the Car Builder (kept in this browser): each drives like the car it is built on.
+for (const d of loadDesigns()) {
+  const base = CARS[d.base] || E30;
+  if (CARS[d.id]) continue;
+  CARS[d.id] = { ...base, id: d.id, shape: d.id, name: d.name || 'My car', blurb: `Your build · drives like the ${base.name}`, custom: true };
+  if (d.paint) CARS[d.id].paint = parseInt(d.paint.slice(1), 16);
+}
 
 // ---------- Engine swaps (tuning shop, Engine tab) ----------
 // Each: what it is, the car it comes from, its specs for the shop card, and (when it can be fitted)

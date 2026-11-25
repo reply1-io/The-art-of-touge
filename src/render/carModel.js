@@ -4,6 +4,8 @@
 import * as THREE from 'three';
 import { Cockpit } from './cockpit.js';
 import { RX7_SHAPE } from './shapes/rx7.js';
+import { customShape } from './shapes/custom.js';
+import { loadDesigns } from '../builder/customStore.js';
 import { PLATES, cleanPlate, WHEELS, EXHAUSTS, HEADLIGHTS, TAILLIGHTS, wheelSetup, TUNABLE_DEFAULTS } from '../config.js';
 
 const GROUND = -0.62; // ground level in body space at static ride height
@@ -429,7 +431,9 @@ export class CarModel {
   // spec: the car's physics spec; its `shape` picks the body ('e30' or 'rx7').
   constructor(spec, shapeId = spec.shape) {
     this.spec = spec;
-    const shape = SHAPES[shapeId] || E30_SHAPE;
+    // A car from the Car Builder: its shapes, or the E30 if the design has gone.
+    const design = !SHAPES[shapeId] && String(shapeId).startsWith('custom') ? (spec.design || loadDesigns().find((d) => d.id === shapeId)) : null;
+    const shape = SHAPES[shapeId] || (design ? customShape(design) : E30_SHAPE);
     this.shape = shape;
     this.root = new THREE.Group();
     const body = new THREE.Group();
@@ -470,6 +474,7 @@ export class CarModel {
     this.cockpit = new Cockpit();
     body.add(this.cockpit.root);
     body.add(new THREE.Mesh(polyGeometry(detail.tail), this.tailMat));
+    if (detail.head?.length) body.add(new THREE.Mesh(polyGeometry(detail.head), this.headMat));
     // Body-colour parts that are not part of the shell mesh (pop-up lids).
     this.lidMat = new THREE.MeshPhongMaterial({ color: 0xefeee6, flatShading: true, shininess: 70, specular: 0x6a6a6a });
     // Round headlamps with chrome rings (E30), or pop-up headlamps (RX-7).

@@ -1504,6 +1504,8 @@ function showScreen(id, on) {
   $('title').classList.toggle('hidden', on);
   document.body.classList.toggle('in-menu', on);
 }
+// The Car Builder is its own page: build a car from shapes, then it shows up in your garage.
+$('btn-builder').addEventListener('click', () => (location.href = './builder.html'));
 $('btn-settings').addEventListener('click', () => {
   renderChoices();
   applySettings();
