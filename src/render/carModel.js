@@ -112,6 +112,7 @@ function bodyPolys() {
           [s1.hw + 0.006, 0.46, stations[i + 1]],
         ],
         color: TRIM,
+        molding: true,
         out: [1, 0, 0],
       })) {
         trim.push(p);
@@ -236,7 +237,7 @@ function detailPolys() {
     face([[-hw, y0, z0], [-hw, y1, z0], [-hw, y1, z1], [-hw, y0, z1]], [-1, 0, 0]);
     const m = (y0 + y1) / 2;
     const half = Math.min(0.03, (y1 - y0) * 0.22);
-    b.push({ pts: [[hw, m - half, z1 + d * 0.004], [hw, m + half, z1 + d * 0.004], [-hw, m + half, z1 + d * 0.004], [-hw, m - half, z1 + d * 0.004]], color: TRIM, out: [0, 0, d] });
+    b.push({ pts: [[hw, m - half, z1 + d * 0.004], [hw, m + half, z1 + d * 0.004], [-hw, m + half, z1 + d * 0.004], [-hw, m - half, z1 + d * 0.004]], color: TRIM, out: [0, 0, d], molding: true });
     return b;
   };
   chrome.push(...bumper(NOSE - 0.04, NOSE + 0.08, 0.445, 0.525, 0.835));
@@ -673,7 +674,32 @@ export class CarModel {
     body.add(new THREE.Mesh(polyGeometry(white([...shell.paint, ...cabin.paint, ...(detail.paint || [])])), this.paintMat));
     this.cabinTop = new THREE.Mesh(polyGeometry(white(shell.cabinTop)), this.paintMat);
     body.add(this.cabinTop);
-    body.add(new THREE.Mesh(polyGeometry([...shell.trim, ...cabin.trim, ...detail.trim, ...(detail.chrome || [])]), flat));
+    // Rubber side and bumper strips carry a photo of real E30 moulding; the rest of the trim is flat.
+    const allTrim = [...shell.trim, ...cabin.trim, ...detail.trim, ...(detail.chrome || [])];
+    body.add(new THREE.Mesh(polyGeometry(allTrim.filter((p) => !p.molding)), flat));
+    const moldings = allTrim.filter((p) => p.molding);
+    if (moldings.length) {
+      const pos = [];
+      const uv = [];
+      for (const p of moldings) {
+        const g1 = polyGeometry([p]);
+        const a = g1.attributes.position;
+        const ys = p.pts.map((q) => q[1]);
+        const y0 = Math.min(...ys);
+        const y1 = Math.max(...ys);
+        const along = Math.abs(p.pts[0][2] - p.pts[2][2]) > Math.abs(p.pts[0][0] - p.pts[2][0]) ? 2 : 0; // sides run along z, bumpers along x
+        for (let i = 0; i < a.count; i++) {
+          pos.push(a.getX(i), a.getY(i), a.getZ(i));
+          uv.push([a.getX(i), 0, a.getZ(i)][along] / 0.6, (a.getY(i) - y0) / (y1 - y0 || 1));
+        }
+        g1.dispose();
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      g.computeVertexNormals();
+      body.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: frontTexture('trim', true), flatShading: true })));
+    }
     this.body = body;
     this.numberBoards = new THREE.Group();
     body.add(this.numberBoards);
