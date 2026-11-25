@@ -15,14 +15,16 @@ export class Hud {
     this.resize();
   }
 
-  // The HUD is drawn at half resolution and scaled up with hard edges, to match the pixelated game.
+  // The HUD is drawn at a third of the resolution and scaled up with hard edges: chunky pixels,
+  // three screen points each, like the buttons.
   resize() {
-    const scale = 0.5;
+    const scale = 1 / 3;
     this.w = window.innerWidth;
     this.h = window.innerHeight;
     this.canvas.width = Math.ceil(this.w * scale);
     this.canvas.height = Math.ceil(this.h * scale);
     this.ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    this.ctx.imageSmoothingEnabled = false;
   }
 
   // state: { rpm, redline, speedMph, gear, running, needClutchToStart, lapTime, bestTime }

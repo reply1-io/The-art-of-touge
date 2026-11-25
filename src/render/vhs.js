@@ -9,6 +9,9 @@
 //     at a quarter of the detail, smeared and lagging to the right
 //   VHS: lines wobble and the tape stretches; the bottom lines tear (head switching); white
 //     dropout streaks; lifted, warm blacks (no rolling tracking band)
+// Graded like '90s night touge tapes: the night crushed to black, whatever the headlights hit blown
+// out to white, nearly no colour, lights glowing and smeared sideways, and bright things leaving
+// trails as they move (the tape's lag).
 // strength 0 is a clean picture at screen resolution (with the same light and glow); 1 is full.
 // Also the wide-angle and fisheye lenses for replays.
 import * as THREE from 'three';
@@ -33,12 +36,30 @@ const bloomShader = /* glsl */ `
       for (int x = -3; x <= 3; x++) {
         vec2 o = vec2(float(x), float(y));
         float w = exp(-dot(o, o) / 6.0);
-        vec3 c = texture2D(tSrc, vUv + o * texel * 2.5).rgb;
-        sum += max(c - 0.85, 0.0) * w; // only what is brighter than nearly white
+        // Stretched sideways: tape smears bright light along the lines.
+        vec3 c = texture2D(tSrc, vUv + o * texel * vec2(4.5, 2.0)).rgb;
+        sum += max(c - 0.6, 0.0) * w; // only the bright light
         wsum += w;
       }
     }
     gl_FragColor = vec4(sum / wsum, 1.0);
+  }
+`;
+
+// The tape's lag: bright things fade out over a few frames instead of at once, so lights and lit
+// road lines leave trails as they move.
+const persistShader = /* glsl */ `
+  uniform sampler2D tNew;
+  uniform sampler2D tOld;
+  uniform float keep;
+  varying vec2 vUv;
+  void main() {
+    vec3 c = texture2D(tNew, vUv).rgb;
+    vec3 o = texture2D(tOld, vUv).rgb;
+    // Only the bright light lingers (lamps, the lit car ahead), not the whole lit road.
+    float lum = dot(o, vec3(0.299, 0.587, 0.114));
+    o *= keep * smoothstep(0.9, 1.8, lum);
+    gl_FragColor = vec4(max(c, o), 1.0);
   }
 `;
 
@@ -53,6 +74,7 @@ const fragmentShader = /* glsl */ `
   uniform float field;    // 0 or 1: which lines are this frame's (interlacing)
   uniform float frame43;  // 0..1: black bars to a 4:3 picture
   uniform float exposure;
+  uniform float grade;    // 0..1: the night tape grade (crushed blacks, blown highlights, no colour)
   uniform float barrel;   // wide-angle lens bend (0 = none): straight lines bow out toward the edges
   uniform float fish;     // 0..1: blend from a normal lens to a true (equidistant) fisheye
   uniform float hv;       // half the camera's vertical field of view (radians)
@@ -77,7 +99,11 @@ const fragmentShader = /* glsl */ `
   }
   // Light (linear) to the picture's levels (gamma), through the camera.
   vec3 develop(vec3 lin) {
-    return pow(clamp(knee(lin * exposure), 0.0, 1.0), vec3(1.0 / 2.2));
+    // Night tape: the camera's gain pushed up so the lit road blows out, and the dim moonlit world
+    // under the noise floor goes to black.
+    lin *= exposure * (1.0 + 1.6 * grade);
+    lin = max(lin - 0.03 * grade, 0.0) / (1.0 - 0.03 * grade);
+    return pow(clamp(knee(lin), 0.0, 1.0), vec3(1.0 / 2.2));
   }
   // One sample of the picture: this frame's lines, or (interlaced, on the other field's lines) the
   // frame before's, with the glow.
@@ -85,7 +111,7 @@ const fragmentShader = /* glsl */ `
     float row = floor(uv.y * res.y);
     float old = useField * step(0.5, mod(row + field, 2.0));
     vec3 c = mix(texture2D(tCur, uv).rgb, texture2D(tPrev, uv).rgb, old);
-    c += texture2D(tBloom, uv).rgb * 0.9;
+    c += texture2D(tBloom, uv).rgb * (0.9 + 1.4 * grade);
     return develop(c);
   }
   const vec3 LW = vec3(0.299, 0.587, 0.114);
@@ -160,7 +186,7 @@ const fragmentShader = /* glsl */ `
     float y0 = dot(c0, LW);
     // Camcorder sharpening: bright and dark halos along edges.
     float yBlur = dot(cl + cr, LW) * 0.5;
-    float yS = y0 + (y0 - yBlur) * mix(0.0, 1.3, s);
+    float yS = y0 + (y0 - yBlur) * mix(0.0, 1.3, s) * (1.0 - 0.6 * grade);
     // Colour at a quarter of the detail, smeared and lagging to the right (DV, then tape).
     vec3 ch = vec3(0.0);
     float wsum = 0.0;
@@ -178,8 +204,9 @@ const fragmentShader = /* glsl */ `
     // ---- Grade ----
     // A little more colour, like the VX1000; then tape: lifted warm blacks, slightly soft whites.
     float yg = dot(col, LW);
-    col = mix(vec3(yg), col, 1.0 + 0.15 * s);
-    col = mix(col, col * 0.93 + vec3(0.035, 0.028, 0.035), s);
+    col = mix(vec3(yg), col, mix(1.0 + 0.15 * s, 0.2, grade));
+    // Tape: blacks lifted only a hair (night tapes are black), whites a touch soft.
+    col = mix(col, col * 0.95 + vec3(0.012, 0.012, 0.014), s);
 
     // ---- Tape damage ----
     col = mix(col, vec3(rand(vec2(uv.x * 300.0, row + t))), hs * 0.5 * s);
@@ -192,7 +219,7 @@ const fragmentShader = /* glsl */ `
     col *= 1.0 - 0.07 * s * (0.5 + 0.5 * cos(uv.y * res.y * 6.2832));
     // The lens darkens toward the corners.
     vec2 vq = (vUv - 0.5) * vec2(aspect / 1.5, 1.0);
-    col *= 1.0 - dot(vq, vq) * 0.45 * s;
+    col *= 1.0 - dot(vq, vq) * (0.45 + 0.6 * grade) * s;
 
     col *= mix(1.0, inside * (1.0 - smoothstep(0.35, 0.75, r2) * barrel * 0.6), step(0.001, barrel));
     col *= lensMask * bars;
@@ -241,6 +268,8 @@ export class VhsRenderer {
     this.lens = { fish: 0, hood: 0, circle: 0, cy: 0.5 }; // fisheye lens; cy: lens centre height on screen
     this.frame43 = 0; // 1: a 4:3 picture with black bars, like the camcorder
     this.exposure = 1;
+    this.grade = 1; // the night tape grade
+    this.trail = 0.8; // how much of the last frame's light lingers (0: none)
     this.css = [4, 4];
     // Real light levels where the device can store them (bright things brighter than white).
     const gl = renderer.getContext();
@@ -255,6 +284,16 @@ export class VhsRenderer {
     // Without real light levels, keep the picture's precision in the dark (decoded when read).
     if (!hdr) for (const f of this.frames) f.texture.colorSpace = THREE.SRGBColorSpace;
     this.cur = 0;
+    // The lingering light: this frame mixed with what is left of the last (ping-pong).
+    this.persist = [new THREE.WebGLRenderTarget(4, 4, { ...opts, depthBuffer: false }), new THREE.WebGLRenderTarget(4, 4, { ...opts, depthBuffer: false })];
+    if (!hdr) for (const f of this.persist) f.texture.colorSpace = THREE.SRGBColorSpace;
+    this.persistMat = new THREE.ShaderMaterial({
+      vertexShader,
+      fragmentShader: persistShader,
+      uniforms: { tNew: { value: null }, tOld: { value: null }, keep: { value: 0 } },
+      depthTest: false,
+      depthWrite: false,
+    });
     this.bloomTarget = new THREE.WebGLRenderTarget(4, 4, { ...opts, depthBuffer: false });
     this.bloomMat = new THREE.ShaderMaterial({
       vertexShader,
@@ -277,6 +316,7 @@ export class VhsRenderer {
         field: { value: 0 },
         frame43: { value: 0 },
         exposure: { value: 1 },
+        grade: { value: 1 },
         barrel: { value: 0 },
         fish: { value: 0 },
         hv: { value: 0.5 },
@@ -305,7 +345,7 @@ export class VhsRenderer {
     if (this.filmed) h = Math.min(h * Math.min(2, window.devicePixelRatio || 1), DV_LINES / (this.pixelSize > 1 ? 1.4 : 1));
     h = Math.max(1, Math.round(h));
     const w = Math.max(1, Math.round((h * width) / height));
-    for (const f of this.frames) f.setSize(w, h);
+    for (const f of [...this.frames, ...this.persist]) f.setSize(w, h);
     this.bloomTarget.setSize(Math.max(1, Math.round(w / 6)), Math.max(1, Math.round(h / 6)));
     this.material.uniforms.res.value.set(w, h);
     const dpr = this.renderer.getPixelRatio();
@@ -325,6 +365,7 @@ export class VhsRenderer {
     u.circle.value = this.lens.circle;
     u.frame43.value = this.frame43;
     u.exposure.value = this.exposure;
+    u.grade.value = this.grade * Math.min(1, this.strength / 0.5);
     const hv = ((camera.fov ?? 60) * Math.PI) / 360;
     u.hv.value = hv;
     u.cy.value = this.lens.cy ?? 0.5;
@@ -335,15 +376,24 @@ export class VhsRenderer {
     const prev = this.frames[this.cur ^ 1];
     r.setRenderTarget(cur);
     r.render(scene, camera);
+    // The lingering light: what the picture is made from from here on.
+    const pNew = this.persist[this.cur];
+    const pOld = this.persist[this.cur ^ 1];
+    this.persistMat.uniforms.tNew.value = cur.texture;
+    this.persistMat.uniforms.tOld.value = pOld.texture;
+    this.persistMat.uniforms.keep.value = this.strength > 0.2 ? this.trail : 0;
+    this.quad.material = this.persistMat;
+    r.setRenderTarget(pNew);
+    r.render(this.scene, this.camera);
     // The glow.
-    this.bloomMat.uniforms.tSrc.value = cur.texture;
+    this.bloomMat.uniforms.tSrc.value = pNew.texture;
     this.bloomMat.uniforms.texel.value.set(1 / cur.width, 1 / cur.height);
     this.quad.material = this.bloomMat;
     r.setRenderTarget(this.bloomTarget);
     r.render(this.scene, this.camera);
     // The video.
     this.quad.material = this.material;
-    u.tCur.value = cur.texture;
+    u.tCur.value = pNew.texture;
     u.tPrev.value = prev.texture;
     u.field.value = this.cur;
     r.setRenderTarget(null);

@@ -58,9 +58,10 @@ export class Shifter {
 
   #draw() {
     const c = this.canvas;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    c.width = this.root.clientWidth * dpr;
-    c.height = this.root.clientHeight * dpr;
+    // A third of the resolution, scaled up with hard edges: chunky pixels like the rest of the HUD.
+    const dpr = 1 / 3;
+    c.width = Math.ceil(this.root.clientWidth * dpr);
+    c.height = Math.ceil(this.root.clientHeight * dpr);
     const g = c.getContext('2d');
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, c.width, c.height);
