@@ -4,6 +4,70 @@
 import * as THREE from 'three';
 import { GLASS, BLACK, TRIM, CHROME } from './poly.js';
 
+// The game's own car bodies (the E30 and the RX-7), so a build can start from one: a 'stock'
+// part is the whole body, which you can move, size and turn, and add your own shapes onto.
+// CarModel hands them over (it defines them), which keeps the two files from importing each other.
+const STOCK = {};
+export function registerStockShapes(shapes) {
+  Object.assign(STOCK, shapes);
+}
+export const STOCK_NAMES = { e30: 'E30 BODY', rx7: 'RX-7 BODY' };
+
+// A stock body's polygons, sorted like a design's, before it is moved: paint, trim, glass, lamps.
+const stockCache = new Map();
+function stockPolys(model) {
+  if (stockCache.has(model)) return stockCache.get(model);
+  const shape = STOCK[model];
+  if (!shape) return null;
+  const { shell, cabin, detail } = shape.build();
+  const center = [0, 0.1, 0];
+  // Give every polygon its outward direction now, so it still faces out once it is moved.
+  const fix = (polys, color) =>
+    (polys || []).map((p) => {
+      let out = p.out;
+      if (!out) {
+        const m = p.pts.reduce((s, q) => [s[0] + q[0] / p.pts.length, s[1] + q[1] / p.pts.length, s[2] + q[2] / p.pts.length], [0, 0, 0]);
+        out = [m[0] - center[0], m[1] - center[1], m[2] - center[2]];
+      }
+      return { pts: p.pts, color: color || p.color || [1, 1, 1], out };
+    });
+  const disc = (x, y, z, r, color) => ({ pts: Array.from({ length: 14 }, (_, k) => [x + Math.cos((k / 14) * Math.PI * 2) * r, y + Math.sin((k / 14) * Math.PI * 2) * r, z]), color, out: [0, 0, 1] });
+  const res = {
+    paint: fix([...shell.paint, ...(shell.cabinTop || []), ...(cabin.paint || []), ...(detail.paint || [])], [1, 1, 1]),
+    trim: fix([...shell.trim, ...(cabin.trim || []), ...(detail.trim || []), ...(detail.chrome || [])]),
+    glass: fix(cabin.glass),
+    tail: fix(detail.tail),
+    // Round headlamps (E30) with their chrome rings.
+    head: (shape.lamps || []).map(([x, y, r]) => disc(x, y, shape.nose + 0.014, r, [0.91, 0.93, 0.94])),
+  };
+  for (const [x, y, r] of shape.lamps || []) res.trim.push(disc(x, y, shape.nose + 0.01, r + 0.012, CHROME));
+  // Pop-up headlamps (RX-7): closed, a body-colour lid flush in the bonnet.
+  for (const [x0, x1, z0, z1] of shape.popups || []) {
+    const y0 = shape.section(z0).belt + 0.004;
+    const y1 = shape.section(z1).belt + 0.004;
+    res.paint.push({ pts: [[x0, y0, z0], [x1, y0, z0], [x1, y1, z1], [x0, y1, z1]], color: [1, 1, 1], out: [0, 1, 0] });
+  }
+  stockCache.set(model, res);
+  return res;
+}
+
+// A stock part's polygons, moved, sized and turned into place.
+export function stockPartPolys(part) {
+  const src = stockPolys(part.model);
+  if (!src) return null;
+  const m = partMatrix(part);
+  const nm = new THREE.Matrix3().getNormalMatrix(m);
+  const v = new THREE.Vector3();
+  const out = {};
+  for (const [k, list] of Object.entries(src)) {
+    out[k] = list.map((p) => {
+      const o = v.set(...p.out).applyMatrix3(nm);
+      return { pts: p.pts.map((q) => v.set(...q).applyMatrix4(m).toArray()), color: p.color, out: [o.x, o.y, o.z] };
+    });
+  }
+  return out;
+}
+
 const DEG = Math.PI / 180;
 export const PART_TYPES = ['box', 'wedge', 'taper', 'cyl', 'ball'];
 export const MATS = {
@@ -90,6 +154,11 @@ export const copies = (part) => (part.mirror && Math.abs(part.p[0]) > 0.005 ? [f
 export function designPolys(design) {
   const out = { paint: [], trim: [], glass: [], head: [], tail: [] };
   for (const part of design.parts) {
+    if (part.type === 'stock') {
+      const sp = stockPartPolys(part);
+      if (sp) for (const k of Object.keys(out)) out[k].push(...sp[k]);
+      continue;
+    }
     const bucket = part.mat === 'paint' ? 'paint' : part.mat === 'glass' ? 'glass' : part.mat === 'head' ? 'head' : part.mat === 'tail' ? 'tail' : 'trim';
     const color = part.mat === 'color' ? hex(part.color) : MATS[part.mat] || [1, 1, 1];
     for (const mirrored of copies(part)) {

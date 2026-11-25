@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <title>Art of Touge · Car Builder</title>
+    <title>Art of Touge Car Builder</title>
     <style>
       * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
       html, body { margin: 0; height: 100%; overflow: hidden; background: #101216; color: #eee; font: 600 13px/1.2 system-ui, -apple-system, 'Segoe UI', sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -36,10 +36,17 @@
       #modal .car span { flex: 1; }
       textarea { width: 100%; height: 140px; background: #101216; color: #ddd; border: 1px solid #333; border-radius: 8px; font: 11px monospace; user-select: text; -webkit-user-select: text; }
       body.editing #add, body.editing #side { display: none; }
+      /* A phone held upright: the shape buttons go in rows under the top bar and above the hint,
+         leaving the car clear in the middle. */
+      @media (orientation: portrait) {
+        #add { top: auto; bottom: calc(46px + env(safe-area-inset-bottom)); left: 8px; right: 8px; transform: none; flex-direction: row; flex-wrap: wrap; align-items: center; }
+        #add button { flex: 1; padding: 9px 4px; }
+        #side { top: 116px; right: 8px; transform: none; flex-direction: row; }
+      }
       #hint { position: fixed; left: 0; right: 0; bottom: max(10px, env(safe-area-inset-bottom)); text-align: center; color: #8b93a0; pointer-events: none; }
     </style>
   </head>
-  <body>
+  <body data-mode="artifact">
     <div id="top">
       <button type="button" id="b-back">◀ GAME</button>
       <input type="text" id="name" maxlength="24" placeholder="Car name" aria-label="Car name" />
@@ -61,6 +68,8 @@
       <button type="button" data-add="taper">TAPER</button>
       <button type="button" data-add="cyl">CYLINDER</button>
       <button type="button" data-add="ball">BALL</button>
+      <button type="button" data-add="e30">E30 BODY</button>
+      <button type="button" data-add="rx7">RX-7 BODY</button>
     </div>
     <div id="side">
       <button type="button" id="b-ghost">GHOST</button>

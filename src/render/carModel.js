@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { Cockpit } from './cockpit.js';
 import { RX7_SHAPE } from './shapes/rx7.js';
-import { customShape } from './shapes/custom.js';
+import { customShape, registerStockShapes } from './shapes/custom.js';
 import { loadDesigns } from '../builder/customStore.js';
 import { PLATES, cleanPlate, WHEELS, EXHAUSTS, HEADLIGHTS, TAILLIGHTS, wheelSetup, TUNABLE_DEFAULTS } from '../config.js';
 
@@ -426,6 +426,7 @@ const E30_SHAPE = {
   lamps: HEADLAMPS,
 };
 export const SHAPES = { e30: E30_SHAPE, rx7: RX7_SHAPE };
+registerStockShapes(SHAPES); // so a Car Builder design can start from either body
 
 let glowTex = null;
 function glowSpriteTexture() {

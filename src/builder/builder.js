@@ -4,16 +4,26 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CARS } from '../config.js';
 import { CarModel } from '../render/carModel.js';
-import { partGeometry, copies, MATS, starterParts } from '../render/shapes/custom.js';
+import { partGeometry, copies, MATS, starterParts, stockPartPolys, STOCK_NAMES } from '../render/shapes/custom.js';
+import { polyGeometry } from '../render/shapes/poly.js';
 import { loadDesigns, saveDesign, deleteDesign, newId } from './customStore.js';
 
 const $ = (id) => document.getElementById(id);
 const DRAFT = 'touge.builderDraft.v1';
+// Opened as a page in the chat (not inside the game): ADD TO GAME hands over the car's code to
+// paste to Claude, who builds it into the game.
+const STANDALONE = document.body.dataset.mode === 'artifact';
 const SETTINGS = 'touge.settings.v4';
 
 // ---------- The design being worked on ----------
-function blank() {
-  return { id: newId(), name: 'My car', base: 'e30', paint: '#efeee6', parts: starterParts() };
+// A new car: the plain starter body, or the game's E30 or RX-7 to build onto.
+function blank(start = 'e30') {
+  const parts = start === 'plain' ? starterParts() : [stockPart(start)];
+  const paint = start === 'rx7' ? '#c8241d' : '#efeee6';
+  return { id: newId(), name: start === 'plain' ? 'My car' : `My ${start === 'rx7' ? 'RX-7' : 'E30'}`, base: start === 'rx7' ? 'rx7' : 'e30', paint, parts };
+}
+function stockPart(model) {
+  return { type: 'stock', model, p: [0, 0, 0], s: [1, 1, 1], r: [0, 0, 0], mat: 'paint' };
 }
 let design;
 try {
@@ -95,7 +105,7 @@ function rebuild(light = false) {
   for (const m of partsGroup.children) m.geometry.dispose();
   partsGroup.clear();
   meshes = design.parts.map((part, i) =>
-    copies(part).map((mirrored) => {
+    part.type === 'stock' ? stockMeshes(part, i) : copies(part).map((mirrored) => {
       const m = new THREE.Mesh(partGeometry(part, mirrored), matFor(part));
       m.userData.part = i;
       partsGroup.add(m);
@@ -105,6 +115,22 @@ function rebuild(light = false) {
   paintMat.color.set(design.paint);
   showSelection(light);
   saveDraft();
+}
+
+// A whole stock body (E30 or RX-7): painted panels, trim, glass and lamps.
+const trimMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+function stockMeshes(part, i) {
+  const sp = stockPartPolys(part);
+  if (!sp) return [];
+  const list = [];
+  for (const [k, mat] of [['paint', paintMat], ['trim', trimMat], ['glass', glassMat], ['tail', tailMat], ['head', headMat]]) {
+    if (!sp[k].length) continue;
+    const m = new THREE.Mesh(polyGeometry(sp[k]), mat);
+    m.userData.part = i;
+    partsGroup.add(m);
+    list.push(m);
+  }
+  return list;
 }
 
 function showSelection(light = false) {
@@ -173,7 +199,10 @@ const MAT_NAMES = { paint: 'PAINT', trim: 'TRIM', black: 'BLACK', chrome: 'CHROM
 function key() {
   return mode === 'move' ? 'p' : mode === 'size' ? 's' : 'r';
 }
+// A stock body is sized as a share of its real size (100%); everything else in centimetres.
+const isStock = () => design.parts[selected]?.type === 'stock';
 function fmt(v) {
+  if (mode === 'size' && isStock()) return `${Math.round(v * 100)}%`;
   return mode === 'turn' ? `${Math.round(v)}°` : `${(v * 100).toFixed(0)} cm`;
 }
 
@@ -187,6 +216,15 @@ function renderPanel() {
   if (styling) {
     const mats = $('mats');
     mats.innerHTML = '';
+    if (part.type === 'stock') {
+      // The stock body keeps its own trim, glass and lamps; its paint is the car's colour.
+      mats.innerHTML = '<span class="lbl">The body is painted the car colour (the swatch at the top). Add shapes to change it.</span>';
+      $('pcolor').style.display = 'none';
+      $('b-mirror').style.display = 'none';
+      $('taper').style.display = $('taper-lbl').style.display = 'none';
+      return;
+    }
+    $('b-mirror').style.display = '';
     for (const [m, label] of Object.entries(MAT_NAMES)) {
       const b = document.createElement('button');
       b.type = 'button';
@@ -237,8 +275,8 @@ function renderPanel() {
 function nudge(k, dir) {
   const part = design.parts[selected];
   const arr = part[key()];
-  let v = arr[k] + dir * steps[mode];
-  if (mode === 'size') v = Math.max(0.01, v);
+  let v = arr[k] + dir * (mode === 'size' && isStock() ? 0.01 : steps[mode]);
+  if (mode === 'size') v = Math.max(isStock() ? 0.5 : 0.01, isStock() ? Math.min(1.5, v) : v);
   if (mode === 'move' && k === 1) v = Math.max(-0.2, v);
   if (mode === 'turn') v = ((((v + 180) % 360) + 360) % 360) - 180;
   arr[k] = Math.round(v * 1000) / 1000;
@@ -320,6 +358,18 @@ for (const b of document.querySelectorAll('[data-add]')) {
   b.onclick = () => {
     remember();
     const type = b.dataset.add;
+    if (type === 'e30' || type === 'rx7') {
+      // The whole body, where the game puts it, on that car's wheels.
+      design.parts.push(stockPart(type));
+      design.base = type;
+      selected = design.parts.length - 1;
+      mode = 'move';
+      syncTop();
+      buildWheels();
+      rebuild();
+      toast(`${STOCK_NAMES[type]} added: build onto it, or tap it to move or size it`);
+      return;
+    }
     design.parts.push({ type, p: [0, 1.5, 0], s: [...NEW[type].s], r: [0, 0, 0], mat: 'paint', ...(NEW[type].t ? { t: NEW[type].t } : {}) });
     selected = design.parts.length - 1;
     mode = 'move';
@@ -389,8 +439,8 @@ const VIEWS = [
 let view = 0;
 $('b-view').onclick = () => {
   view = (view + 1) % VIEWS.length;
-  camera.position.set(...VIEWS[view]);
   controls.target.set(0, 0.6, 0);
+  camera.position.set(...VIEWS[view]).sub(controls.target).setLength(fitDist()).add(controls.target);
 };
 
 function store() {
@@ -419,6 +469,32 @@ $('b-drive').onclick = () => {
 };
 $('b-back').onclick = () => (location.href = './index.html');
 
+if (STANDALONE) {
+  $('b-back').style.display = 'none';
+  $('b-drive').textContent = 'ADD TO GAME';
+  $('b-drive').onclick = () => {
+    if (!store()) return;
+    const code = JSON.stringify(design);
+    modal(`<div class="row"><strong style="flex:1">ADD "${''}" TO THE GAME</strong></div>
+      <p>Tap COPY, then paste it into the chat with Claude. Claude builds it into Art of Touge for good, in your garage on every device.</p>
+      <textarea id="m-code" readonly></textarea>
+      <div class="row"><button type="button" id="m-copy" class="go">COPY</button><button type="button" id="m-close">CLOSE</button></div>`);
+    $('modal-box').querySelector('strong').textContent = `ADD "${design.name}" TO THE GAME`;
+    $('m-code').value = code;
+    $('m-copy').onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(code);
+        toast('Copied: now paste it in the chat');
+      } catch {
+        $('m-code').focus();
+        $('m-code').select();
+        toast('Select all the text and copy it');
+      }
+    };
+    $('m-close').onclick = () => $('modal').classList.remove('open');
+  };
+}
+
 // ---------- My cars, and sharing a car as code ----------
 function modal(html) {
   $('modal-box').innerHTML = html;
@@ -432,14 +508,18 @@ $('b-cars').onclick = () => {
     ${list.map((d) => `<div class="car"><span></span><button type="button" data-open="${d.id}">OPEN</button><button type="button" data-del="${d.id}">DELETE</button></div>`).join('')}`);
   [...$('modal-box').querySelectorAll('.car span')].forEach((s, i) => (s.textContent = `${list[i].name} · ${list[i].parts.length} shapes`));
   $('m-new').onclick = () => {
-    remember();
-    design = blank();
-    selected = -1;
-    syncTop();
-    buildWheels();
-    rebuild();
-    $('modal').classList.remove('open');
-    toast('New car: a plain body to start from');
+    modal(`<div class="row"><strong style="flex:1">START A NEW CAR FROM</strong></div>
+      <div class="row"><button type="button" data-start="plain">PLAIN BODY</button><button type="button" data-start="e30">THE E30</button><button type="button" data-start="rx7">THE RX-7</button></div>`);
+    for (const s of $('modal-box').querySelectorAll('[data-start]'))
+      s.onclick = () => {
+        remember();
+        design = blank(s.dataset.start);
+        selected = -1;
+        syncTop();
+        buildWheels();
+        rebuild();
+        $('modal').classList.remove('open');
+      };
   };
   for (const b of $('modal-box').querySelectorAll('[data-open]'))
     b.onclick = () => {
@@ -454,7 +534,12 @@ $('b-cars').onclick = () => {
   for (const b of $('modal-box').querySelectorAll('[data-del]'))
     b.onclick = () => {
       const d = list.find((x) => x.id === b.dataset.del);
-      if (!confirm(`Delete "${d.name}" from your garage?`)) return;
+      if (b.dataset.sure !== '1') {
+        b.dataset.sure = '1';
+        b.textContent = 'SURE?';
+        b.classList.add('go');
+        return;
+      }
       deleteDesign(d.id);
       $('b-cars').onclick();
     };
@@ -502,10 +587,15 @@ function toast(text) {
 }
 
 // ---------- Run ----------
+// A phone held upright sees less of the car side to side: stand further back.
+const fitDist = () => (camera.aspect < 1 ? 7.4 / Math.max(0.45, camera.aspect) : 7.4);
 function resize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+  controls.maxDistance = Math.max(14, fitDist() * 1.6);
+  const off = camera.position.clone().sub(controls.target);
+  camera.position.copy(controls.target).add(off.setLength(fitDist()));
 }
 window.addEventListener('resize', resize);
 resize();
