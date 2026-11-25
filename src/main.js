@@ -710,7 +710,8 @@ function renderReplayUi() {
   el.classList.toggle('ui-off', rp.uiOff);
   document.body.classList.toggle('replay-ui-off', rp.uiOff);
   $('rp-fov').value = String(freeCam.fov);
-  $('rp-fov-val').textContent = lensLabel(freeCam.fov);
+  $('rp-fov-val').textContent = rp.fish ? 'FISHEYE' : lensLabel(freeCam.fov);
+  $('rp-fov').classList.toggle('hidden', rp.fish);
   $('replay-edit').classList.toggle('hidden', rp.mode !== 'edit');
   for (const b of document.querySelectorAll('#rp-mode button')) b.classList.toggle('sel', b.dataset.mode === rp.mode);
   for (const b of document.querySelectorAll('#rp-view button')) b.classList.toggle('sel', b.dataset.view === rp.view);
@@ -755,6 +756,11 @@ function replayFrame(dt, now) {
     wide = shot >= 0 ? !!freeCam.shots[shot].fish : rp.fish;
     if (shot < 0) freeCam.update(dt, camera, rp.lookAtCar ? new THREE.Vector3(rcar.pos.x, rcar.pos.y + 0.6, rcar.pos.z) : null);
     cam = shot + 1;
+    // Fisheye is a fixed lens (the crowd's wide camcorder): it takes over from the dial.
+    if (wide) {
+      camera.fov = 104;
+      camera.updateProjectionMatrix();
+    }
   } else {
     const f = director.frame(dt, camera, rcar, rp.t);
     cam = f.k + 1;
@@ -763,7 +769,7 @@ function replayFrame(dt, now) {
   // The 10 mm camcorder shots bend at the edges.
   vhs.barrel = wide ? 0.55 : 0;
   // Edit mode's lens dial: more and more fisheye as it turns up.
-  const lens = rp.mode === 'edit' ? lensFor(cam > 0 ? freeCam.lastFov : freeCam.fov) : null;
+  const lens = rp.mode === 'edit' && !wide ? lensFor(cam > 0 ? freeCam.lastFov : freeCam.fov) : null;
   vhs.lens.fish = lens?.fish ?? 0;
   vhs.lens.hood = lens?.hood ?? 0;
   vhs.lens.circle = lens?.circle ?? 0;
