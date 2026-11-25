@@ -548,8 +548,8 @@ export const WHEELS = {
   six: { name: 'Bronze 6-Spoke', blurb: 'Light forged six-spoke in bronze, the Japanese touge classic.', face: '#8e6a3f', lip: '#8e6a3f', dish: '#231c15', spokes: 'six' },
   steel: { name: 'Black Steelies', blurb: 'Plain black steel wheels. Cheap, tough, honest.', face: '#1d1e21', lip: '#26272b', dish: '#141517', spokes: 'steel' },
   bottlecap: { name: 'Factory Bottle Caps', blurb: 'The E30\'s standard 14-inch alloys: a flat silver face with a ring of slots and a metal centre cap.', face: '#c3c5ca', lip: '#c3c5ca', dish: '#2a2b2f', spokes: 'bottlecap' },
-  watanabe: { name: 'Watanabe 8-Spoke', blurb: 'Eight slender spokes flaring into a polished lip. Old-school Japanese street racing.', face: '#c9a24a', lip: '#dfe1e5', dish: '#2a2418', spokes: 'watanabe' },
-  te37: { name: 'TE37-Style 5-Spoke', blurb: 'Five wide, flat forged spokes in bronze. Light and stiff.', face: '#7c5228', lip: '#7c5228', dish: '#1e160d', spokes: 'te37' },
+  watanabe: { name: 'Watanabe 8-Spoke', blurb: 'Eight slender spokes in gunmetal with a red centre cap. Old-school Japanese street racing.', face: '#6f716c', lip: '#7a7c78', dish: '#1a1b1c', spokes: 'watanabe', image: 'wheels/watanabe.png' },
+  te37: { name: 'TE37', blurb: 'Six wide, flat forged spokes in bronze. Light, stiff, legendary.', face: '#8d7a55', lip: '#8d7a55', dish: '#1e160d', spokes: 'te37', image: 'wheels/te37.png' },
 };
 
 // Wheel and tyre sizes: tyre width grows with the rim, as you would fit on the real car.

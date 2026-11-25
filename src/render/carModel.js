@@ -323,6 +323,16 @@ const faceCache = new Map();
 export function rimTexture(styleId) {
   if (faceCache.has(styleId)) return faceCache.get(styleId);
   const st = WHEELS[styleId] || WHEELS.bbs;
+  // A style with its own picture (a low-res photo of the real wheel): show it crisp and pixelated.
+  if (st.image) {
+    const t = new THREE.TextureLoader().load(`${import.meta.env?.BASE_URL ?? './'}${st.image}`);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.magFilter = THREE.NearestFilter;
+    t.minFilter = THREE.NearestFilter;
+    t.generateMipmaps = false;
+    faceCache.set(styleId, t);
+    return t;
+  }
   const c = document.createElement('canvas');
   c.width = c.height = 256;
   const g = c.getContext('2d');
