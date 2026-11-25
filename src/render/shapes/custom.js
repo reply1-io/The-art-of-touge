@@ -40,7 +40,6 @@ function stockPolys(model) {
     // Round headlamps (E30) with their chrome rings.
     head: (shape.lamps || []).map(([x, y, r]) => disc(x, y, shape.nose + 0.014, r, [0.91, 0.93, 0.94])),
   };
-  for (const [x, y, r] of shape.lamps || []) res.trim.push(disc(x, y, shape.nose + 0.01, r + 0.012, CHROME));
   // Pop-up headlamps (RX-7): closed, a body-colour lid flush in the bonnet.
   for (const [x0, x1, z0, z1] of shape.popups || []) {
     const y0 = shape.section(z0).belt + 0.004;

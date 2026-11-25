@@ -659,13 +659,10 @@ export class CarModel {
     // Body-colour parts that are not part of the shell mesh (pop-up lids).
     this.lidMat = new THREE.MeshPhongMaterial({ color: 0xefeee6, flatShading: true, shininess: 70, specular: 0x6a6a6a });
     // Round headlamps with chrome rings (E30), or pop-up headlamps (RX-7).
-    const ringMat = new THREE.MeshLambertMaterial({ color: 0xb9bcc2 });
     for (const [x, y, r] of shape.lamps || []) {
-      const ring = new THREE.Mesh(new THREE.CircleGeometry(r + 0.012, 14), ringMat);
-      ring.position.set(x, y, shape.nose + 0.01);
       const lamp = new THREE.Mesh(new THREE.CircleGeometry(r, 20), this.lensMat);
       lamp.position.set(x, y, shape.nose + 0.014);
-      body.add(ring, lamp);
+      body.add(lamp);
     }
     // Pop-up headlamps: closed, the pod sits flush in the bonnet; open, it rises a short way, a low
     // black box with the lamp in its front face.
