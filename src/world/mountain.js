@@ -1502,43 +1502,6 @@ export class Mountain {
   }
 
   // A streetlight at every tight corner (on the outside) and along the start and town.
-  // A patch of road surface round sample i, centred 1.5 m from the middle toward `side`, as a mesh
-  // relative to `base`, with uv running 0..1 across a 20 m circle.
-  #poolGeometry(i, side, base) {
-    const road = this.road;
-    const R = 10;
-    const cx = side * 1.5;
-    const pos = [];
-    const uv = [];
-    const idx = [];
-    const rows = [];
-    const c = road.pointAt(i, cx);
-    for (let j = Math.max(0, i - 6); j <= Math.min(road.count - 1, i + 6); j++) {
-      const row = [];
-      for (let l = -road.w.SHOULDER; l <= road.w.SHOULDER + 0.01; l += road.w.SHOULDER / 4) {
-        const p = road.pointAt(j, l, 0.035);
-        row.push(pos.length / 3);
-        pos.push(p[0] - base[0], p[1] - base[1], p[2] - base[2]);
-        uv.push(0.5 + (p[0] - c[0]) / (2 * R), 0.5 - (p[2] - c[2]) / (2 * R));
-      }
-      rows.push(row);
-    }
-    for (let r = 0; r + 1 < rows.length; r++) {
-      for (let k = 0; k + 1 < rows[r].length; k++) {
-        const a = rows[r][k];
-        const b = rows[r][k + 1];
-        const d = rows[r + 1][k];
-        const e = rows[r + 1][k + 1];
-        idx.push(a, d, b, b, d, e);
-      }
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    g.setIndex(idx);
-    return g;
-  }
-
   #buildStreetlights() {
     this.lampGlows = [];
     const road = this.road;
@@ -1559,9 +1522,7 @@ export class Mountain {
     const poleMat = new THREE.MeshLambertMaterial({ color: 0x55585e });
     const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe2a6 });
     const glow = new THREE.SpriteMaterial({ map: glowTexture('rgba(255,214,140,0.9)', 'rgba(255,170,60,0)'), blending: THREE.AdditiveBlending, depthWrite: false, fog: true });
-    const poolTex = glowTexture('rgba(255,200,120,0.55)', 'rgba(255,160,60,0)');
-    poolTex.wrapS = poolTex.wrapT = THREE.ClampToEdgeWrapping;
-    const poolMat = new THREE.MeshBasicMaterial({ map: poolTex, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, fog: true, side: THREE.DoubleSide });
+    this.lampSpots = [];
     const pole = new THREE.CylinderGeometry(0.09, 0.12, 7, 6);
     pole.translate(0, 3.5, 0);
     const arm = new THREE.BoxGeometry(0.08, 0.08, 1.8);
@@ -1583,11 +1544,12 @@ export class Mountain {
       const s = new THREE.Sprite(glow);
       s.scale.set(7.5, 7.5, 1);
       s.position.copy(hd.position);
-      // The pool of light lies on the road itself (banked and sloping as it is), not a flat
-      // disc that hangs in the air where the road falls away.
-      const p = new THREE.Mesh(this.#poolGeometry(i, side, base), poolMat);
-      g.add(a, hd, s, p);
-      this.lampGlows.push(s, p);
+      g.add(a, hd, s);
+      this.lampGlows.push(s);
+      // Where the lamp's real light comes from and points (straight down, a little toward the
+      // road): lit by one of a few spotlights that follow the nearest lamps (see update()).
+      const at = [base[0] + toward[0] * 1.7, base[1] + 6.8, base[2] + toward[1] * 1.7];
+      this.lampSpots.push({ pos: at, aim: [at[0] + toward[0] * 1.2, at[1] - 7, at[2] + toward[1] * 1.2] });
       this.#addChunk(g, base[0], base[2], 20);
     }
   }
@@ -2528,10 +2490,43 @@ export class Mountain {
       this.openSigns.closed.visible = night;
     }
     for (const o of this.lampGlows) o.visible = preset.lights;
+    this.lampsOn = !!preset.lights;
+  }
+
+  // Street lamps shine real light, like the headlights: two spotlights (always the same number,
+  // so nothing has to be rebuilt) sit in the lamps nearest the camera and light whatever is under
+  // them: road, rails, verge, your car.
+  #updateLampLights(camPos) {
+    const N = 2; // you only ever pass under one or two at a time; each costs every pixel a little
+    if (!this.lampLights) {
+      this.lampLights = [];
+      for (let k = 0; k < N; k++) {
+        const l = new THREE.SpotLight(0xffd29a, 0, 26, 0.95, 0.65, 1.6);
+        this.scene.add(l, l.target);
+        this.lampLights.push(l);
+      }
+    }
+    const near = (this.lampSpots || [])
+      .map((p) => [p, (p.pos[0] - camPos.x) ** 2 + (p.pos[2] - camPos.z) ** 2])
+      .sort((a, b) => a[1] - b[1])
+      .slice(0, N);
+    this.lampLights.forEach((l, k) => {
+      const hit = near[k];
+      if (!hit || !this.lampsOn || hit[1] > 240 * 240) {
+        l.intensity = 0;
+        return;
+      }
+      l.position.set(...hit[0].pos);
+      l.target.position.set(...hit[0].aim);
+      // Fade in as it becomes one of the nearest, so lamps never pop on.
+      const fade = Math.min(1, Math.max(0, (240 - Math.sqrt(hit[1])) / 60));
+      l.intensity = 260 * fade;
+    });
   }
 
   // Show only what is within reach: detail (trees, signs) closer in, ground (road, terrain) further.
   update(camPos, detailRange, groundRange = detailRange, dt = 0) {
+    this.#updateLampLights(camPos);
     for (const c of this.chunks) {
       const dx = c.x - camPos.x;
       const dz = c.z - camPos.z;
