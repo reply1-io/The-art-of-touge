@@ -68,20 +68,25 @@
         <p class="sub" id="title-sub">BMW E30 325i</p>
         <p class="title-money"></p>
       </div>
+      <div class="panel home-panel">
+        <button type="button" class="home-road" id="btn-roads-cur" aria-label="Choose a road">
+          <span class="home-road-label">ROAD</span>
+          <b id="home-road-name"></b>
+          <small id="home-road-blurb"></small>
+        </button>
+        <button type="button" id="btn-drive" class="big home-btn">SOLO DRIVE</button>
+        <button type="button" id="btn-race" class="big home-btn">TOUGE BATTLE</button>
+        <div class="row home-row">
+          <button type="button" id="btn-roads" class="big ghost">ROADS</button>
+          <button type="button" id="btn-settings" class="big ghost">SETTINGS</button>
+        </div>
+        <p class="hint" id="loading">Loading physics&hellip;</p>
+      </div>
+    </section>
+
+    <section id="settings" class="screen side hidden">
       <div class="panel">
-        <div class="field">
-          <span class="label">Map <span class="map-hint">Tap a road to go there</span></span>
-          <div class="map-wrap"><canvas class="map" aria-label="Map of the mountain roads"></canvas><span class="map-loading">Drawing the map&hellip;</span></div>
-          <button type="button" class="btn-loop">WHOLE ROAD</button>
-        </div>
-        <div class="field">
-          <span class="label">Road</span>
-          <div class="choices" data-setting="map"></div>
-        </div>
-        <div class="field">
-          <span class="label">Driving mode</span>
-          <div class="choices" data-setting="driveMode"></div>
-        </div>
+        <h2>SETTINGS</h2>
         <div class="field">
           <span class="label">Transmission</span>
           <div class="choices" data-setting="mode"></div>
@@ -90,12 +95,18 @@
           <span class="label">Time of day</span>
           <div class="choices" data-setting="time"></div>
         </div>
-        <div class="row">
-          <button type="button" id="btn-drive" class="big">DRIVE</button>
-          <button type="button" id="btn-race" class="big">RACE</button>
-          <button type="button" id="btn-shop" class="big ghost">TUNING SHOP</button>
+        <div class="field drive-fov">
+          <span class="label">Field of view <b>60&deg;</b></span>
+          <input type="range" min="50" max="150" step="1" value="60" aria-label="Field of view while driving" />
         </div>
-        <p class="hint" id="loading">Loading physics&hellip;</p>
+        <div class="field">
+          <span class="label">Steering</span>
+          <div class="choices" data-setting="steering"></div>
+        </div>
+        <div class="field">
+          <span class="label">Shifter</span>
+          <div class="choices" data-setting="shifter"></div>
+        </div>
         <div class="field">
           <span class="label">Money</span>
           <div class="choices" data-setting="money"></div>
@@ -119,7 +130,18 @@
             </div>
           </details>
         </div>
+        <div class="row">
+          <button type="button" id="btn-settings-back" class="big">DONE</button>
+        </div>
       </div>
+    </section>
+
+    <section id="roads" class="screen hidden">
+      <div class="roads-head">
+        <h2>ROADS</h2>
+        <button type="button" id="btn-roads-back" class="big ghost">BACK</button>
+      </div>
+      <div class="roads-grid" id="roads-grid"></div>
     </section>
 
     <section id="pause" class="screen side hidden">

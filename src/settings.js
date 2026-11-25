@@ -4,6 +4,8 @@ import { TUNABLE_DEFAULTS, BASE_CAR, carKey, carSave } from './config.js';
 const KEY = 'touge.settings.v4';
 // The roads there are (kept here so settings need not load the road code).
 const ROADS = ['dragon', 'berthoud', 'tunitas-down', 'tunitas-up', 'us276-up', 'us276-down', 'chiefjoseph-west', 'chiefjoseph-east'];
+// Roads only offered one way: an old save naming the other direction moves to the best one.
+const BEST = { 'tunitas-up': 'tunitas-down', 'us276-up': 'us276-down', 'chiefjoseph-west': 'chiefjoseph-east' };
 
 const DEFAULTS = {
   mode: 'manual', // 'manual' | 'autoClutch' | 'auto'
@@ -43,6 +45,7 @@ export function loadSettings() {
   // Older saves may name a road that is gone (Akina, Kaido Mountain): back to the Dragon's Tail.
   const s = { ...DEFAULTS, ...read(KEY), stage: -1 };
   if (!ROADS.includes(s.map)) s.map = 'dragon';
+  s.map = BEST[s.map] ?? s.map;
   return s;
 }
 

@@ -372,16 +372,36 @@ function withBridge(def, t, reverse) {
   return t;
 }
 
+// Each road is offered in its best direction only (downhill, the touge way). The other direction
+// is still built here (and tested) but marked hidden: it never appears in the game, and an old
+// save that names it is moved to the road's best direction (see `best`).
 export const REAL_TRACKS = {
   berthoud: (() => {
     const t = realTrack(BERTHOUD);
     t.blurb = 'Colorado · Empire to Winter Park over the Continental Divide';
+    t.region = 'Colorado, USA';
+    t.desc = 'Up two stacks of switchbacks through the pines, out above the trees to the summit lot on the Continental Divide, then down the long west side to Winter Park.';
     return t;
   })(),
-  'tunitas-down': Object.assign(realTrack(TUNITAS), { name: 'Tunitas Creek ↓', blurb: 'California · Skyline ridge down through the redwoods to the coast' }),
-  'tunitas-up': Object.assign(realTrack(TUNITAS, true), { name: 'Tunitas Creek ↑', blurb: 'California · from the coast up through the redwoods to Skyline' }),
-  'us276-up': Object.assign(realTrack(US276), { name: 'US-276 Pisgah ↑', blurb: 'North Carolina · Pisgah Forest past Looking Glass Falls to the Parkway' }),
-  'us276-down': Object.assign(realTrack(US276, true), { name: 'US-276 Pisgah ↓', blurb: 'North Carolina · from the Parkway down past the falls to Brevard' }),
-  'chiefjoseph-west': withBridge(CHIEF, Object.assign(realTrack(CHIEF), { name: 'Chief Joseph ↑', blurb: 'Wyoming · Cody side up Dead Indian Pass to the Sunlight Creek Bridge' }), false),
-  'chiefjoseph-east': withBridge(CHIEF, Object.assign(realTrack(CHIEF, true), { name: 'Chief Joseph ↓', blurb: 'Wyoming · from the Sunlight Creek Bridge over Dead Indian Pass to the Cody side' }), true),
+  'tunitas-down': Object.assign(realTrack(TUNITAS), {
+    name: 'Tunitas Creek',
+    blurb: 'California · Skyline ridge down through the redwoods to the coast',
+    region: 'California, USA',
+    desc: 'Narrow, rail-free and dark under the redwoods, a creek beside you the whole way, then out into golden grass hills and down to the Pacific.',
+  }),
+  'tunitas-up': Object.assign(realTrack(TUNITAS, true), { name: 'Tunitas Creek (uphill)', hidden: true, best: 'tunitas-down' }),
+  'us276-down': Object.assign(realTrack(US276, true), {
+    name: 'US-276 Pisgah',
+    blurb: 'North Carolina · from the Parkway down past the falls to Brevard',
+    region: 'North Carolina, USA',
+    desc: 'From the Blue Ridge Parkway overlook down the switchbacks, then along the creek through hardwoods, rhododendron and rock walls, past Looking Glass Falls.',
+  }),
+  'us276-up': Object.assign(realTrack(US276), { name: 'US-276 Pisgah (uphill)', hidden: true, best: 'us276-down' }),
+  'chiefjoseph-east': withBridge(CHIEF, Object.assign(realTrack(CHIEF, true), {
+    name: 'Chief Joseph Hwy',
+    blurb: 'Wyoming · over the Sunlight Creek Bridge and down Dead Indian Pass to Cody',
+    region: 'Wyoming, USA',
+    desc: 'Fast banked sweepers through Sunlight Basin, across the bridge over the gorge, then down the open Dead Indian switchbacks through sagebrush and red rock.',
+  }), true),
+  'chiefjoseph-west': withBridge(CHIEF, Object.assign(realTrack(CHIEF), { name: 'Chief Joseph Hwy (uphill)', hidden: true, best: 'chiefjoseph-east' }), false),
 };

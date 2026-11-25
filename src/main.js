@@ -288,10 +288,6 @@ function renderChoices() {
 }
 
 function applySettings() {
-  // Free Roam drives off from the picked road; Touge races down it.
-  const touge = settings.driveMode === 'touge';
-  $('btn-drive').classList.toggle('hidden', touge);
-  $('btn-race').classList.toggle('hidden', !touge);
   applyTime();
   updateTitleSub();
   rig.mode = settings.camera;
@@ -402,6 +398,9 @@ function enterGame() {
 }
 
 $('btn-drive').addEventListener('click', () => {
+  // Solo drive: free roam on the road you have picked.
+  settings.driveMode = 'free';
+  saveSettings(settings);
   race?.abort();
   enterGame();
   resetCar();
@@ -542,7 +541,13 @@ function openRaceMenu() {
   renderRaceMenu();
   $('race').classList.remove('hidden');
 }
-$('btn-race').addEventListener('click', openRaceMenu);
+// Touge battle: race down the road, a rival by default (time attack is there too).
+$('btn-race').addEventListener('click', () => {
+  settings.driveMode = 'touge';
+  saveSettings(settings);
+  raceChoice.mode = 'battle';
+  openRaceMenu();
+});
 $('btn-race2').addEventListener('click', openRaceMenu);
 for (const b of document.querySelectorAll('#race-mode button'))
   b.addEventListener('click', () => {
@@ -1031,7 +1036,6 @@ shop.onEngine = () => {
   location.reload();
 };
 shop.resize(window.innerWidth, window.innerHeight);
-$('btn-shop').addEventListener('click', () => shop.open());
 $('btn-shop2').addEventListener('click', () => shop.open());
 window.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return; // typing a build name
@@ -1448,14 +1452,102 @@ function titleCamera(dt) {
 
 function updateTitleSub() {
   const t = TRACKS[settings.map] || TRACKS.dragon;
+  $('home-road-name').textContent = t.name;
+  $('home-road-blurb').textContent = t.blurb;
   const time = TIMES[settings.time] || TIMES.night;
   $('title-sub').innerHTML = '';
   const b = document.createElement('b');
   b.textContent = t.name;
   const st = t.stages && (settings.stage ?? -1) >= 0 ? t.stages[settings.stage] : null;
-  $('title-sub').append(`${CAR.name} · `, b, st ? ` · ${st.name}: ${st.blurb}` : ` · ${t.blurb}`, ` · ${time.name}`);
+  // (The road and its description are in the panel; here just your car and the light.)
+  $('title-sub').append(`${CAR.name} · ${time.name}`);
   for (const f of document.querySelectorAll('.stage-field')) f.classList.toggle('hidden', !t.stages);
 }
+
+// ---------- Settings and roads screens ----------
+function showScreen(id, on) {
+  $(id).classList.toggle('hidden', !on);
+  $('title').classList.toggle('hidden', on);
+  document.body.classList.toggle('in-menu', on);
+}
+$('btn-settings').addEventListener('click', () => {
+  renderChoices();
+  applySettings();
+  showScreen('settings', true);
+});
+$('btn-settings-back').addEventListener('click', () => showScreen('settings', false));
+
+// Every road, with its description and a drone clip flying along it. Tap one to drive it.
+function renderRoads() {
+  const grid = $('roads-grid');
+  grid.innerHTML = '';
+  for (const [id, t] of Object.entries(TRACKS)) {
+    if (t.hidden) continue;
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'road-card' + (id === settings.map ? ' sel' : '');
+    card.innerHTML = '<div class="road-clip"><video muted loop playsinline preload="metadata"></video><span class="road-tag"></span></div><div class="road-info"><span class="road-region"></span><strong></strong><p></p></div>';
+    const v = card.querySelector('video');
+    for (const [ext, type] of [['webm', 'video/webm'], ['mp4', 'video/mp4']]) {
+      const src = document.createElement('source');
+      src.src = `./drone/${id}.${ext}`;
+      src.type = type;
+      v.append(src);
+    }
+    v.poster = `./drone/${id}.jpg`;
+    card.querySelector('.road-tag').textContent = id === settings.map ? 'SELECTED' : 'DRONE';
+    card.querySelector('.road-region').textContent = t.region || '';
+    card.querySelector('strong').textContent = t.name;
+    card.querySelector('p').textContent = t.desc || t.blurb;
+    card.addEventListener('click', () => chooseRoad(id));
+    grid.append(card);
+  }
+  // Clips play while they are on screen.
+  roadClips?.disconnect();
+  roadClips = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) e.target.play().catch(() => {});
+      else e.target.pause();
+    }
+  }, { root: grid, threshold: 0.3 });
+  for (const v of grid.querySelectorAll('video')) roadClips.observe(v);
+}
+let roadClips = null;
+function chooseRoad(id) {
+  if (id === settings.map) {
+    closeRoads();
+    return;
+  }
+  if (online?.status === 'online' && !online.room && online.roomInfo) {
+    toast('THE HOST PICKS THE ROAD', 1.6);
+    return;
+  }
+  settings.map = id;
+  settings.stage = -1;
+  saveSettings(settings);
+  if (online?.hosting) {
+    const code = online.room.code;
+    online.setRoom({ road: id });
+    setTimeout(() => {
+      online.disconnect();
+      reloadInto({ host: code });
+    }, 400);
+    return;
+  }
+  location.reload();
+}
+function openRoads() {
+  renderRoads();
+  showScreen('roads', true);
+}
+function closeRoads() {
+  roadClips?.disconnect();
+  for (const v of document.querySelectorAll('#roads-grid video')) v.pause();
+  showScreen('roads', false);
+}
+$('btn-roads').addEventListener('click', openRoads);
+$('btn-roads-cur').addEventListener('click', openRoads);
+$('btn-roads-back').addEventListener('click', closeRoads);
 
 // ---------- Main loop ----------
 // ---------- Lighter rendering behind the menus ----------
@@ -1474,8 +1566,45 @@ function setMenuQuality(on) {
   renderer.shadowMap.needsUpdate = true;
 }
 
+// Drone footage for the Roads screen (made offline by scripts/drone.mjs): a drone flying along
+// the road, high and looking down the road ahead. droneFrame(s) draws one frame at s metres.
+let dronePause = false;
+function droneFrame(s) {
+  const r = mountain.road;
+  const avg = (arr, j, span) => {
+    let sum = 0;
+    for (let n = -span; n <= span; n++) sum += arr[Math.max(0, Math.min(r.count - 1, j + n))];
+    return sum / (2 * span + 1);
+  };
+  const f = s / 2;
+  const i = Math.max(0, Math.min(r.count - 2, Math.floor(f)));
+  const k = f - i;
+  const at = (arr, j, span) => avg(arr, j, span) + (avg(arr, j + 1, span) - avg(arr, j, span)) * k;
+  const a = Math.min(r.count - 2, i + 55);
+  camera.position.set(at(r.x, i, 40), Math.max(at(r.y, i, 40), r.y[i]) + 34, at(r.z, i, 40));
+  camera.lookAt(at(r.x, a, 15), at(r.y, a, 15) + 2, at(r.z, a, 15));
+  camera.fov = 58;
+  camera.updateProjectionMatrix();
+  sky.update(camera);
+  mountain.update(camera.position, timePreset.detailRange, timePreset.groundRange, 1 / 24);
+  renderer.shadowMap.needsUpdate = true;
+  vhs.barrel = 0;
+  Object.assign(vhs.lens, { fish: 0, hood: 0, circle: 0, cy: 0.5 });
+  vhs.render(scene, camera, s / 10);
+  return renderer.domElement.toDataURL('image/jpeg', 0.86);
+}
+function droneStart() {
+  dronePause = true;
+  vhs.pixelSize = 1;
+  vhs.strength = 0.25;
+  camera.clearViewOffset();
+  vhs.setSize(window.innerWidth, window.innerHeight);
+  for (const id of ['title', 'vhs', 'loading']) $(id)?.classList.add('hidden');
+}
+
 function frame(now) {
   requestAnimationFrame(frame);
+  if (dronePause) return;
   let dt = (now - last) / 1000;
   last = now;
   if (!(dt > 0)) dt = 0;
@@ -1726,7 +1855,7 @@ async function boot() {
   }
   $('btn-drive').disabled = false;
   // Testing hook for automated browser checks.
-  window.__touge = { recorder, freeCam, replayState: rp, get recorderSeconds() { return recorder.seconds; }, get revCar() { return revCar; }, get onRoad() { return onRoad; }, get wildlifeDbg() { return wildlife; }, get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
+  window.__touge = { droneFrame, droneStart, recorder, freeCam, replayState: rp, get recorderSeconds() { return recorder.seconds; }, get revCar() { return revCar; }, get onRoad() { return onRoad; }, get wildlifeDbg() { return wildlife; }, get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel };
 }
 
 $('btn-drive').disabled = true;
