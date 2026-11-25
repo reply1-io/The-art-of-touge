@@ -10,6 +10,7 @@ import { crowdsFor, SHIRTS, PANTS, SKIN } from './crowds.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Ranges, CloudSea, buildWaterfalls, sunAzimuth } from './wilds.js';
 import { ZONE_INNER, zoneAt, zonePoint, stationLayout, showLayout, homeLayout, lotLayout } from './stops.js';
+import { spruceCrown, redwoodCrown, redwoodTrunk, broadCrown, broadTrunk, coniferTrunk, needleTexture, leafTexture, sprayTexture, foliageMaterial } from './treeShapes.js';
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const DEFAULT_SCENE = { trees: 1, maple: 0, rock: 0.5, ponds: 0, forest: 'cedar', ground: 'forest', bush: 1, snow: 0 };
@@ -1675,14 +1676,21 @@ export class Mountain {
       }
     }
 
-    const trunk = new THREE.CylinderGeometry(0.18, 0.28, 1, 5);
-    trunk.translate(0, 0.5, 0);
-    const crown = new THREE.ConeGeometry(1, 1, 6);
-    crown.translate(0, 0.5, 0);
+    // The three tree shapes (treeShapes.js): spruce/fir, coast redwood and broadleaf, each with
+    // its own trunk, shaded with vertex colours that the per-tree colour tints.
+    const trunk = coniferTrunk();
+    const crown = spruceCrown();
+    const rwCrown = redwoodCrown();
+    const rwTrunk = redwoodTrunk();
+    const leafy = broadCrown();
+    const limbs = broadTrunk();
     const bush = new THREE.IcosahedronGeometry(1, 0);
-    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x3b2a1e });
-    const redwoodMat = new THREE.MeshLambertMaterial({ color: 0x6e3622, flatShading: true });
+    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x3b2a1e, vertexColors: true, flatShading: true });
+    const redwoodMat = new THREE.MeshLambertMaterial({ color: 0x7a3c24, vertexColors: true, flatShading: true });
     const crownMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+    const needleMat = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, map: needleTexture(), alphaTest: 0.45, side: THREE.DoubleSide });
+    const leafMat = foliageMaterial(leafTexture());
+    const sprayMat = foliageMaterial(sprayTexture());
     const bushMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
@@ -1694,12 +1702,13 @@ export class Mountain {
       const group = new THREE.Group();
       if (g.trees.length) {
         const trunks = new THREE.InstancedMesh(trunk, trunkMat, g.trees.length);
-        const crowns = new THREE.InstancedMesh(crown, crownMat, g.trees.length);
+        const crowns = new THREE.InstancedMesh(crown, needleMat, g.trees.length);
         g.trees.forEach(([x, y, z, h, tint = 0, sh = 1], n) => {
           const w = tint === 1 ? 0.15 : tint === 2 ? 0.28 : 0.19;
           trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(1, h * 0.35, 1)));
           trunks.setColorAt(n, col.setRGB(sh, sh, sh));
-          crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.22, z), q, sc.set(h * w, h * 0.82, h * w)));
+          crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.16, z), q.setFromAxisAngle(Y_AXIS, x * 2.3 + z), sc.set(h * w * 1.35, h * 0.88, h * w * 1.35)));
+          q.identity();
           const b = (0.75 + noise2(x * 3, z * 3) * 0.5) * sh;
           // Cedar green; lodgepole and spruce darker and bluer; wind-stunted trees at treeline.
           if (tint === 1) crowns.setColorAt(n, col.setRGB(0.07 * b, 0.17 * b, 0.13 * b));
@@ -1709,8 +1718,8 @@ export class Mountain {
         group.add(trunks, crowns);
       }
       if (g.maples.length) {
-        const trunks = new THREE.InstancedMesh(trunk, trunkMat, g.maples.length);
-        const crowns = new THREE.InstancedMesh(bush, crownMat, g.maples.length);
+        const trunks = new THREE.InstancedMesh(limbs, trunkMat, g.maples.length);
+        const crowns = new THREE.InstancedMesh(leafy, leafMat, g.maples.length);
         const autumn = [
           [0.62, 0.16, 0.08],
           [0.72, 0.32, 0.08],
@@ -1718,9 +1727,9 @@ export class Mountain {
           [0.5, 0.13, 0.1],
         ];
         g.maples.forEach(([x, y, z, h, sh = 1], n) => {
-          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(0.9, h * 0.45, 0.9)));
+          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h * 0.045, h * 0.5, h * 0.045)));
           trunks.setColorAt(n, col.setRGB(sh, sh, sh));
-          crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.62, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h * 0.33, h * 0.3, h * 0.33)));
+          crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.62, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h * 0.36, h * 0.36, h * 0.36)));
           q.identity();
           const [r, gg, b] = autumn[Math.floor(noise2(x * 0.9, z * 0.9) * 4) % 4];
           const k2 = (0.8 + noise2(x * 3, z * 2) * 0.35) * sh;
@@ -1730,13 +1739,15 @@ export class Mountain {
       }
       if (g.redwoods.length) {
         // Redwoods: thick red-brown trunks, bare for the first third, then a narrow dark crown.
-        const trunks = new THREE.InstancedMesh(trunk, redwoodMat, g.redwoods.length);
-        const crowns = new THREE.InstancedMesh(crown, crownMat, g.redwoods.length);
+        const trunks = new THREE.InstancedMesh(rwTrunk, redwoodMat, g.redwoods.length);
+        const crowns = new THREE.InstancedMesh(rwCrown, sprayMat, g.redwoods.length);
         g.redwoods.forEach(([x, y, z, h, sh = 1], n) => {
           const r = 2.2 + noise2(x, z) * 2.2;
-          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(r, h * 0.62, r)));
           trunks.setColorAt(n, col.setRGB(sh, sh, sh));
-          crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.32, z), q, sc.set(h * 0.14, h * 0.72, h * 0.14)));
+          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q.setFromAxisAngle(Y_AXIS, x + z), sc.set(r, h * 0.85, r)));
+          q.identity();
+          crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.3, z), q.setFromAxisAngle(Y_AXIS, z * 1.3), sc.set(h * 0.15, h * 0.7, h * 0.15)));
+          q.identity();
           const b = (0.75 + noise2(x * 3, z * 3) * 0.45) * sh;
           crowns.setColorAt(n, col.setRGB(0.07 * b, 0.17 * b, 0.1 * b));
         });
@@ -1744,8 +1755,8 @@ export class Mountain {
       }
       if (g.broad.length) {
         // Broadleaf trees: round crowns. Appalachian hardwoods, coastal oaks, junipers, aspens.
-        const trunks = new THREE.InstancedMesh(trunk, trunkMat, g.broad.length);
-        const crowns = new THREE.InstancedMesh(bush, crownMat, g.broad.length);
+        const trunks = new THREE.InstancedMesh(limbs, trunkMat, g.broad.length);
+        const crowns = new THREE.InstancedMesh(leafy, leafMat, g.broad.length);
         const tints = [
           [0.13, 0.27, 0.09],
           [0.2, 0.25, 0.12],
@@ -1754,9 +1765,9 @@ export class Mountain {
         ];
         g.broad.forEach(([x, y, z, h, tint, sh = 1], n) => {
           const flat = tint === 1 ? 1.5 : 1;
-          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(0.9, h * 0.5, 0.9)));
+          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h * 0.045 * flat, h * 0.5, h * 0.045 * flat)));
           trunks.setColorAt(n, col.setRGB(sh, sh, sh));
-          crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.62, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h * 0.3 * flat, h * 0.3, h * 0.3 * flat)));
+          crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.62, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h * 0.34 * flat, h * 0.36, h * 0.34 * flat)));
           q.identity();
           const [r, gg, b] = tints[tint];
           const k2 = (0.78 + noise2(x * 3, z * 2) * 0.4) * sh;
