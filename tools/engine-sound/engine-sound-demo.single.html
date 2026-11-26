@@ -474,11 +474,12 @@ const ITB = {
   boom: [80, 1.0, 9], // the snout's Helmholtz boom: Hz, Q, dB
   // the whole car with ITBs fitted (exhaust and all):
   lowCut: 70,             // no deep rumble below this
-  drone: [[520, 1.4, -4.5], [850, 1.4, -4.5]], // 400-1000 Hz drone taken down: Hz, Q, dB
+  drone: [[520, 1.4, -7], [850, 1.4, -7]], // 400-1000 Hz drone taken down: Hz, Q, dB
   rasp: [[1700, 1.0, 4.5], [3900, 0.8, 3.5]], // upper-mid rasp: +2 dB 1-2.5 kHz, +4 dB 2.5-6 kHz
   // air sucking through the trumpets: noise above ~5 kHz, gently rolled off above 14 kHz,
-  // following the throttle (not the revs)
-  hiss: 0.32, hissBand: [5000, 14000],
+  // a steady floor plus a swell with the throttle (not the revs)
+  hiss: 0.72, hissBand: [5000, 14000],
+  hissFloor: 0.45, // share of it that stays at idle and between blips; the throttle swells it on top
   // the intake bark: a resonance around 700-900 Hz (higher with the revs) that barks on each
   // blip and lets go: it follows the throttle opening, 30 ms attack, 60 ms release
   bark: [700, 0.03, 3.5], barkGain: 6, barkAttack: 0.03, barkRelease: 0.06,
@@ -1007,7 +1008,8 @@ class M20Dsp {
         y += this.itbBark.run(this.itbBarkSrc) * this.itbBarkEnv * I.barkGain / E.level;
         // air sucking through the trumpets: follows the throttle, not the revs
         const H = this.itbHiss;
-        y += H[2].run(H[1].run(H[0].run(randn()))) * I.hiss * this.itbOn * thr / E.level;
+        const hissLvl = I.hissFloor * Math.min(1, rpm / 400) + (1 - I.hissFloor) * thr; // fades out only when the engine stops
+        y += H[2].run(H[1].run(H[0].run(randn()))) * I.hiss * this.itbOn * hissLvl / E.level;
       }
       let o = Math.tanh(y * 0.38 * E.level * X.level) * 1.35 * (E.post || 1); // gentle: mostly linear, only peaks round off
       // soft knee above 0.9 so loud engines never clip the output
