@@ -329,7 +329,7 @@ const ENGINES = {
     idleNoise: 0.4,                            // ...and less turbulence noise at idle, or it hisses
     muff: [300, 620, 0.08, 1200, 1100], body: [80, 6], drone: [165, 1],
     rasp: [900, 0.12, 0.75], rumble: [180, 0.05, 1.35], intake: [300, 0.06, 0.14],
-    itb: { level: 0.55 },
+    itb: { level: 0.4, boxRing: 0.3 },        // its firing note crosses the box's ring around 5,500 rpm
     level: 1.4,
   },
   rotary13b: {
@@ -364,7 +364,7 @@ const ENGINES = {
     stumble: 0,                                // a rotary's brap is metronome-regular
     mid: [290, 6],                             // third pipe resonance heard on the reference
     rasp: [1300, 0.2, 0.8], rumble: [300, 0.06, 1.0], intake: [600, 0.12, 0.25],
-    itb: { level: 1.9, width: 0.6, roarBand: [250, 1800] }, // shorter gulps: its note is low and pure
+    itb: { level: 1.6, width: 0.6, roarBand: [250, 1800] }, // shorter gulps: its note is low and pure
     level: 1.3, post: 0.62,                    // driven harder, then turned down: rounder thumps
   },
 };
@@ -459,11 +459,17 @@ const ITB = {
   uneven: 2.0,    // how differently the trumpets breathe: the growl
   spread: 10,     // and how far apart in timing (crank degrees)
   jitter: 0.08,   // stroke-to-stroke variation
-  level: 0.5,     // the note
+  level: 0.45,    // the note
   roar: 1.2,      // rush of air through the trumpets
   roarBand: [300, 2200],
   duck: 3.6,      // how much of the exhaust the trumpets cover up on the throttle
   tick: 0,        // valve-train tick left on the throttle
+  // carbon airbox around the trumpets: a stiff, barely damped box. Sound bounces between its
+  // walls (a hollow ring at the box's modes) and the air in it bounces on its snout (a deep boom)
+  box: 0.0027,    // wall-to-wall round trip, seconds (~0.46 m box: rings near 370, 740, 1110 Hz)
+  boxRing: 0.5,  // how long it rings (carbon: stiff, little damping)
+  boxDamp: 2400, // the box's walls soak up the highest part of each bounce (Hz)
+  boom: [105, 1.1, 6], // the snout's Helmholtz boom: Hz, Q, dB
 };
 // how each trumpet differs from the average (firing order), scaled by `uneven`
 const ITB_UNEVEN = [0.26, 0.05, -0.23, -0.22, 0.25, -0.1, 0.15, -0.16];
@@ -488,6 +494,7 @@ class M20Dsp {
     this.intakeRoar = new Biquad(); this.zj = 0;
     this.itbOn = 0; this.itbSet = ''; this.itbPrev = 0;
     this.itbRoarHp = new Biquad(); this.itbRoarLp = new Biquad(); this.itbDc = new Biquad();
+    this.itbBox = new Delay(1024); this.itbBoxLp = 0; this.itbBoxA = 0; this.itbBoom = new Biquad();
     // turbo state: boost and shaft speed 0..1, lift-off envelopes and oscillator phases
     this.T = { on: 0, boost: 0, shaft: 0, armed: false, flut: 0, flutRate: 0, flutPh: 0,
                flutA: 1, whPh: 0, whPh2: 0, whAmp: 0, poof: 0, poofAtk: 1 };
@@ -686,6 +693,8 @@ class M20Dsp {
         this.itbSet = this.engine; this.I = I;
         this.itbRoarHp.set('hp', I.roarBand[0], 0.6, 0, fs); this.itbRoarLp.set('lp', I.roarBand[1], 0.6, 0, fs);
         this.itbDc.set('hp', 45, 0.7, 0, fs);
+        this.itbBoom.set('pk', I.boom[0], I.boom[1], I.boom[2], fs);
+        this.itbBoxA = 1 - Math.exp(-2 * Math.PI * I.boxDamp / fs);
       }
     }
     const itbT = this.target.intake === 'itb' ? 1 : 0;
@@ -866,7 +875,14 @@ class M20Dsp {
         const note = dB * (I.width * sp) / (36000 / fs) * Math.pow(6000 / Math.max(600, rpm), 0.75);
         const thrI = Math.sqrt(thr);                                 // they take over early in the pedal travel
         const roar = this.itbRoarLp.run(this.itbRoarHp.run(randn() * itbB)) * I.roar * Math.min(1.2, 0.4 + rpm / 7500);
-        const it = (note * I.level + roar) * this.itbOn * ign * thrI;
+        // through the airbox: its wall-to-wall ring (a feedback comb, a little damped each bounce)
+        // and the snout's boom
+        const dry = note * I.level + roar;
+        const back = this.itbBox.read(I.box * fs);
+        this.itbBoxLp += (back - this.itbBoxLp) * this.itbBoxA;
+        const inBox = dry + I.boxRing * this.itbBoxLp;
+        this.itbBox.write(inBox);
+        const it = this.itbBoom.run(inBox * (1 - 0.2 * I.boxRing)) * this.itbOn * ign * thrI;
         // the same on every engine and exhaust (the output stage scales by their levels)
         this.itbOut = this.itbDc.run(it) * (1 - 0.35 * Math.min(1, this.target.cabin || 0)) / (E.level * Math.sqrt(X.level));
       } else { this.itbOut = 0; this.itbPrev = 0; }
