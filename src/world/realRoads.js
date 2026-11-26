@@ -93,6 +93,9 @@ export function layRoute(pieces, seed = 1) {
 // ground: the colour of the land; rock: how often the uphill side is a bare rock cut; bush: how
 // thick the undergrowth is; snow: patches of old snow; maple: patches of autumn colour.
 export const SCENES = {
+  cedar: { forest: 'cedar', trees: 1.15, ground: 'forest', rock: 0.6, bush: 1, maple: 0.12 },
+  cedarMix: { forest: 'hardwood', trees: 1.2, ground: 'hardwood', rock: 0.75, bush: 1.3, maple: 0.3 },
+  lakeside: { forest: 'hardwood', trees: 0.9, ground: 'hardwood', rock: 1, bush: 1, maple: 0.25 },
   pine: { forest: 'pine', trees: 1, ground: 'forest', rock: 0.55, bush: 1, maple: 0 },
   pineRock: { forest: 'pine', trees: 0.65, ground: 'forest', rock: 1, bush: 0.6, maple: 0 },
   treeline: { forest: 'krummholz', trees: 0.35, ground: 'tundra', rock: 1, bush: 0.3, snow: 0.35, maple: 0 },
@@ -150,11 +153,21 @@ function realTrack(def, reverse = false) {
       (def.landmarks || []).map((l) => ({ ...l, f: fb(at(l.at) / get().length), side: typeof l.side === 'number' ? (reverse ? -l.side : l.side) : l.side })),
     stopsOpts: {
       noStation: !def.station,
-      noShow: true,
+      noShow: !def.show,
+      homeAt: def.homeAt,
       lots: () =>
         (def.lots || []).map((l) => ({ ...l, f: fb(at(l.at) / get().length), side: typeof l.side === 'number' ? (reverse ? -l.side : l.side) : l.side })),
     },
   };
+  // Bridges, between two marks: [{ f0, f1 }] as driven.
+  if (def.bridge) {
+    t.bridges = () => {
+      const r = get();
+      const a = r.marks[def.bridge[0]] / r.length;
+      const b = r.marks[def.bridge[1]] / r.length;
+      return [{ f0: reverse ? 1 - b : a, f1: reverse ? 1 - a : b, depth: def.bridgeDepth ?? 14, name: def.bridgeName }];
+    };
+  }
   if (def.stages) {
     // A road made of runs (a climb and a descent): each with its own start and
     // finish, in metres along the road.
@@ -241,10 +254,88 @@ const US276 = {
   ],
 };
 
+// ---------------------------------------------------------------------------------------------
+// The Dragon's Tail, after the real one (US 129, Deals Gap): from the store at the foot of the
+// gap, a short climb to the gap itself, then down: a long, dense run of tight corners off the top
+// (the "upper Dragon"), longer bends lower down, and finally the sweepers along the lake shore,
+// past the overlook, to the bridge over the creek at the far end. About 18 km and 300 corners,
+// no side roads and no driveways. Kept in the style of a quiet Japanese mountain road.
+
+const DRAGON = {
+  name: "Dragon's Tail",
+  seed: 318,
+  width: 'narrow',
+  peaks: 1000,
+  relief: 170,
+  waterfalls: 3,
+  station: true, // the store at the start
+  show: false,
+  homeAt: 2200, // your cabin and workshop, in the forest past the gap
+  town: false,
+  pieces: [
+    { S: 110, g: 0.01, b: 0.2, sc: 'cedar' },
+    // Up to the gap.
+    { W: 1050, r: [22, 68], a: [25, 85], gap: 12, g: 0.042, b: 0.3 },
+    { S: 20, g: 0.01, mark: 'gap' },
+    // The upper Dragon: corner after corner, falling steadily off the gap.
+    { W: 5600, r: [16, 55], a: [35, 125], gap: 7, g: -0.04, b: 0.15 },
+    // Lower down: longer bends through mixed forest, gently downhill.
+    { W: 6200, r: [20, 75], a: [28, 100], gap: 10, g: -0.009, b: 0.8, sc: 'cedarMix' },
+    // Along the lake shore: fast, open sweepers above the water.
+    { E: 60, g: -0.004, b: 0.9, sc: 'lakeside', mark: 'lake0' },
+    { W: 1500, r: [28, 72], a: [26, 80], gap: 10 },
+    { S: 30, mark: 'overlook' },
+    { W: 2600, r: [28, 72], a: [26, 80], gap: 10, mark: 'lake1' },
+    { S: 20, mark: 'bridge0', g: 0 },
+    { S: 40, mark: 'bridge1' },
+    { S: 30 },
+  ],
+  bridge: ['bridge0', 'bridge1'],
+  bridgeDepth: 16,
+  bridgeName: 'TABCAT CREEK',
+  lots: [
+    { at: 'overlook', len: 60, side: 'out', width: 14, label: ['CALDERWOOD', 'OVERLOOK'], surface: 'asphalt', stone: true, cars: 1 },
+    { at: 1e9, len: 50, side: 'out', width: 12, label: ['TABCAT CREEK', 'END OF THE DRAGON'], surface: 'gravel' },
+  ],
+  // The lake: a chain of water down the outside of the last stretch.
+  lakes: (road) => {
+    const r = layRoute(DRAGON.pieces, DRAGON.seed);
+    const i0 = Math.round(r.marks.lake0 / 2);
+    const i1 = Math.round(r.marks.bridge0 / 2);
+    const out = [];
+    const near = (x, z, R) => {
+      for (let j = Math.max(0, i0 - 400); j < road.count; j += 2) if (Math.hypot(road.x[j] - x, road.z[j] - z) < R) return true;
+      return false;
+    };
+    for (let i = i0; i <= i1; i += 60) {
+      const h = road.heading[i];
+      // The lake lies on the right going down (north-west, in the real valley).
+      const lx = -Math.cos(h);
+      const lz = Math.sin(h);
+      let R = 110;
+      let d = R + 24;
+      while (R > 40 && near(road.x[i] + lx * d, road.z[i] + lz * d, R + 16)) {
+        R -= 10;
+        d = R + 24;
+      }
+      if (R > 40) out.push({ x: road.x[i] + lx * d, z: road.z[i] + lz * d, r: R, level: road.y[i] - 9 });
+    }
+    // One level for the whole lake: the lowest of them.
+    const level = Math.min(...out.map((l) => l.level));
+    return out.map((l) => ({ ...l, level }));
+  },
+};
+
 // Each road is offered in its best direction only (downhill, the touge way). The other direction
 // is still built here (and tested) but marked hidden: it never appears in the game, and an old
 // save that names it is moved to the road's best direction (see `best`).
 export const REAL_TRACKS = {
+  dragon: Object.assign(realTrack(DRAGON), {
+    name: "Dragon's Tail",
+    blurb: '18 km · 300 corners, no side roads, no driveways',
+    region: 'Mountain pass',
+    desc: 'From the store at the foot of the gap up to the pass, then down through hundreds of tight corners in the cedars, out into longer bends, and along the lake shore past the overlook to the bridge at the end. Your cabin and workshop are just past the gap.',
+  }),
   'tunitas-down': Object.assign(realTrack(TUNITAS), {
     name: 'Tunitas Creek',
     blurb: 'California · Skyline ridge down through the redwoods to the coast',

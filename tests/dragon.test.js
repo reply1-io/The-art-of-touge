@@ -10,8 +10,8 @@ import { CAR, TUNABLE_DEFAULTS } from '../src/config.js';
 
 const road = TRACKS.dragon.road();
 
-test("Dragon's Tail: long, packed with corners, no straights, never crosses itself", () => {
-  assert.ok(road.length > 7500, `length ${road.length}`);
+test("Dragon's Tail: the real length and corner count, no long straights, never crosses itself", () => {
+  assert.ok(road.length > 16500 && road.length < 18500, `length ${road.length}`); // the real road: 11 miles
   let corners = 0;
   let inCorner = false;
   let sign = 0;
@@ -28,8 +28,8 @@ test("Dragon's Tail: long, packed with corners, no straights, never crosses itse
     if (i > 60 && i < road.count - 70) longest = Math.max(longest, straight);
     if (i > 5 && i < road.count - 5) minR = Math.min(minR, 1 / Math.max(1e-6, Math.abs(k)));
   }
-  assert.ok(corners / (road.length / 1000) > 15, `${corners} corners`);
-  assert.ok(longest <= 30, `longest straight ${longest} m`);
+  assert.ok(corners > 280 && corners < 340, `${corners} corners`); // about 318 on the real road
+  assert.ok(longest <= 50, `longest straight ${longest} m`); // (only the run onto the bridge at the end)
   assert.ok(minR > 11, `tightest radius ${minR}`);
   let closest = Infinity;
   for (let i = 0; i < road.count; i += 3) for (let j = i + 60; j < road.count; j += 3) closest = Math.min(closest, Math.hypot(road.x[i] - road.x[j], road.z[i] - road.z[j]));
@@ -49,7 +49,7 @@ test("Dragon's Tail: a careful driver gets from start to finish", async () => {
   car.trans.setDrive('D', 0);
   const q = {};
   let hint = i0;
-  for (let t = 0; t < 1200; t += 1 / 60) {
+  for (let t = 0; t < 2600; t += 1 / 60) {
     const pos = car.body.translation();
     road.query(pos.x, pos.z, hint, q);
     hint = q.index;

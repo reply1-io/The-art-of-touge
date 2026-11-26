@@ -10,7 +10,7 @@ const G = 9.81;
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
 export class BotDriver {
-  constructor(road, { grip = 0.8, hairpinGrip = 0.68, brake = 6.2, topSpeed = 42 } = {}) {
+  constructor(road, { grip = 0.65, hairpinGrip = 0.54, brake = 6.2, topSpeed = 42 } = {}) {
     this.road = road;
     this.grip = grip; // lateral g it is willing to use in normal corners
     this.hairpinGrip = hairpinGrip; // and in tight ones
@@ -20,7 +20,8 @@ export class BotDriver {
     this.hint = 0;
   }
 
-  // Corner speed the bot allows at sample j.
+  // Corner speed the bot allows at sample j. (On the narrow roads there is no room to run wide,
+  // so it keeps well inside the car's grip.)
   #cornerSpeed(j) {
     const k = Math.abs(this.road.kappa[j]);
     if (k < 1e-4) return this.topSpeed;
