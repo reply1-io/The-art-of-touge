@@ -365,6 +365,7 @@ export class Mountain {
     this.#buildTrees();
     this.#buildRoadside();
     this.#buildLandmarks();
+    this.#buildLonelyStops();
     this.#buildRoadSigns();
     this.#buildJunctionSigns();
     this.#buildStops();
@@ -2445,11 +2446,13 @@ export class Mountain {
         add(place(g, i, -1, 5.4), i);
       }
       // Stone lanterns, little shrines and torii gates where there is room beside the road.
-      if (i % 170 === 85 && this.track.shrines !== false) {
+      if (i % 300 === 150 && this.track.shrines !== false) {
         const side2 = t.sideProfile(i, 1) >= 0 ? 1 : -1;
         if (road.clearance(i, side2, 20) < 20) continue;
         const g = new THREE.Group();
-        const kind = Math.floor(noise2(i * 0.13, 4) * 3);
+        // Mostly little jizo shrines and stone lanterns; a red torii only now and then.
+        const roll = noise2(i * 0.13, 4);
+        const kind = roll < 0.15 ? 0 : roll < 0.6 ? 1 : 2;
         if (kind === 0) {
           // Torii gate.
           for (const x of [-1.4, 1.4]) {
@@ -2492,6 +2495,126 @@ export class Mountain {
         g.scale.setScalar(1);
         add(place(g, i, side2, 11), i);
       }
+    }
+  }
+
+  // What you find alone on a quiet Japanese mountain road at night: a single vending machine
+  // glowing at the edge of the forest, and an old bus stop (tin shelter, a bench, the round sign)
+  // for a bus that comes twice a day. One or the other every couple of kilometres.
+  #buildLonelyStops() {
+    const road = this.road;
+    const t = this.terrain;
+    const lam = (color) => new THREE.MeshLambertMaterial({ color, flatShading: true });
+    const concrete = lam(0x8d8b85);
+    const tin = lam(0x6f7b80);
+    const rust = lam(0x7a4a2c);
+    const wood = lam(0x6b5236);
+    const tex = (w, h, draw) => {
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      draw(c.getContext('2d'));
+      const tx = new THREE.CanvasTexture(c);
+      tx.colorSpace = THREE.SRGBColorSpace;
+      tx.magFilter = THREE.NearestFilter;
+      return tx;
+    };
+    // The machine's front: lit rows of cans and bottles behind glass, price buttons, the slot.
+    const front = tex(32, 64, (g) => {
+      g.fillStyle = '#e9eef2';
+      g.fillRect(0, 0, 32, 64);
+      g.fillStyle = '#f7fbff';
+      g.fillRect(2, 3, 28, 30);
+      const cans = ['#c4261d', '#1d5fb4', '#e0a020', '#2f8a3c', '#f2f2f2', '#6b3a1e', '#d84a8a'];
+      for (let r = 0; r < 3; r++) {
+        for (let k = 0; k < 6; k++) {
+          g.fillStyle = cans[(r * 5 + k * 3) % cans.length];
+          g.fillRect(3 + k * 4.5, 5 + r * 10, 3, 6);
+          g.fillStyle = '#d93a2a';
+          g.fillRect(3 + k * 4.5, 12 + r * 10, 3, 1);
+        }
+      }
+      g.fillStyle = '#26323c';
+      g.fillRect(4, 38, 10, 6);
+      g.fillStyle = '#9aa4ac';
+      g.fillRect(20, 38, 6, 3);
+      g.fillStyle = '#1b1f23';
+      g.fillRect(4, 52, 24, 7);
+    });
+    const machineMat = [lam(0xd9dee2), lam(0xd9dee2), lam(0xd9dee2), lam(0xd9dee2), new THREE.MeshBasicMaterial({ map: front }), lam(0xd9dee2)];
+    const glow = glowTexture('rgba(205,235,255,0.55)', 'rgba(150,200,255,0)');
+    const sign = tex(32, 32, (g) => {
+      g.fillStyle = '#f4f4f0';
+      g.beginPath();
+      g.arc(16, 16, 15, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = '#1d4fa0';
+      g.lineWidth = 3;
+      g.stroke();
+      g.fillStyle = '#1d4fa0';
+      g.font = 'bold 11px sans-serif';
+      g.textAlign = 'center';
+      g.fillText('バス', 16, 20);
+    });
+    const signMat = new THREE.MeshLambertMaterial({ map: sign, side: THREE.DoubleSide });
+    let k = 0;
+    for (let i = 600; i < road.count - 200; i += 1100 + Math.floor(noise2(i * 0.01, 3) * 500)) {
+      // Find a spot nearby with room beside the road and no rail in the way.
+      let at = -1;
+      let side = 1;
+      for (let d = 0; d < 200 && at < 0; d += 4) {
+        for (const sd of [1, -1]) {
+          const j = i + d;
+          if (this.layout?.rail?.[sd]?.[j] || road.clearance(j, sd, 14) < 14 || Math.abs(road.kappa[j]) > 1 / 60) continue;
+          const p = road.pointAt(j, sd * (road.w.RAIL + 2));
+          if (this.#onLot(p[0], p[2], j, 3) || t.inLake?.(p[0], p[2])) continue;
+          at = j;
+          side = sd;
+          break;
+        }
+      }
+      if (at < 0) continue;
+      const g = new THREE.Group();
+      const p = road.pointAt(at, side * (road.w.RAIL + 2.2));
+      const y = Math.max(t.heightAt(p[0], p[2]), road.y[at] - 0.3);
+      g.position.set(p[0], y, p[2]);
+      g.rotation.y = road.heading[at] + (side > 0 ? Math.PI / 2 : -Math.PI / 2);
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.25, 2.2), concrete);
+      pad.position.y = 0.08;
+      g.add(pad);
+      if (k++ % 2 === 0) {
+        // Vending machine, glowing, with its little light on the ground.
+        const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1.85, 0.75), machineMat);
+        m.position.set(0, 1.12, 0.2);
+        const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, blending: THREE.AdditiveBlending, depthWrite: false }));
+        halo.scale.set(5.5, 5.5, 1);
+        halo.position.set(0, 1.3, 0.7);
+        const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.2, 0.7, 8), lam(0x2e6a3a));
+        bin.position.set(0.8, 0.55, 0.3);
+        g.add(m, halo, bin);
+        this.lampGlows?.push(halo);
+      } else {
+        // Bus stop: a tin shelter with a rusty edge, a wooden bench, the round sign on its post.
+        const back = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2, 0.06), tin);
+        back.position.set(0, 1.2, -0.8);
+        const roof = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.06, 1.4), rust);
+        roof.position.set(0, 2.25, -0.25);
+        roof.rotation.x = -0.12;
+        for (const x of [-1.25, 1.25]) {
+          const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.1, 0.06), tin);
+          post.position.set(x, 1.15, 0.35);
+          g.add(post);
+        }
+        const bench = new THREE.Mesh(new THREE.BoxGeometry(2, 0.08, 0.4), wood);
+        bench.position.set(0, 0.55, -0.55);
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.2, 6), lam(0xb8b8b0));
+        pole.position.set(1.7, 1.2, 0.8);
+        const disc = new THREE.Mesh(new THREE.CircleGeometry(0.3, 16), signMat);
+        disc.position.set(1.7, 2.3, 0.82);
+        disc.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+        g.add(back, roof, bench, pole, disc);
+      }
+      this.#addChunk(g, p[0], p[2], 8);
     }
   }
 

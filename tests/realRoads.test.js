@@ -80,7 +80,7 @@ test('Real roads: the agreed stops are there', () => {
   // Tunitas: a turnaround (both sides of the road) at each end.
   const tz = world(TRACKS['tunitas-down']).terrain.zones.filter((z) => z.lot?.culdesac);
   assert.equal(tz.length, 4);
-  for (const id of ['us276-up', 'us276-down']) for (const n of ['PISGAH', 'LOOKING GLASS', 'BLUE RIDGE']) assert.ok(lots(id).includes(n), `${id} ${n}`);
+  for (const id of ['us276-up', 'us276-down']) for (const n of ['国有林', '滝', '展望台']) assert.ok(lots(id).includes(n), `${id} ${n}`);
 });
 
 test('Real roads: people at the roadside, never standing on the road', async () => {

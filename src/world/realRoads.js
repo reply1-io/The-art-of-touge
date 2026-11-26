@@ -101,7 +101,8 @@ export const SCENES = {
   treeline: { forest: 'krummholz', trees: 0.35, ground: 'tundra', rock: 1, bush: 0.3, snow: 0.35, maple: 0 },
   alpine: { forest: 'krummholz', trees: 0.08, ground: 'tundra', rock: 1, bush: 0.15, snow: 0.6, maple: 0 },
   aspen: { forest: 'pine', trees: 0.85, ground: 'forest', rock: 0.4, bush: 1, maple: 0.25, aspen: true },
-  redwood: { forest: 'redwood', trees: 1.25, ground: 'redwood', rock: 0.25, bush: 1.6, maple: 0, ferns: true },
+  // Dense, dark groves of tall Japanese cedar (sugi), ferns underneath.
+  redwood: { forest: 'cedar', trees: 1.45, ground: 'forest', rock: 0.25, bush: 1.4, maple: 0, ferns: true },
   oakGrass: { forest: 'oak', trees: 0.45, ground: 'grass', rock: 0.1, bush: 0.4, maple: 0 },
   coast: { forest: 'oak', trees: 0.05, ground: 'grass', rock: 0.05, bush: 0.3, maple: 0 },
   hardwood: { forest: 'hardwood', trees: 1.25, ground: 'hardwood', rock: 0.85, bush: 1.6, maple: 0.35, rhodo: true },
@@ -140,7 +141,7 @@ function realTrack(def, reverse = false) {
     },
     sceneAt: (f) => SCENES[per(f)[2]] || SCENES.pine,
     cornerLights: false,
-    shrines: false,
+    shrines: true, // curve mirrors, Japanese road signs, jizo shrines and lanterns
     rails: def.rails ?? true,
     relief: def.relief ?? 160,
     peaks: def.peaks ?? 900,
@@ -205,8 +206,8 @@ const TUNITAS = {
     { S: 130, g: 0 },
   ],
   lots: [
-    { at: 60, len: 46, side: 'both', width: 11, label: ['SKYLINE BLVD', 'TUNITAS CREEK RD'], surface: 'asphalt', culdesac: true },
-    { at: 1e9, len: 46, side: 'both', width: 11, label: ['TUNITAS CREEK RD', 'HWY 1 · PACIFIC OCEAN'], surface: 'asphalt', culdesac: true },
+    { at: 60, len: 46, side: 'both', width: 11, label: ['峠 駐車場', 'SUMMIT PARKING'], surface: 'asphalt', culdesac: true },
+    { at: 1e9, len: 46, side: 'both', width: 11, label: ['海岸線', 'COAST ROAD · SEA'], surface: 'asphalt', culdesac: true },
   ],
   // The Pacific, past the coast end.
   lakes: (road, reverse) => {
@@ -248,9 +249,9 @@ const US276 = {
     { S: 150, g: 0 },
   ],
   lots: [
-    { at: 40, len: 60, side: 'out', width: 18, label: ['PISGAH', 'NATIONAL FOREST'], surface: 'gravel', wood: true },
-    { at: 'falls', len: 50, side: 'out', width: 12, label: ['LOOKING GLASS', 'FALLS'], surface: 'gravel', falls: true, stone: true },
-    { at: 1e9, len: 70, side: 'out', width: 16, label: ['BLUE RIDGE', 'PARKWAY OVERLOOK'], surface: 'asphalt', stone: true, cars: 2 },
+    { at: 40, len: 60, side: 'out', width: 18, label: ['国有林', 'NATIONAL FOREST'], surface: 'gravel', wood: true },
+    { at: 'falls', len: 50, side: 'out', width: 12, label: ['滝', 'WATERFALL'], surface: 'gravel', falls: true, stone: true },
+    { at: 1e9, len: 70, side: 'out', width: 16, label: ['展望台', 'OVERLOOK'], surface: 'asphalt', stone: true, cars: 2 },
   ],
 };
 
@@ -294,8 +295,8 @@ const DRAGON = {
   bridgeDepth: 16,
   bridgeName: 'TABCAT CREEK',
   lots: [
-    { at: 'overlook', len: 60, side: 'out', width: 14, label: ['CALDERWOOD', 'OVERLOOK'], surface: 'asphalt', stone: true, cars: 1 },
-    { at: 1e9, len: 50, side: 'out', width: 12, label: ['TABCAT CREEK', 'END OF THE DRAGON'], surface: 'gravel' },
+    { at: 'overlook', len: 60, side: 'out', width: 14, label: ['展望台', 'LAKE OVERLOOK'], surface: 'asphalt', stone: true, cars: 1 },
+    { at: 1e9, len: 50, side: 'out', width: 12, label: ['終点', 'END OF THE DRAGON'], surface: 'gravel' },
   ],
   // The lake: a chain of water down the outside of the last stretch.
   lakes: (road) => {
