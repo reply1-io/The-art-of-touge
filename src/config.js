@@ -439,7 +439,7 @@ export const TUNABLE_DEFAULTS = {
 export const INTAKES = {
   stock: { name: 'Stock airbox', blurb: 'Quiet factory airbox and paper filter.' },
   pod: { name: 'Pod filter', blurb: 'Open cone filter. A few extra Nm up top and an audible gulp of air.' },
-  itb: { name: 'ITBs', blurb: 'Individual throttle bodies: +20 Nm and +15 hp, razor response, and a deep, soft intake grumble.' },
+  itb: { name: 'ITBs', blurb: 'Individual throttle bodies in a carbon airbox: +20 Nm and +15 hp, razor response, and a deep, hollow trumpet howl that takes over on the throttle. Louder and angrier with a race exhaust.' },
 };
 export const TURBOS = {
   none: { name: 'None', blurb: 'Naturally aspirated. Smooth, linear and predictable.' },
