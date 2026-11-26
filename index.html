@@ -23,31 +23,31 @@
 
     <div id="controls" class="hidden">
       <div id="steer"><div id="steer-track"></div><div id="steer-knob"></div></div>
-      <button type="button" id="left" class="btn">&#9664;</button>
-      <button type="button" id="right" class="btn">&#9654;</button>
-      <button type="button" id="clutch" class="btn">CLUTCH</button>
+      <!-- No words on the controls: glowing pixel symbols, like the lamps on a dash. -->
+      <button type="button" id="left" class="btn" aria-label="Steer left"><svg class="pxicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 2h1v12h-1zM9 3h1v10H9zM8 4h1v8H8zM7 5h1v6H7zM6 6h1v4H6zM5 7h1v2H5z" fill-rule="evenodd" /></svg></button>
+      <button type="button" id="right" class="btn" aria-label="Steer right"><svg class="pxicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2h1v12H5zM6 3h1v10H6zM7 4h1v8H7zM8 5h1v6H8zM9 6h1v4H9zM10 7h1v2h-1z" fill-rule="evenodd" /></svg></button>
+      <button type="button" id="clutch" class="btn" aria-label="Clutch"><svg class="pxicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2h2v12H4zM10 2h2v12h-2zM1 7h3v2H1zM6 7h4v2H6zM12 7h3v2h-3z" fill-rule="evenodd" /></svg></button>
+      <!-- Sequential shifter: tap up or down a gear. -->
       <div id="shifter">
-        <canvas id="shifter-gate"></canvas>
-        <div id="shifter-knob"></div>
+        <button type="button" id="shift-up" class="btn" aria-label="Shift up"><svg class="pxicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 3h2v1H7zM6 4h4v1H6zM5 5h6v1H5zM4 6h8v1H4zM3 7h10v1H3zM7 8h2v5H7z" fill-rule="evenodd" /></svg></button>
+        <button type="button" id="shift-down" class="btn" aria-label="Shift down"><svg class="pxicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 3h2v5H7zM3 8h10v1H3zM4 9h8v1H4zM5 10h6v1H5zM6 11h4v1H6zM7 12h2v1H7z" fill-rule="evenodd" /></svg></button>
       </div>
       <div id="dr">
         <button type="button" data-drive="D" class="btn">D</button>
         <button type="button" data-drive="R" class="btn">R</button>
       </div>
-      <button type="button" id="handbrake" class="btn">HAND<br />BRAKE</button>
-      <button type="button" id="brake" class="btn tall"><span>BRAKE</span></button>
-      <button type="button" id="gas" class="btn tall"><span>GAS</span></button>
+      <button type="button" id="handbrake" class="btn" aria-label="Handbrake"><svg class="pxicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h4v1H6zM5 4h1v1H5zM10 4h1v1h-1zM4 5h1v6H4zM11 5h1v6h-1zM5 11h1v1H5zM10 11h1v1h-1zM6 12h4v1H6zM2 4h1v1H2zM1 5h1v6H1zM2 11h1v1H2zM13 4h1v1h-1zM14 5h1v6h-1zM13 11h1v1h-1zM6 5h1v6H6zM7 5h2v1H7zM9 6h1v2H9zM7 8h2v1H7z" fill-rule="evenodd" /></svg></button>
+      <button type="button" id="brake" class="btn tall" aria-label="Brake"><svg class="pxicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h4v1H6zM5 4h1v1H5zM10 4h1v1h-1zM4 5h1v6H4zM11 5h1v6h-1zM5 11h1v1H5zM10 11h1v1h-1zM6 12h4v1H6zM2 4h1v1H2zM1 5h1v6H1zM2 11h1v1H2zM13 4h1v1h-1zM14 5h1v6h-1zM13 11h1v1h-1zM7 5h2v4H7zM7 10h2v1H7z" fill-rule="evenodd" /></svg></button>
+      <button type="button" id="gas" class="btn tall" aria-label="Gas"><svg class="pxicon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h8v12H2zM4 4h4v3H4zM1 14h10v1H1zM11 3h1v2h-1zM10 5h2v1h-2zM12 6h1v6h-1zM11 12h1v1h-1z" fill-rule="evenodd" /></svg></button>
       <button type="button" id="start" class="btn hidden">START</button>
     </div>
 
     <div id="topbar" class="hidden">
       <button type="button" id="btn-pause" aria-label="Menu">
-        <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="3" width="26" height="26" rx="3" /><path d="M9 11h14M9 16h14M9 21h14" /></svg>
-        <span>MENU</span>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 1h12v1H2zM1 2h1v12H1zM14 2h1v12h-1zM2 14h12v1H2zM4 4h8v2H4zM4 7h8v2H4zM4 10h8v2H4z" /></svg>
       </button>
       <button type="button" id="btn-cam" aria-label="Change camera">
-        <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="8" width="26" height="19" rx="3" /><circle cx="16" cy="17.5" r="5.5" /><path d="M21 8V5h5v3" /></svg>
-        <span>CAMERA</span>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 2h3v2h-3zM2 4h12v1H2zM1 5h1v8H1zM14 5h1v8h-1zM2 13h12v1H2zM7 6h2v1H7zM6 7h1v1H6zM9 7h1v1H9zM5 8h1v2H5zM10 8h1v2h-1zM6 10h1v1H6zM9 10h1v1H9zM7 11h2v1H7z" /></svg>
       </button>
       <canvas id="minimap" aria-label="Map around the car"></canvas>
     </div>
@@ -59,7 +59,11 @@
       <div id="chat-log"></div>
       <input type="text" id="chat-input" maxlength="80" placeholder="Say something" aria-label="Chat message" />
     </div>
-    <div id="vhs" aria-hidden="true"><span id="vhs-play">&#9654; PLAY</span></div>
+    <div id="vhs" aria-hidden="true">
+      <!-- The camcorder's display, burned into the tape: recording, the tape counter, the date. -->
+      <span id="vhs-rec"><i></i>REC <b id="vhs-tc">0:00:00</b></span>
+      <span id="vhs-date"></span>
+    </div>
 
     <section id="title" class="screen side">
       <div class="brand">
@@ -68,30 +72,37 @@
         <p class="sub" id="title-sub">BMW E30 325i</p>
         <p class="title-money"></p>
       </div>
+      <div class="panel home-panel">
+        <button type="button" class="home-road" id="btn-roads-cur" aria-label="Choose a road">
+          <span class="home-road-label">ROAD</span>
+          <b id="home-road-name"></b>
+          <small id="home-road-blurb"></small>
+        </button>
+        <button type="button" id="btn-drive" class="big home-btn">SOLO DRIVE</button>
+        <button type="button" id="btn-race" class="big home-btn">TOUGE BATTLE</button>
+        <div class="row home-row">
+          <button type="button" id="btn-roads" class="big ghost">ROADS</button>
+          <button type="button" id="btn-settings" class="big ghost">SETTINGS</button>
+        </div>
+        <p class="hint" id="loading">Loading physics&hellip;</p>
+      </div>
+    </section>
+
+    <section id="settings" class="screen side hidden">
       <div class="panel">
-        <div class="field">
-          <span class="label">Map <span class="map-hint">Tap a road to go there</span></span>
-          <div class="map-wrap"><canvas class="map" aria-label="Map of the mountain roads"></canvas><span class="map-loading">Drawing the map&hellip;</span></div>
-          <button type="button" class="btn-loop">FULL LOOP</button>
-        </div>
-        <div class="field">
-          <span class="label">Driving mode</span>
-          <div class="choices" data-setting="driveMode"></div>
-        </div>
+        <h2>SETTINGS</h2>
         <div class="field">
           <span class="label">Transmission</span>
           <div class="choices" data-setting="mode"></div>
         </div>
+        <div class="field drive-fov">
+          <span class="label">Field of view <b>60&deg;</b></span>
+          <input type="range" min="50" max="150" step="1" value="60" aria-label="Field of view while driving" />
+        </div>
         <div class="field">
-          <span class="label">Time of day</span>
-          <div class="choices" data-setting="time"></div>
+          <span class="label">Steering</span>
+          <div class="choices" data-setting="steering"></div>
         </div>
-        <div class="row">
-          <button type="button" id="btn-drive" class="big">DRIVE</button>
-          <button type="button" id="btn-race" class="big">RACE</button>
-          <button type="button" id="btn-shop" class="big ghost">TUNING SHOP</button>
-        </div>
-        <p class="hint" id="loading">Loading physics&hellip;</p>
         <div class="field">
           <span class="label">Money</span>
           <div class="choices" data-setting="money"></div>
@@ -115,7 +126,18 @@
             </div>
           </details>
         </div>
+        <div class="row">
+          <button type="button" id="btn-settings-back" class="big">DONE</button>
+        </div>
       </div>
+    </section>
+
+    <section id="roads" class="screen hidden">
+      <div class="roads-head">
+        <h2>ROADS</h2>
+        <button type="button" id="btn-roads-back" class="big ghost">BACK</button>
+      </div>
+      <div class="roads-grid" id="roads-grid"></div>
     </section>
 
     <section id="pause" class="screen side hidden">
@@ -124,11 +146,13 @@
         <div class="row">
           <button type="button" id="btn-resume" class="big">RESUME</button>
           <button type="button" id="btn-recover" class="big ghost">BACK ON ROAD</button>
+          <button type="button" id="btn-home" class="big ghost">GO HOME</button>
+          <button type="button" id="btn-replay" class="big ghost">REPLAY</button>
         </div>
         <div class="field">
           <span class="label">Map <span class="map-hint">Tap a road to go there</span></span>
           <div class="map-wrap"><canvas class="map" aria-label="Map of the mountain roads"></canvas><span class="map-loading">Drawing the map&hellip;</span></div>
-          <button type="button" class="btn-loop">FULL LOOP</button>
+          <button type="button" class="btn-loop">WHOLE ROAD</button>
         </div>
         <div class="field">
           <span class="label">Driving mode</span>
@@ -138,9 +162,10 @@
           <span class="label">Transmission</span>
           <div class="choices" data-setting="mode"></div>
         </div>
-        <div class="field">
-          <span class="label">Time of day</span>
-          <div class="choices" data-setting="time"></div>
+        <div class="field drive-fov">
+          <span class="label">Field of view <b>60&deg;</b></span>
+          <input type="range" min="50" max="150" step="1" value="60" aria-label="Field of view while driving" />
+          <span class="map-hint">Wider brings the camera closer to the car</span>
         </div>
         <div class="row">
           <button type="button" id="btn-restart" class="big ghost">BACK TO THE START</button>
@@ -174,10 +199,6 @@
           <span class="label">Steering</span>
           <div class="choices" data-setting="steering"></div>
         </div>
-        <div class="field">
-          <span class="label">Shifter</span>
-          <div class="choices" data-setting="shifter"></div>
-        </div>
         <button type="button" id="btn-tuning" class="link">Dev tuning panel</button>
       </div>
     </section>
@@ -207,6 +228,70 @@
       </div>
     </section>
 
+    <section id="replay" class="hidden" aria-label="Replay">
+      <div id="replay-stage"></div>
+      <div id="replay-osd" aria-hidden="true">
+        <span class="osd-play">&#9654; PLAY</span>
+        <span class="osd-counter">0:00:00</span>
+        <span class="osd-cam">CAM 1</span>
+        <span class="osd-date"></span>
+        <span class="osd-logo"><b>TOUGE VIDEO</b><small class="osd-road"></small></span>
+      </div>
+
+      <div id="replay-edit" class="hidden">
+        <div class="replay-pad" aria-label="Fly the camera">
+          <button type="button" data-move="u" data-dir="1" class="pad-u">UP</button>
+          <button type="button" data-move="f" data-dir="1" class="pad-f" aria-label="Forward">&#9650;</button>
+          <button type="button" data-move="s" data-dir="-1" class="pad-l" aria-label="Left">&#9664;</button>
+          <button type="button" data-move="s" data-dir="1" class="pad-r" aria-label="Right">&#9654;</button>
+          <button type="button" data-move="f" data-dir="-1" class="pad-b" aria-label="Back">&#9660;</button>
+          <button type="button" data-move="u" data-dir="-1" class="pad-d">DN</button>
+        </div>
+        <div class="replay-tools">
+          <div class="rt-group">
+            <span class="rt-label">Watch from</span>
+            <div class="rt-seg" id="rp-view">
+              <button type="button" data-view="free">FLYING</button>
+              <button type="button" data-view="shots">MY CAMS</button>
+            </div>
+          </div>
+          <div class="rt-group">
+            <span class="rt-label">Cameras <b id="rp-count">0</b></span>
+            <div class="rt-row">
+              <button type="button" id="rp-add">+ ADD HERE</button>
+              <button type="button" id="rp-clear" aria-label="Clear cameras">CLEAR</button>
+            </div>
+          </div>
+          <div class="rt-group">
+            <span class="rt-label">Lens <b id="rp-fov-val">55&deg;</b></span>
+            <input type="range" id="rp-fov" class="rp-dial" min="10" max="150" step="1" value="55" aria-label="Field of view" />
+            <div class="rt-row">
+              <button type="button" id="rp-fish">FISHEYE</button>
+              <button type="button" id="rp-look">FOLLOW CAR</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="replay-bar">
+        <div class="rb-row">
+          <button type="button" id="rp-restart" class="rb-icon" aria-label="Back to the start">&#9198;</button>
+          <button type="button" id="rp-play" class="rb-icon" aria-label="Play or pause">&#10074;&#10074;</button>
+          <input type="range" id="rp-time" min="0" max="1" step="0.001" value="0" aria-label="Replay position" />
+          <span id="rp-clock">0:00</span>
+          <button type="button" id="rp-speed" aria-label="Playback speed">1&times;</button>
+          <div class="rt-seg" id="rp-mode">
+            <button type="button" data-mode="vhs">VHS</button>
+            <button type="button" data-mode="edit">EDIT</button>
+          </div>
+          <button type="button" id="rp-hide" class="rb-icon" aria-label="Hide the controls">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12z" /><circle cx="12" cy="12" r="2.6" /><path d="M4 20L20 4" /></svg>
+          </button>
+          <button type="button" id="rp-exit" aria-label="Exit the replay">EXIT</button>
+        </div>
+      </div>
+    </section>
+
     <section id="teleport" class="screen hidden">
       <div class="panel">
         <h2 id="tp-title">TELEPORT?</h2>
@@ -227,6 +312,7 @@
         <div class="row">
           <button type="button" id="btn-res-retry" class="big">RACE AGAIN</button>
           <button type="button" id="btn-res-free" class="big ghost">FREE DRIVE</button>
+          <button type="button" id="btn-res-replay" class="big ghost">WATCH REPLAY</button>
         </div>
       </div>
     </section>

@@ -90,7 +90,16 @@ export class CarAudio {
     comp.ratio.value = 4;
     this.master = ctx.createGain();
     this.master.gain.value = this.muted ? 0 : 0.8;
-    this.master.connect(comp).connect(ctx.destination);
+    // Where the car is from the listener (replays): distance muffles and quietens it, and it sits
+    // left or right. Off (full, centre, clear) while you drive it yourself.
+    this.spaceFilter = ctx.createBiquadFilter();
+    this.spaceFilter.type = 'lowpass';
+    this.spaceFilter.frequency.value = 20000;
+    this.spaceGain = ctx.createGain();
+    this.spacePan = ctx.createStereoPanner();
+    this.master.connect(this.spaceFilter).connect(this.spaceGain).connect(this.spacePan).connect(comp).connect(ctx.destination);
+    // Sounds of the place itself (ambience) join after that, unaffected.
+    this.world = comp;
 
     // ---- M20 straight-six (procedural, see m20-dsp.js) ----
     // Loads in the background; until it is ready, or if the browser refuses it, the simple
@@ -543,6 +552,15 @@ export class CarAudio {
       o.start(t);
       o.stop(t + 0.4);
     }
+  }
+
+  // gain 0..1, pan -1 (left)..1 (right), cutoff Hz. No arguments: back to normal.
+  setSpatial({ gain = 1, pan = 0, cutoff = 20000 } = {}) {
+    if (!this.ctx || !this.spaceGain) return;
+    const t = this.ctx.currentTime;
+    this.spaceGain.gain.setTargetAtTime(gain, t, 0.03);
+    this.spacePan.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)), t, 0.03);
+    this.spaceFilter.frequency.setTargetAtTime(cutoff, t, 0.05);
   }
 
   setMuted(m) {

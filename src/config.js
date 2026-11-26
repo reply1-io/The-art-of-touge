@@ -1,3 +1,4 @@
+import { loadDesigns } from './builder/customStore.js';
 // BMW E30 325i (1988, M20B25 2.5 straight-six). Numbers follow the real car where known.
 // Values in TUNABLE can be changed live from the dev tuning panel.
 
@@ -142,6 +143,14 @@ const RX7 = {
 };
 
 export const CARS = { e30: E30, rx7: RX7 };
+
+// Cars you made in the Car Builder (kept in this browser): each drives like the car it is built on.
+for (const d of loadDesigns()) {
+  const base = CARS[d.base] || E30;
+  if (CARS[d.id]) continue;
+  CARS[d.id] = { ...base, id: d.id, shape: d.id, name: d.name || 'My car', blurb: `Your build · drives like the ${base.name}`, custom: true };
+  if (d.paint) CARS[d.id].paint = parseInt(d.paint.slice(1), 16);
+}
 
 // ---------- Engine swaps (tuning shop, Engine tab) ----------
 // Each: what it is, the car it comes from, its specs for the shop card, and (when it can be fitted)
@@ -314,13 +323,28 @@ function stored(key) {
 }
 // The car you drive, picked in the tuning shop, as it left the factory.
 export const BASE_CAR = CARS[stored('touge.settings.v4')?.car] || E30;
+
+// Each car keeps its own tuning and builds. Saves from before that (one setup shared by every car)
+// go to whichever car is loaded first, and the other cars start from stock.
+const LEGACY = { tuning: 'touge.tuning.v3', builds: 'touge.builds.v1' };
+export function carKey(kind, id = BASE_CAR.id) {
+  return `touge.${kind}.v4.${id}`;
+}
+// The saved data of `kind` for this car, falling back to the old shared save if this car may claim it.
+export function carSave(kind, id = BASE_CAR.id) {
+  const own = stored(carKey(kind, id));
+  if (own) return own;
+  const claim = stored('touge.legacyClaim') || {};
+  if (claim[kind] && claim[kind] !== id) return null;
+  return stored(LEGACY[kind]);
+}
 // ...and with any engine swap fitted.
 function withSwap(car, id) {
   const sw = ENGINE_SWAPS[id];
   if (!sw?.ready || !sw.engine || sw.code === car.engineName) return car;
   return { ...car, engine: { ...sw.engine }, mass: car.mass + sw.kg - car.engineKg, engineName: sw.code, sound: sw.sound, swap: id };
 }
-export const CAR = withSwap(BASE_CAR, stored('touge.tuning.v3')?.engine);
+export const CAR = withSwap(BASE_CAR, carSave('tuning')?.engine);
 
 // Tyre compounds (tuning shop).
 //   mu         peak friction on dry asphalt
@@ -387,7 +411,7 @@ export const TUNABLE_DEFAULTS = {
   seats: 'stock',
   offsetFront: 0, // mm the wheel sits out from stock (+ pokes out, - tucks in)
   offsetRear: 0,
-  plateStyle: 'white', // 'white' | 'yellow' | 'red'
+  plateStyle: 'okinawa', // the only plate: a photo of a real Okinawa plate
   plateText: 'AE 318',
   intake: 'stock',
   turbo: 'none',
@@ -402,7 +426,7 @@ export const TUNABLE_DEFAULTS = {
   handbrake: 'stock',
   angleKit: 'stock',
   weight: 'stock',
-  paint: '#efeee6',
+  paint: '#' + CAR.paint.toString(16).padStart(6, '0'), // the car's factory colour
   headlights: 'white',
   taillights: 'red',
   numbers: false,
@@ -462,10 +486,9 @@ export const PAINTS = [
   ['Dakar Yellow', '#e6b72b'],
 ];
 // Licence plates, Japanese style. Text colours follow the real plates.
+// The licence plate: one style, a photo of a real Okinawa plate (dark green on white).
 export const PLATES = {
-  white: { name: 'White', bg: '#f2f1ea', ink: '#1f5a32' },
-  yellow: { name: 'Yellow', bg: '#f2c51e', ink: '#151515' },
-  red: { name: 'White / red', bg: '#f2f1ea', ink: '#151515', slash: '#c8241d' },
+  okinawa: { name: 'Okinawa (JDM)', bg: '#f0f0ea', ink: '#16422a', image: 'textures/plate_okinawa.png' },
 };
 
 // Up to 7 letters, numbers, spaces and dashes, upper case.
@@ -519,10 +542,14 @@ export const EXHAUSTS = {
 
 // Wheels (tuning shop). Looks only: size, sidewall and camber are separate settings.
 export const WHEELS = {
-  bbs: { name: 'BBS Mesh', blurb: 'The factory cross-spoke. Silver mesh, polished lip.', face: '#c7c9cf', lip: '#d8dadf', dish: '#26272b', spokes: 'mesh' },
+  bbs: { name: 'Style 5 Basket Weave', blurb: 'The factory BBS-made cross-spoke: a silver basket weave round a roundel cap.', face: '#c7c9cf', lip: '#d8dadf', dish: '#26272b', spokes: 'mesh', image: 'wheels/style5.png' },
   gold: { name: 'Gold Mesh', blurb: 'Gold cross-spoke with a deep polished lip. Pure 80s.', face: '#d6b04a', lip: '#e4e6ea', dish: '#3a3020', spokes: 'mesh' },
   six: { name: 'Bronze 6-Spoke', blurb: 'Light forged six-spoke in bronze, the Japanese touge classic.', face: '#8e6a3f', lip: '#8e6a3f', dish: '#231c15', spokes: 'six' },
   steel: { name: 'Black Steelies', blurb: 'Plain black steel wheels. Cheap, tough, honest.', face: '#1d1e21', lip: '#26272b', dish: '#141517', spokes: 'steel' },
+  bottlecap: { name: 'Factory Bottle Caps', blurb: 'The E30\'s standard 14-inch alloys: a flat silver face with a ring of slots and a metal centre cap.', face: '#c3c5ca', lip: '#c3c5ca', dish: '#2a2b2f', spokes: 'bottlecap', image: 'wheels/bottlecap.png' },
+  watanabe: { name: 'Watanabe 8-Spoke', blurb: 'Eight slender spokes in gunmetal with a red centre cap. Old-school Japanese street racing.', face: '#6f716c', lip: '#7a7c78', dish: '#1a1b1c', spokes: 'watanabe', image: 'wheels/watanabe.png' },
+  rpf1: { name: 'Enkei RPF1', blurb: 'Six pairs of twin spokes in silver. Light, cheap, and on every time-attack car.', face: '#c9cbce', lip: '#c9cbce', dish: '#1a1b1c', spokes: 'six', image: 'wheels/rpf1.png' },
+  te37: { name: 'TE37', blurb: 'Six wide, flat forged spokes in bronze. Light, stiff, legendary.', face: '#8d7a55', lip: '#8d7a55', dish: '#1e160d', spokes: 'te37', image: 'wheels/te37.png' },
 };
 
 // Wheel and tyre sizes: tyre width grows with the rim, as you would fit on the real car.

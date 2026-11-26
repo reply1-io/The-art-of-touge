@@ -1,22 +1,12 @@
 // Tyre smoke: soft puffs from any tyre that is sliding or spinning hard. Puffs start small and
 // dense at the contact patch, then swell, drift with the wind and fade.
 import * as THREE from 'three';
+import { softTexture } from './softTexture.js';
 
 const MAX = 180;
 
 function puffTexture() {
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  const g = c.getContext('2d');
-  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  grad.addColorStop(0, 'rgba(255,255,255,0.85)');
-  grad.addColorStop(0.5, 'rgba(255,255,255,0.35)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 64, 64);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  return softTexture([255, 255, 255], [[0, 0.85], [0.5, 0.35], [1, 0]]);
 }
 
 export class TyreSmoke {
@@ -50,6 +40,26 @@ export class TyreSmoke {
     p.s.material.color.copy(this.tint);
     p.strength = strength;
     p.s.visible = true;
+  }
+
+  // How much smoke a wheel is making (0 when gripping), as update() works it out.
+  static amountFor(w) {
+    if (!w.grounded || !w.contact || w.surface === 'grass') return 0;
+    const lat = Math.max(0, Math.abs(Math.tan(w.slipAngle)) - 0.25);
+    const spin = Math.max(0, Math.abs(w.slipRatio) - 0.3);
+    const slipSpeed = Math.abs(w.omega * 0.3 - w.vx) + Math.abs(w.vy);
+    return Math.min(1.5, (lat * 3 + spin * 1.5) * Math.min(1, slipSpeed / 6));
+  }
+
+  // Smoke from wheel k at (x, y, z) making `amount` (from amountFor), the car moving at vel: for
+  // replays, where the wheels are a recording rather than the simulation.
+  puff(k, x, y, z, amount, vel, dt) {
+    if (amount < 0.05) return;
+    this.carry[k] += amount * dt * 22;
+    while (this.carry[k] >= 1) {
+      this.carry[k] -= 1;
+      this.#emit(x, y, z, Math.min(1, amount), vel);
+    }
   }
 
   // vehicle: the simulation. Wheels that slide or spin produce puffs in proportion.

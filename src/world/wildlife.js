@@ -164,8 +164,8 @@ export class Wildlife {
   }
 
   setTime(preset) {
-    this.night = preset.stars >= 0.9;
-    this.flies.visible = this.night;
+    this.night = !!preset.night;
+    this.flies.visible = false; // no fireflies: their green glow in the forest was too much
     for (const f of this.flocks) for (const b of f.birds) b.children[0].material.color.setHex(this.night ? 0x111216 : 0x26282c);
   }
 

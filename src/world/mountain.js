@@ -1,17 +1,38 @@
 // The mountain's visuals: road (chunked for culling), terrain tiles, guardrails, streetlights at the
 // hairpins, cedar forest, the summit lake, the town at the bottom, and start / finish lines.
 import * as THREE from 'three';
+import { cssGlow } from '../render/softTexture.js';
 import { crossSection, STEP, JUNCTION } from './road.js';
 import { TRACKS } from './tracks.js';
 import { Terrain, noise2 } from './terrain.js';
-import { buildMountainPhysics } from './mountainPhysics.js';
+import { buildMountainPhysics, addCrowdColliders } from './mountainPhysics.js';
+import { crowdsFor, SHIRTS, PANTS, SKIN } from './crowds.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Ranges, CloudSea, buildWaterfalls, sunAzimuth } from './wilds.js';
-import { ZONE_INNER, zoneAt, zonePoint, stationLayout, showLayout } from './stops.js';
+import { ZONE_INNER, zoneAt, zonePoint, stationLayout, showLayout, homeLayout, lotLayout } from './stops.js';
+import { spruceCrown, redwoodCrown, redwoodTrunk, broadCrown, broadTrunk, coniferTrunk, needleTexture, leafTexture, sprayTexture, foliageMaterial } from './treeShapes.js';
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
-const DEFAULT_SCENE = { trees: 1, maple: 0, rock: 0.5, ponds: 0 };
+const DEFAULT_SCENE = { trees: 1, maple: 0, rock: 0.5, ponds: 0, forest: 'cedar', ground: 'forest', bush: 1, snow: 0 };
 const ROAD_CHUNK = 60; // samples per road chunk (120 m)
 const TILE = 24; // terrain cells per tile
+
+// Asphalt (rough, full of tiny glass-like chips) throws light back towards where it came from. A
+// headlight beam skims the road at a very low angle, so plain diffuse shading leaves it nearly
+// black; this adds that back-scatter, strongest when you look along the beam (from the car).
+function retroReflect(mat) {
+  mat.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace(
+      '#include <lights_lambert_pars_fragment>',
+      THREE.ShaderChunk.lights_lambert_pars_fragment.replace(
+        'vec3 irradiance = dotNL * directLight.color;',
+        `float retro = step(-0.02, dot(geometryNormal, directLight.direction)) * pow(saturate(dot(geometryViewDir, directLight.direction)), 6.0);
+        vec3 irradiance = (dotNL + 0.55 * retro) * directLight.color;`,
+      ),
+    );
+  };
+  mat.customProgramCacheKey = () => 'retro-asphalt';
+}
 
 function asphaltTexture({ HALF, PAVED }) {
   const c = document.createElement('canvas');
@@ -33,13 +54,10 @@ function asphaltTexture({ HALF, PAVED }) {
   // Tyre-polished lines in each lane.
   g.fillStyle = 'rgba(20,20,22,0.25)';
   for (const l of [0.75 * HALF, 0.25 * HALF, -0.25 * HALF, -0.75 * HALF]) g.fillRect((64 * (PAVED - l)) / (2 * PAVED) - 2, 0, 4, 256);
-  // White edge lines and the yellow no-overtaking centre line.
+  // White edge lines only (no centre line, like a narrow mountain road in Japan).
   g.fillStyle = '#d9d9d2';
   g.fillRect(line - 1, 0, 2, 256);
   g.fillRect(64 - line - 1, 0, 2, 256);
-  g.fillStyle = '#e0a51c';
-  g.fillRect(30, 0, 1.5, 256);
-  g.fillRect(32.5, 0, 1.5, 256);
   const t = new THREE.CanvasTexture(c);
   t.wrapS = THREE.ClampToEdgeWrapping;
   t.wrapT = THREE.RepeatWrapping;
@@ -49,17 +67,7 @@ function asphaltTexture({ HALF, PAVED }) {
 }
 
 function glowTexture(inner, outer) {
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  const g = c.getContext('2d');
-  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  grad.addColorStop(0, inner);
-  grad.addColorStop(1, outer);
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 64, 64);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  return cssGlow(inner, outer);
 }
 
 function windowsTexture() {
@@ -190,31 +198,179 @@ const COLORS = {
   gutter: [0.55, 0.55, 0.52],
 };
 
+// Thick forest, where you should not be able to see far in.
+const isForest = (sc) => sc.trees >= 0.6 && sc.forest !== 'krummholz' && sc.forest !== 'oak' && sc.forest !== 'juniper';
+const smoothstep = (a, b, x) => {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+// A parked car: a boxy PS1-style hatch or sedan in one of six paints.
+const CAR_PAINTS = [0xa8322a, 0x2c4f8a, 0xd8d8d0, 0x2d2f33, 0x6c7a52, 0xc79a2a];
+const carMats = new Map();
+function parkedCar(paint) {
+  const lam = (c) => {
+    if (!carMats.has(c)) carMats.set(c, new THREE.MeshLambertMaterial({ color: c }));
+    return carMats.get(c);
+  };
+  const p = lam(CAR_PAINTS[paint % CAR_PAINTS.length]);
+  const glass = lam(0x1c2430);
+  const car = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.7, 4.2), p);
+  body.position.y = 0.65;
+  const cab = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.55, 2.1), [p, p, p, p, glass, glass]);
+  cab.position.set(0, 1.27, -0.2);
+  car.add(body, cab);
+  for (const [x, zz] of [[-0.8, 1.35], [0.8, 1.35], [-0.8, -1.35], [0.8, -1.35]]) {
+    const w = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.22, 10).rotateZ(Math.PI / 2), lam(0x151515));
+    w.position.set(x, 0.33, zz);
+    car.add(w);
+  }
+  car.traverse((o) => (o.castShadow = true));
+  return car;
+}
+
+// A person, about 1.75 m tall, facing +z, as one mesh with the colours baked in.
+// pose: 0 filming with the phone held up in both hands, 1 filming one-handed with the arm high,
+// 2 arms crossed, 3 pointing, 4 behind a camera on a tripod. look: [shirt, pants, skin, hat].
+function personGeometry(pose, [shirt, pants, skin, hat]) {
+  const parts = [];
+  const col = new THREE.Color();
+  const box = (w, h, d, x, y, z, color, rx = 0) => {
+    const g = new THREE.BoxGeometry(w, h, d).toNonIndexed();
+    if (rx) g.rotateX(rx);
+    g.translate(x, y, z);
+    col.setHex(color);
+    const c = new Float32Array(g.getAttribute('position').count * 3);
+    for (let k = 0; k < c.length; k += 3) c.set([col.r, col.g, col.b], k);
+    g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+    g.deleteAttribute('uv');
+    parts.push(g);
+  };
+  const S = SHIRTS[shirt];
+  const P = PANTS[pants];
+  const K = SKIN[skin];
+  const phone = 0x111318;
+  box(0.15, 0.84, 0.17, -0.1, 0.42, 0, P);
+  box(0.15, 0.84, 0.17, 0.1, 0.42, 0, P);
+  box(0.16, 0.08, 0.26, -0.1, 0.04, 0.04, 0x2a2a2a);
+  box(0.16, 0.08, 0.26, 0.1, 0.04, 0.04, 0x2a2a2a);
+  box(0.44, 0.62, 0.25, 0, 1.15, 0, S);
+  box(0.2, 0.22, 0.21, 0, 1.6, 0, K);
+  if (hat >= 0) {
+    const hc = [0x1b1b1b, 0xc0392b, 0x2c3e50, 0xd8c8a0][hat];
+    box(0.23, 0.08, 0.23, 0, 1.74, 0, hc);
+    box(0.2, 0.03, 0.12, 0, 1.71, 0.15, hc);
+  }
+  const armDown = (x) => box(0.1, 0.62, 0.11, x, 1.12, 0, S);
+  if (pose === 0) {
+    box(0.1, 0.11, 0.42, -0.17, 1.35, 0.2, S, -0.35);
+    box(0.1, 0.11, 0.42, 0.17, 1.35, 0.2, S, -0.35);
+    box(0.17, 0.09, 0.02, 0, 1.5, 0.42, phone);
+  } else if (pose === 1) {
+    armDown(-0.28);
+    box(0.1, 0.6, 0.1, 0.27, 1.72, 0.08, S, 0.3);
+    box(0.09, 0.16, 0.02, 0.27, 2.06, 0.2, phone);
+  } else if (pose === 2) {
+    box(0.5, 0.12, 0.13, 0, 1.2, 0.16, S);
+    box(0.1, 0.3, 0.11, -0.27, 1.3, 0.05, S);
+    box(0.1, 0.3, 0.11, 0.27, 1.3, 0.05, S);
+  } else if (pose === 3) {
+    armDown(-0.28);
+    box(0.1, 0.11, 0.62, 0.25, 1.42, 0.3, S);
+    box(0.07, 0.07, 0.1, 0.25, 1.42, 0.65, K);
+  } else {
+    // Hands on a camera on a tripod in front of them.
+    box(0.1, 0.11, 0.4, -0.15, 1.3, 0.2, S, -0.2);
+    box(0.1, 0.11, 0.4, 0.15, 1.3, 0.2, S, -0.2);
+    box(0.2, 0.16, 0.28, 0, 1.38, 0.46, 0x1b1b1b);
+    box(0.08, 0.08, 0.12, 0, 1.38, 0.64, 0x333333);
+    for (const a of [0, 2.1, 4.2]) box(0.03, 1.3, 0.03, Math.sin(a) * 0.18, 0.66, 0.46 + Math.cos(a) * 0.18, 0x2a2a2a);
+  }
+  const g = mergeGeometries(parts);
+  g.computeVertexNormals();
+  return g;
+}
+
+// The colour of the land on the real roads: alpine tundra with rock and old snow, the dark redwood
+// floor, golden coastal grass, the green Appalachian forest floor, and dusty sagebrush country
+// with red rock bands.
+function groundColour(sc, x, z, h, slope, dRoad, n) {
+  const m = noise2(x / 26, z / 26);
+  const far = dRoad > 48;
+  switch (sc.ground) {
+    case 'tundra': {
+      let c = [0.34 + m * 0.08, 0.35 + m * 0.07, 0.24 + m * 0.04];
+      if (noise2(x / 70 + 3, z / 70) > 0.6) c = [0.3 + n * 0.05, 0.31 + n * 0.05, 0.22]; // greener mats
+      if (slope > 0.5) c = [0.42 + n * 0.08, 0.41 + n * 0.08, 0.39 + n * 0.07]; // grey rock and scree
+      if (sc.snow && slope < 0.9 && noise2(x / 34 + 11, z / 34 - 4) > 1 - sc.snow * 0.45) c = [0.86 + n * 0.08, 0.88 + n * 0.08, 0.92 + n * 0.06];
+      return c;
+    }
+    case 'redwood': {
+      if (slope > 0.8) return [0.24 + n * 0.05, 0.22 + n * 0.04, 0.17];
+      return far ? [0.05 + m * 0.04, 0.11 + m * 0.06, 0.06 + m * 0.02] : [0.16 + n * 0.05, 0.14 + n * 0.05, 0.08 + n * 0.03];
+    }
+    case 'grass': {
+      let c = [0.56 + m * 0.1, 0.48 + m * 0.08, 0.26 + m * 0.05];
+      if (noise2(x / 60 - 5, z / 60) > 0.7) c = [0.3 + m * 0.06, 0.36 + m * 0.06, 0.18]; // green in the gullies
+      if (slope > 0.7) c = [0.47 + n * 0.06, 0.41 + n * 0.05, 0.32];
+      return c;
+    }
+    case 'hardwood': {
+      if (slope > 0.75) return [0.32 + n * 0.06, 0.32 + n * 0.06, 0.28 + n * 0.05];
+      return far ? [0.08 + m * 0.06, 0.17 + m * 0.08, 0.07 + m * 0.03] : [0.15 + n * 0.05, 0.22 + n * 0.06, 0.09];
+    }
+    case 'sage': {
+      let c = [0.5 + m * 0.08, 0.46 + m * 0.07, 0.35 + m * 0.05];
+      if (noise2(x / 45 + 2, z / 45) > 0.66) c = [0.4 + m * 0.05, 0.42 + m * 0.05, 0.3]; // greener draws
+      // Red and tan bands in the steep ground.
+      if (slope > 0.45) {
+        const band = Math.sin(h / 3.5 + noise2(x / 50, z / 50) * 3);
+        c = band > 0.2 ? [0.62 + n * 0.06, 0.36 + n * 0.05, 0.24 + n * 0.04] : [0.66 + n * 0.06, 0.56 + n * 0.05, 0.42 + n * 0.04];
+      }
+      return c;
+    }
+    default:
+      return [0.13 + n * 0.05, 0.19 + n * 0.06, 0.1];
+  }
+}
+
 export class Mountain {
   // stage: on a route made of several roads (the world map), which one to start and finish on
   // (-1 for the whole route).
-  constructor(world, scene, trackId = 'world', stage = -1) {
+  constructor(world, scene, trackId = 'dragon', stage = -1) {
     this.scene = scene;
-    this.track = TRACKS[trackId] || TRACKS.world;
+    this.track = TRACKS[trackId] || TRACKS.dragon;
     this.road = this.track.road();
     this.full = { start: this.road.startIndex, finish: this.road.finishIndex };
     this.stage = -1;
     // Link roads off the loop: junctions where you can turn off.
     this.links = this.track.links?.(this.road) ?? [];
-    this.terrain = new Terrain(this.road, { links: this.links, margin: this.road.length > 6000 ? 180 : 260, relief: this.track.relief ?? 110, lakes: this.track.lakes, peak: this.track.peak?.(this.road), stops: this.track.stopsOpts || {}, level: !!this.track.world, town: this.track.town?.(this.road) });
-    this.layout = buildMountainPhysics(world, this.road, this.terrain, this.links);
+    const tw = this.track.town;
+    const town = typeof tw === 'function' ? tw(this.road) : tw === false ? { none: true } : tw ? { i: this.road.count - 1, ...tw } : undefined;
+    // Bridges on a real road: [{ f0, f1, depth }] -> sample ranges.
+    const n1 = this.road.count - 1;
+    this.bridges = (this.track.bridges?.() ?? []).map((b) => ({ ...b, i0: Math.round(b.f0 * n1), i1: Math.round(b.f1 * n1) }));
+    this.terrain = new Terrain(this.road, { links: this.links, margin: this.road.length > 6000 ? 180 : 260, relief: this.track.relief ?? 110, lakes: this.track.lakes, peak: this.track.peak?.(this.road), stops: this.track.stopsOpts || {}, level: !!this.track.world, town, bridges: this.bridges });
+    // The scenery changes along a real road: which part of it is nearest, on a coarse grid.
+    if (this.track.sceneAt) this.#buildNearGrid();
+    this.layout = buildMountainPhysics(world, this.road, this.terrain, this.links, { rails: this.track.rails !== false });
     this.chunks = []; // { group, x, z, r }
     this.#buildRoad();
     for (const l of this.links) this.#buildRoad(l.road, true);
     this.#buildTerrain();
     this.#buildRails();
+    this.#buildBridges();
     this.#buildStreetlights();
     this.#buildTrees();
     this.#buildRoadside();
     this.#buildLandmarks();
+    this.#buildLonelyStops();
     this.#buildRoadSigns();
     this.#buildJunctionSigns();
     this.#buildStops();
+    // Real roads: people at the roadside filming, and the cars they came in.
+    if (this.track.real) this.#buildCrowds(world);
     this.#buildLake();
     this.#buildTown();
     this.#buildLines();
@@ -232,7 +388,7 @@ export class Mountain {
   // length, facing the traffic coming in.
   #buildRoadSigns() {
     const stages = this.track.stages;
-    if (!stages) return;
+    if (!stages || this.track.shrines === false) return;
     const road = this.road;
     const postMat = new THREE.MeshLambertMaterial({ color: 0x9aa0a6 });
     const backMat = new THREE.MeshLambertMaterial({ color: 0x5d636a });
@@ -392,7 +548,8 @@ export class Mountain {
       const pos = [];
       const col = [];
       const idx = [];
-      const base = z.kind === 'station' ? [0.42, 0.41, 0.39] : [0.2, 0.2, 0.22];
+      const gravel = z.kind === 'home' || z.lot?.surface === 'gravel';
+      const base = z.kind === 'station' ? [0.42, 0.41, 0.39] : gravel ? [0.36, 0.33, 0.28] : [0.2, 0.2, 0.22];
       for (let j = z.i0; j <= z.i1; j++) {
         const outer = Math.max(z.outerAt(j), z.inner + 0.3);
         for (let c = 0; c < cols; c++) {
@@ -436,7 +593,9 @@ export class Mountain {
       const bg = new THREE.BufferGeometry();
       bg.setAttribute('position', new THREE.Float32BufferAttribute(beam, 3));
       bg.computeVertexNormals();
-      group.add(new THREE.Mesh(bg, beamMat));
+      // Wooden rail at your place and at the forest entrance; a low stone wall at the overlooks.
+      const railMat = z.kind === 'home' || z.lot?.wood ? lambert(0x7a5a38, { side: THREE.DoubleSide }) : z.lot?.stone ? lambert(0x7d7a70, { side: THREE.DoubleSide, flatShading: true }) : beamMat;
+      group.add(new THREE.Mesh(bg, railMat));
 
       const at = (pt, obj, dy = 0) => {
         obj.position.set(pt.x, pt.y + dy, pt.z);
@@ -455,11 +614,178 @@ export class Mountain {
         }
         this.#cabin(lay.cabin, at, lambert, z.side);
       }
+      if (z.kind === 'home') this.#home(z, at, lambert);
+      if (z.kind === 'lot') this.#lot(z, at, lambert, group);
       group.traverse((o) => {
         if (o.isMesh) o.receiveShadow = o.castShadow = true;
       });
       const mid = zonePoint(road, z, 0.5, z.inner + z.width / 2);
       this.#addChunk(group, mid.x, mid.z, (z.i1 - z.i0) * STEP * 0.6 + z.width);
+    }
+  }
+
+  // People at the roadside, each one mesh (shared shapes, colours baked in) so they can turn to
+  // watch you go by. Grouped by stretch of road so the distance culling hides them in batches.
+  #buildCrowds(world) {
+    // Quiet roads: hardly anyone about, the odd car pulled over, a couple of people at a lot.
+    const crowd = crowdsFor(this.road, this.terrain, { seed: this.road.count, busy: 0.2 });
+    addCrowdColliders(world, crowd);
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    const shapes = new Map();
+    const groups = new Map();
+    this.crowds = [];
+    for (const p of crowd.people) {
+      const key = `${p.pose}:${p.look.join(',')}`;
+      if (!shapes.has(key)) shapes.set(key, personGeometry(p.pose, p.look));
+      const m = new THREE.Mesh(shapes.get(key), mat);
+      m.position.set(p.x, p.y, p.z);
+      m.rotation.y = p.yaw;
+      m.castShadow = true;
+      const k = Math.floor(p.i / ROAD_CHUNK);
+      if (!groups.has(k)) groups.set(k, { group: new THREE.Group(), people: [], x: 0, z: 0 });
+      const g = groups.get(k);
+      g.group.add(m);
+      g.people.push({ m, yaw: p.yaw, x: p.x, z: p.z, phase: (p.x * 7.3 + p.z) % 6.28 });
+    }
+    for (const c of crowd.cars) {
+      const car = parkedCar(c.paint);
+      car.position.set(c.x, c.y, c.z);
+      car.rotation.y = c.yaw;
+      const k = Math.floor(this.road.nearestIndex(c.x, c.z) / ROAD_CHUNK);
+      if (!groups.has(k)) groups.set(k, { group: new THREE.Group(), people: [], x: 0, z: 0 });
+      groups.get(k).group.add(car);
+    }
+    for (const [k, g] of groups) {
+      const mid = Math.min(this.road.count - 1, k * ROAD_CHUNK + ROAD_CHUNK / 2);
+      g.x = this.road.x[mid];
+      g.z = this.road.z[mid];
+      this.#addChunk(g.group, g.x, g.z, ROAD_CHUNK * STEP * 0.6 + 20);
+      this.crowds.push(g);
+    }
+    this.crowdTime = 0;
+  }
+
+  // The people near the car turn to follow it, and shift their weight now and then.
+  #updateCrowds(cam, dt) {
+    if (!this.crowds) return;
+    this.crowdTime += dt;
+    const t = this.crowdTime;
+    for (const g of this.crowds) {
+      if (!g.group.visible || (g.x - cam.x) ** 2 + (g.z - cam.z) ** 2 > 200 * 200) continue;
+      for (const p of g.people) {
+        const d2 = (p.x - cam.x) ** 2 + (p.z - cam.z) ** 2;
+        let want = p.yaw + Math.sin(t * 0.4 + p.phase) * 0.25;
+        if (d2 < 110 * 110) {
+          let to = Math.atan2(cam.x - p.x, cam.z - p.z) - p.yaw;
+          while (to > Math.PI) to -= 2 * Math.PI;
+          while (to < -Math.PI) to += 2 * Math.PI;
+          want = p.yaw + Math.max(-1.7, Math.min(1.7, to));
+        }
+        let e = want - p.m.rotation.y;
+        while (e > Math.PI) e -= 2 * Math.PI;
+        while (e < -Math.PI) e += 2 * Math.PI;
+        p.m.rotation.y += e * Math.min(1, dt * 4);
+      }
+    }
+  }
+
+  // A named lot on a real road: its sign, parked cars, and at Looking Glass Falls the falls.
+  #lot(z, at, lambert, group) {
+    const road = this.road;
+    const lay = lotLayout(road, z);
+    const lot = z.lot || {};
+    // Only one sign for a turnaround split across both sides of the road.
+    if (lot.label && !(lot.culdesac && z.side < 0)) {
+      const lines = lot.label;
+      const c = document.createElement('canvas');
+      c.width = 256;
+      c.height = 128;
+      const g = c.getContext('2d');
+      // Brown park-service board with a cream border and lettering.
+      g.fillStyle = '#5a3b22';
+      g.fillRect(0, 0, 256, 128);
+      g.strokeStyle = '#e8dcb8';
+      g.lineWidth = 5;
+      g.strokeRect(7, 7, 242, 114);
+      g.fillStyle = '#efe4c2';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      lines.forEach((t, k) => {
+        const size = k === 0 ? 30 : 20;
+        g.font = `bold ${size}px sans-serif`;
+        const y = 64 + (k - (lines.length - 1) / 2) * 34;
+        g.fillText(t, 128, y, 228);
+      });
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const sign = new THREE.Group();
+      const board = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.6, 0.12), [lambert(0x4a3020), lambert(0x4a3020), lambert(0x4a3020), lambert(0x4a3020), lambert(0xffffff, { map: tex }), lambert(0xffffff, { map: tex })]);
+      board.position.y = 1.7;
+      sign.add(board);
+      for (const x of [-1.2, 1.2]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.7, 0.16), lambert(0x4a3020));
+        post.position.set(x, 0.85, 0);
+        sign.add(post);
+      }
+      // Square to the traffic, readable from both ways.
+      at(lay.sign, sign);
+    }
+    // Parked cars along the back of the lot.
+    const paints = [0xa8322a, 0x2c4f8a, 0xd8d8d0, 0x2d2f33, 0x6c7a52, 0xc79a2a];
+    lay.cars.forEach((pt, k) => {
+      const car = parkedCar((k * 3 + z.i0) % 6);
+      // Nosed in, square to the back of the lot.
+      const c2 = at(pt, car);
+      c2.rotation.y = pt.yaw + (Math.PI / 2) * z.side;
+    });
+    // Looking Glass Falls: a sheet of water down a rock face into a pool, out past the lot.
+    if (lay.falls) {
+      const f = lay.falls;
+      const base = f.y - 0.6;
+      const fall = new THREE.Group();
+      fall.position.set(f.x, base, f.z);
+      this.fallsAt = [f.x, base, f.z];
+      fall.rotation.y = f.yaw - (Math.PI / 2) * z.side; // facing the road
+      const rock = lambert(0x77766e, { flatShading: true });
+      const rg = new THREE.DodecahedronGeometry(1, 0);
+      for (let k = 0; k < 26; k++) {
+        const r = 2.5 + noise2(k, 3) * 3;
+        const m = new THREE.Mesh(rg, rock);
+        // Boulders heaped either side of the falls, leaving the water's chute clear.
+        const sx = (k % 2 ? 1 : -1) * (5 + r * 0.8 + noise2(k, 1) * 6);
+        m.position.set(sx, 1 + (k % 7) * 3.4, -3.5 - noise2(1, k) * 2);
+        m.scale.set(r * 1.4, r, r);
+        fall.add(m);
+      }
+      const cliff = new THREE.Mesh(new THREE.BoxGeometry(20, 26, 4), rock);
+      cliff.position.set(0, 11, -4.5);
+      fall.add(cliff);
+      const wc = document.createElement('canvas');
+      wc.width = 16;
+      wc.height = 64;
+      const wg = wc.getContext('2d');
+      for (let y = 0; y < 64; y++) {
+        for (let x = 0; x < 16; x++) {
+          const k = 190 + Math.random() * 65;
+          wg.fillStyle = `rgb(${k - 20},${k},${255})`;
+          wg.fillRect(x, y, 1, 1);
+        }
+      }
+      const wt = new THREE.CanvasTexture(wc);
+      wt.colorSpace = THREE.SRGBColorSpace;
+      wt.wrapT = THREE.RepeatWrapping;
+      this.fallsTex = wt;
+      const sheet = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 23), new THREE.MeshBasicMaterial({ map: wt, transparent: true, opacity: 0.9, side: THREE.DoubleSide, fog: true }));
+      sheet.position.set(0, 12.2, -2.3);
+      fall.add(sheet);
+      const pool = new THREE.Mesh(new THREE.CircleGeometry(5, 20).rotateX(-Math.PI / 2), lambert(0x1d4a52, { emissive: 0x0a1c20 }));
+      pool.position.set(0, 0.75, 0.5);
+      fall.add(pool);
+      const mist = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture('rgba(235,245,255,0.7)', 'rgba(235,245,255,0)'), depthWrite: false, fog: true }));
+      mist.scale.set(10, 6, 1);
+      mist.position.set(0, 2.5, 0);
+      fall.add(mist);
+      this.#addChunk(fall, f.x, f.z, 40);
     }
   }
 
@@ -617,6 +943,191 @@ export class Mountain {
   }
 
   // Parts cabin on the car-show lot: log walls, a pitched roof, a porch and a sign.
+  // Your place in the forest: a log cabin and the workshop beside it, its roller door open with the
+  // light on inside. Driving in through the door takes you into the workshop (see main.js).
+  #home(z, at, lambert) {
+    const road = this.road;
+    const side = z.side;
+    const h = homeLayout(road, z);
+    // Where the game watches for you driving in, and where you come back out.
+    const out = Math.atan2(-side * Math.cos(h.exit.yaw), side * Math.sin(h.exit.yaw)); // facing the road
+    this.home = { door: h.door, exit: { pos: [h.exit.x, h.exit.y + 0.8, h.exit.z], yaw: out, index: h.exit.j }, i: z.i0 };
+    const front = -side; // local x toward the road
+
+    // ---- The cabin ----
+    const cabin = new THREE.Group();
+    const logs = new THREE.Mesh(new THREE.BoxGeometry(6.4, 3.0, 5.2), lambert(0x7a5434, { flatShading: true }));
+    logs.position.y = 1.5;
+    cabin.add(logs);
+    for (let y = 0.3; y < 3.0; y += 0.4) {
+      const seam = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.06, 5.3), lambert(0x4a321e));
+      seam.position.y = y;
+      cabin.add(seam);
+    }
+    const roofGeo = new THREE.CylinderGeometry(0.01, 4.7, 2.2, 4, 1);
+    roofGeo.rotateY(Math.PI / 4);
+    roofGeo.scale(1.05, 1, 0.85);
+    const roof = new THREE.Mesh(roofGeo, lambert(0x2f3a2c, { flatShading: true }));
+    roof.position.y = 4.1;
+    const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.7, 2.2, 0.7), lambert(0x6d6a63, { flatShading: true }));
+    chimney.position.set(-front * 1.6, 4.1, 1.4);
+    const porch = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.2, 5.2), lambert(0x6a4a2e));
+    porch.position.set(front * 3.9, 0.1, 0);
+    const door = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 2.0), lambert(0x3a2616));
+    door.position.set(front * 3.21, 1.0, -0.6);
+    door.rotation.y = front * (Math.PI / 2);
+    const warm = new THREE.MeshBasicMaterial({ color: 0xffcf7a });
+    for (const zz of [1.3, -2.0]) {
+      const win = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.8), warm);
+      win.position.set(front * 3.21, 1.7, zz);
+      win.rotation.y = front * (Math.PI / 2);
+      cabin.add(win);
+    }
+    for (const zz of [-2.4, 2.4]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.4, 0.14), lambert(0x5a3c22));
+      post.position.set(front * 4.55, 1.2, zz);
+      cabin.add(post);
+    }
+    const awning = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.1, 5.4), lambert(0x2f3a2c));
+    awning.position.set(front * 3.95, 2.45, 0);
+    awning.rotation.z = front * 0.18;
+    cabin.add(roof, chimney, porch, door, awning);
+    at(h.cabin, cabin);
+
+    // ---- The workshop ----
+    const tex = (w, hgt, draw) => {
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = hgt;
+      draw(c.getContext('2d'));
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      return t;
+    };
+    const ribs = tex(64, 64, (g) => {
+      g.fillStyle = '#8e969c';
+      g.fillRect(0, 0, 64, 64);
+      for (let x = 0; x < 64; x += 8) {
+        g.fillStyle = '#6f777d';
+        g.fillRect(x, 0, 3, 64);
+        g.fillStyle = '#aab1b6';
+        g.fillRect(x + 3, 0, 1, 64);
+      }
+    });
+    ribs.repeat.set(4, 1);
+    const metal = lambert(0xffffff, { map: ribs });
+    const shop = new THREE.Group();
+    const D = 8; // deep (x)
+    const Wd = 7; // wide (z)
+    const H = 3.6;
+    const doorW = 3.8;
+    const doorH = 2.9;
+    const wall = (w, hh, x, y, zz, ry) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, hh), metal);
+      m.material.side = THREE.DoubleSide;
+      m.position.set(x, y, zz);
+      m.rotation.y = ry;
+      shop.add(m);
+    };
+    // Back and sides solid; the front has the big door opening.
+    wall(Wd, H, -front * (D / 2), H / 2, 0, front * (Math.PI / 2));
+    wall(D, H, 0, H / 2, Wd / 2, 0);
+    wall(D, H, 0, H / 2, -Wd / 2, Math.PI);
+    const sideW = (Wd - doorW) / 2;
+    wall(sideW, H, front * (D / 2), H / 2, Wd / 2 - sideW / 2, front * (Math.PI / 2));
+    wall(sideW, H, front * (D / 2), H / 2, -Wd / 2 + sideW / 2, front * (Math.PI / 2));
+    wall(doorW, H - doorH, front * (D / 2), doorH + (H - doorH) / 2, 0, front * (Math.PI / 2));
+    // The lit workshop inside: a warm back wall, floor and a strip light, glimpsed through the door.
+    const inside = tex(256, 192, (g) => {
+      const grd = g.createLinearGradient(0, 0, 0, 192);
+      grd.addColorStop(0, '#5a4026');
+      grd.addColorStop(1, '#2a2016');
+      g.fillStyle = grd;
+      g.fillRect(0, 0, 256, 192);
+      g.fillStyle = '#2f5fa8'; // the lift posts
+      g.fillRect(40, 40, 16, 152);
+      g.fillRect(200, 40, 16, 152);
+      g.fillRect(40, 40, 176, 10);
+      g.fillStyle = '#b3241c'; // the tool chest
+      g.fillRect(110, 110, 40, 60);
+      g.fillStyle = '#fff3d0';
+      g.fillRect(90, 12, 76, 6);
+    });
+    inside.wrapS = inside.wrapT = THREE.ClampToEdgeWrapping;
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(Wd - 0.2, H - 0.1), new THREE.MeshBasicMaterial({ map: inside }));
+    back.position.set(-front * (D / 2 - 0.1), H / 2, 0);
+    back.rotation.y = front * (Math.PI / 2);
+    shop.add(back);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(D - 0.2, Wd - 0.2), new THREE.MeshBasicMaterial({ color: 0x4a3a28 }));
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = 0.03;
+    shop.add(floor);
+    const glow = new THREE.PointLight(0xffc77a, 6, 12, 1.6);
+    glow.position.set(0, 2.8, 0);
+    shop.add(glow);
+    // Roof, and the rolled-up door drum over the opening.
+    const roofG = new THREE.CylinderGeometry(0.01, Math.hypot(D, Wd) * 0.56, 1.5, 4, 1);
+    roofG.rotateY(Math.PI / 4);
+    roofG.scale(D / Math.hypot(D, Wd) * 1.45, 1, Wd / Math.hypot(D, Wd) * 1.45);
+    const sroof = new THREE.Mesh(roofG, lambert(0x3e4246, { flatShading: true }));
+    sroof.position.y = H + 0.75;
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, doorW + 0.2, 10), lambert(0x9da3a8));
+    drum.rotation.x = Math.PI / 2;
+    drum.position.set(front * (D / 2 + 0.25), doorH + 0.15, 0);
+    shop.add(sroof, drum);
+    // TOUGE GARAGE over the door, and a lamp.
+    const signTex = tex(512, 128, (g) => {
+      g.fillStyle = '#16120e';
+      g.fillRect(0, 0, 512, 128);
+      g.font = '84px VT323, monospace';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.shadowColor = '#ff7a1a';
+      g.shadowBlur = 16;
+      g.fillStyle = '#ffd38a';
+      g.fillText('TOUGE GARAGE', 256, 66);
+    });
+    signTex.wrapS = signTex.wrapT = THREE.ClampToEdgeWrapping;
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 0.6), new THREE.MeshBasicMaterial({ map: signTex }));
+    sign.position.set(front * (D / 2 + 0.05), doorH + 0.5, 0);
+    sign.rotation.y = front * (Math.PI / 2);
+    shop.add(sign);
+    at(h.shop, shop);
+
+    // ---- Around the yard ----
+    const mailbox = new THREE.Group();
+    const mpost = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.1, 0.1), lambert(0x5a3c22));
+    mpost.position.y = 0.55;
+    const mbox = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.25, 0.5), lambert(0xb3241c));
+    mbox.position.y = 1.2;
+    mailbox.add(mpost, mbox);
+    at(h.mailbox, mailbox);
+    const wood = new THREE.Group();
+    const logMat = lambert(0x8a6338);
+    for (let r = 0; r < 3; r++) {
+      for (let k = 0; k < 5 - r; k++) {
+        const l = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 1.1, 7), logMat);
+        l.rotation.x = Math.PI / 2;
+        l.position.set((k - (4 - r) / 2) * 0.27, 0.13 + r * 0.23, 0);
+        wood.add(l);
+      }
+    }
+    at(h.woodpile, wood);
+    const lamp = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 4.2, 6), lambert(0x3b3b3b));
+    pole.position.y = 2.1;
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe2a6 }));
+    bulb.position.y = 4.1;
+    lamp.add(pole, bulb);
+    const lampGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture('rgba(255,214,140,0.9)', 'rgba(255,170,60,0)'), blending: THREE.AdditiveBlending, depthWrite: false, fog: true }));
+    lampGlow.scale.set(7.5, 7.5, 1);
+    lampGlow.position.y = 4.1;
+    lamp.add(lampGlow);
+    this.lampGlows?.push(lampGlow);
+    at(h.lamp, lamp);
+  }
+
   #cabin(pt, at, lambert, side) {
     const g = new THREE.Group();
     const logs = new THREE.Mesh(new THREE.BoxGeometry(6.4, 3.4, 5.2), lambert(0x7a5434, { flatShading: true }));
@@ -680,9 +1191,66 @@ export class Mountain {
     return cut && noise2(k / 40, side * 5) > 0.4 + 0.25 * (0.5 - rock) && this.road.clearance(k, side, 16) >= 16;
   }
 
+  // Nearest road sample for every 16 m cell of the land (a breadth-first fill out from the road),
+  // so the far forest and the colour of the land can follow the scenery of the road nearby.
+  #buildNearGrid() {
+    const t = this.terrain;
+    const road = this.road;
+    const c = 16;
+    const nx = Math.ceil(((t.nx - 1) * t.cell) / c) + 2;
+    const nz = Math.ceil(((t.nz - 1) * t.cell) / c) + 2;
+    const idx = new Int32Array(nx * nz).fill(-1);
+    let q = [];
+    for (let i = 0; i < road.count; i += 2) {
+      const ix = Math.round((road.x[i] - t.x0) / c);
+      const iz = Math.round((road.z[i] - t.z0) / c);
+      if (ix < 0 || iz < 0 || ix >= nx || iz >= nz) continue;
+      const k = iz * nx + ix;
+      if (idx[k] < 0) {
+        idx[k] = i;
+        q.push(k);
+      }
+    }
+    while (q.length) {
+      const next = [];
+      for (const k of q) {
+        const ix = k % nx;
+        const iz = (k - ix) / nx;
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const jx = ix + dx;
+          const jz = iz + dz;
+          if (jx < 0 || jz < 0 || jx >= nx || jz >= nz) continue;
+          const j = jz * nx + jx;
+          if (idx[j] >= 0) continue;
+          idx[j] = idx[k];
+          next.push(j);
+        }
+      }
+      q = next;
+    }
+    this.nearGrid = { idx, nx, nz, c };
+  }
+
+  // The scenery at a point of the land (the nearest part of the road's).
+  sceneXZ(x, z) {
+    const g = this.nearGrid;
+    if (!g) return this.sceneAt(0);
+    const t = this.terrain;
+    const ix = Math.max(0, Math.min(g.nx - 1, Math.round((x - t.x0) / g.c)));
+    const iz = Math.max(0, Math.min(g.nz - 1, Math.round((z - t.z0) / g.c)));
+    return this.sceneAt(Math.max(0, g.idx[iz * g.nx + ix]));
+  }
+
   // What grows and stands beside the road at sample i (the world map varies it road by road).
   sceneAt(i) {
     const t = this.track;
+    if (t.sceneAt) {
+      const f = Math.max(0, Math.min(1, i / (this.road.count - 1)));
+      const key = Math.round(f * 400);
+      this.sceneCache ??= new Map();
+      if (!this.sceneCache.has(key)) this.sceneCache.set(key, { ...DEFAULT_SCENE, ...t.sceneAt(key / 400) });
+      return this.sceneCache.get(key);
+    }
     if (!t.stages) return DEFAULT_SCENE;
     return t.stages[t.stageAt(i * STEP)].scene;
   }
@@ -736,6 +1304,7 @@ export class Mountain {
   #buildRoad(road = this.road, lift = false) {
     const over = lift ? { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 } : {};
     const asphaltMat = new THREE.MeshLambertMaterial({ map: asphaltTexture(road.w), ...over });
+    retroReflect(asphaltMat);
     const edgeMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, ...over });
     const xs = crossSection(road, 0);
     const asphaltCols = xs.map((c, k) => (c[2] === 'asphalt' ? k : -1)).filter((k) => k >= 0);
@@ -825,6 +1394,14 @@ export class Mountain {
             const slope = Math.hypot(hx, hz) / t.cell;
             const n = noise2(x / 9, z / 9);
             let cc;
+            const gr = this.nearGrid ? this.sceneXZ(x, z) : null;
+            // Under thick forest the floor gets darker the further it is from the road.
+            const gloom = gr && isForest(gr) ? 1 - 0.75 * smoothstep(8, 40, t.roadDist[k]) : 1;
+            if (gr && gr.ground !== 'forest') {
+              const gc = groundColour(gr, x, z, h, slope, t.roadDist[k], n);
+              col.push(gc[0] * gloom, gc[1] * gloom, gc[2] * gloom);
+              continue;
+            }
             if (t.roadDist[k] > 48) {
               const m = noise2(x / 26, z / 26);
               cc = [0.075 + m * 0.05, 0.14 + m * 0.07, 0.085 + m * 0.03];
@@ -832,7 +1409,7 @@ export class Mountain {
             } else cc = [0.13 + n * 0.05, 0.19 + n * 0.06, 0.1];
             if (slope > 0.75) cc = [0.33 + n * 0.06, 0.32 + n * 0.06, 0.3 + n * 0.05];
             else if (slope > 0.45 && t.roadDist[k] <= 48) cc = [0.24, 0.23, 0.17];
-            col.push(...cc);
+            col.push(cc[0] * gloom, cc[1] * gloom, cc[2] * gloom);
           }
         }
         for (let r = 0; r < rows - 1; r++) {
@@ -894,6 +1471,53 @@ export class Mountain {
     this.scene.add(inst);
   }
 
+  // Bridges: a concrete deck under the road with its edges showing, and piers down into the gorge.
+  #buildBridges() {
+    const road = this.road;
+    const concrete = new THREE.MeshLambertMaterial({ color: 0x9a968c, flatShading: true, side: THREE.DoubleSide });
+    const steel = new THREE.MeshLambertMaterial({ color: 0x5f6f78, flatShading: true });
+    for (const b of this.bridges) {
+      const group = new THREE.Group();
+      const pos = [];
+      const W = road.w.SHOULDER + 0.4;
+      const quad = (a, bb, c, d) => pos.push(...a, ...bb, ...c, ...a, ...c, ...d);
+      for (let i = b.i0 - 6; i < b.i1 + 6; i++) {
+        const top = (j, l) => road.pointAt(j, l, -0.05);
+        const bot = (j, l) => road.pointAt(j, l, -1.8);
+        quad(bot(i, -W), bot(i + 1, -W), bot(i + 1, W), bot(i, W));
+        for (const l of [W, -W]) quad(top(i, l), top(i + 1, l), bot(i + 1, l), bot(i, l));
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.computeVertexNormals();
+      group.add(new THREE.Mesh(g, concrete));
+      // Steel girders under the deck, and concrete piers down to the creek.
+      const len = (b.i1 - b.i0) * STEP;
+      for (let k = 0; k <= 4; k++) {
+        const i = Math.round(b.i0 + ((b.i1 - b.i0) * k) / 4);
+        const p = road.pointAt(i, 0, -1.8);
+        if (k > 0 && k < 4) {
+          const ground = this.terrain.heightAt(p[0], p[2]);
+          const h = Math.max(2, p[1] - ground + 2);
+          const pier = new THREE.Mesh(new THREE.BoxGeometry(2 * W - 2, h, 2.4), concrete);
+          pier.position.set(p[0], p[1] - h / 2, p[2]);
+          pier.rotation.y = road.heading[i];
+          group.add(pier);
+        }
+      }
+      for (const l of [-W + 1.2, W - 1.2]) {
+        const a = road.pointAt(b.i0, l, -2.4);
+        const c = road.pointAt(b.i1, l, -2.4);
+        const girder = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.2, Math.hypot(c[0] - a[0], c[2] - a[2])), steel);
+        girder.position.set((a[0] + c[0]) / 2, (a[1] + c[1]) / 2, (a[2] + c[2]) / 2);
+        girder.rotation.y = Math.atan2(c[0] - a[0], c[2] - a[2]);
+        group.add(girder);
+      }
+      const m = Math.round((b.i0 + b.i1) / 2);
+      this.#addChunk(group, road.x[m], road.z[m], len / 2 + 80, 'ground');
+    }
+  }
+
   // A streetlight at every tight corner (on the outside) and along the start and town.
   #buildStreetlights() {
     this.lampGlows = [];
@@ -915,13 +1539,11 @@ export class Mountain {
     const poleMat = new THREE.MeshLambertMaterial({ color: 0x55585e });
     const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe2a6 });
     const glow = new THREE.SpriteMaterial({ map: glowTexture('rgba(255,214,140,0.9)', 'rgba(255,170,60,0)'), blending: THREE.AdditiveBlending, depthWrite: false, fog: true });
-    const poolMat = new THREE.MeshBasicMaterial({ map: glowTexture('rgba(255,200,120,0.55)', 'rgba(255,160,60,0)'), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, fog: true });
+    this.lampSpots = [];
     const pole = new THREE.CylinderGeometry(0.09, 0.12, 7, 6);
     pole.translate(0, 3.5, 0);
     const arm = new THREE.BoxGeometry(0.08, 0.08, 1.8);
     const head = new THREE.BoxGeometry(0.35, 0.12, 0.6);
-    const pool = new THREE.CircleGeometry(10, 20);
-    pool.rotateX(-Math.PI / 2);
     for (const [i, side] of spots) {
       if (this.inZone(i, side)) continue;
       const base = road.pointAt(i, side * (road.w.RAIL + 0.8));
@@ -937,13 +1559,14 @@ export class Mountain {
       hd.position.set(toward[0] * 1.7, 6.9, toward[1] * 1.7);
       hd.rotation.y = a.rotation.y;
       const s = new THREE.Sprite(glow);
-      s.scale.set(4, 4, 1);
+      s.scale.set(7.5, 7.5, 1);
       s.position.copy(hd.position);
-      const p = new THREE.Mesh(pool, poolMat);
-      const c = road.pointAt(i, side * 1.5, 0.03);
-      p.position.set(c[0] - base[0], c[1] - base[1], c[2] - base[2]);
-      g.add(a, hd, s, p);
-      this.lampGlows.push(s, p);
+      g.add(a, hd, s);
+      this.lampGlows.push(s);
+      // Where the lamp's real light comes from and points (straight down, a little toward the
+      // road): lit by one of a few spotlights that follow the nearest lamps (see update()).
+      const at = [base[0] + toward[0] * 1.7, base[1] + 6.8, base[2] + toward[1] * 1.7];
+      this.lampSpots.push({ pos: at, aim: [at[0] + toward[0] * 1.2, at[1] - 7, at[2] + toward[1] * 1.2] });
       this.#addChunk(g, base[0], base[2], 20);
     }
   }
@@ -956,7 +1579,7 @@ export class Mountain {
     const groups = new Map(); // chunk index -> { trees: [], bushes: [] }
     const bucket = (i) => {
       const k = Math.floor(i / ROAD_CHUNK);
-      if (!groups.has(k)) groups.set(k, { trees: [], bushes: [], maples: [] });
+      if (!groups.has(k)) groups.set(k, { trees: [], bushes: [], maples: [], redwoods: [], broad: [] });
       return groups.get(k);
     };
     const step = 5;
@@ -980,6 +1603,10 @@ export class Mountain {
         if (Math.hypot(jx - t.town.x, jz - t.town.z) < t.town.r) continue;
         const y = t.heightAt(jx, jz) - 0.3;
         const sc = this.sceneAt(near.i);
+        if (this.track.sceneAt) {
+          this.#realTree(bucket(near.i), sc, jx, jz, y, near.d, nth++ % 3 === 0);
+          continue;
+        }
         // Thinner or thicker forest depending on the road (1 = normal).
         const dense = noise2(jx / 30, jz / 30) - (1 - sc.trees) * 0.35;
         // Patches of autumn maples break up the cedars with red, orange and gold.
@@ -1006,70 +1633,180 @@ export class Mountain {
         if (t.nearestRoad(jx, jz, 56).d < 56) continue;
         if (noise2(jx / 30, jz / 30) < 0.16) continue;
         const key = `${Math.floor(jx / FT)},${Math.floor(jz / FT)}`;
+        let hh = 11 + noise2(jx, jz) * 12;
+        let tint = 0;
+        if (this.nearGrid) {
+          // The far forest follows the road's scenery: none above the trees, tall redwoods, round
+          // broadleaf crowns, scattered junipers in the sagebrush.
+          const fs = this.sceneXZ(jx, jz);
+          if (!isForest(fs) && noise2(jx / 30 + 4, jz / 30) > fs.trees * 0.85) continue;
+          if (fs.forest === 'krummholz') continue;
+          if (fs.forest === 'redwood') hh *= 2.2;
+          if (fs.forest === 'hardwood' || fs.forest === 'oak') tint = 1;
+          if (fs.forest === 'juniper') {
+            hh *= 0.3;
+            tint = 2;
+          }
+          if (fs.forest === 'pine') tint = 3;
+          if (isForest(fs)) tint += 10; // deep in the forest: dark
+        }
         if (!far.has(key)) far.set(key, []);
-        far.get(key).push([jx, t.heightAt(jx, jz) - 0.4, jz, 11 + noise2(jx, jz) * 12]);
+        far.get(key).push([jx, t.heightAt(jx, jz) - 0.4, jz, hh, tint]);
       }
     }
 
-    const trunk = new THREE.CylinderGeometry(0.18, 0.28, 1, 5);
-    trunk.translate(0, 0.5, 0);
-    const crown = new THREE.ConeGeometry(1, 1, 6);
-    crown.translate(0, 0.5, 0);
+    // The three tree shapes (treeShapes.js): spruce/fir, coast redwood and broadleaf, each with
+    // its own trunk, shaded with vertex colours that the per-tree colour tints.
+    const trunk = coniferTrunk();
+    const crown = spruceCrown();
+    const rwCrown = redwoodCrown();
+    const rwTrunk = redwoodTrunk();
+    const BROAD_VARIANTS = [5, 17, 29].map((seed) => [broadTrunk(seed), broadCrown(seed)]);
     const bush = new THREE.IcosahedronGeometry(1, 0);
-    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x3b2a1e });
+    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x3b2a1e, vertexColors: true, flatShading: true });
+    const redwoodMat = new THREE.MeshLambertMaterial({ color: 0x7a3c24, vertexColors: true, flatShading: true });
     const crownMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+    const needleMat = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, map: needleTexture(), alphaTest: 0.45, side: THREE.DoubleSide });
+    const leafMat = foliageMaterial(leafTexture());
+    const sprayMat = foliageMaterial(sprayTexture());
     const bushMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const col = new THREE.Color();
     const v = new THREE.Vector3();
     const sc = new THREE.Vector3();
+    // Every tree its own pose: any compass direction, a size from 70% to 135% of its slot, a
+    // wider or narrower crown, and a slight lean (most nearly upright, a few leaning more).
+    const hash = (x, z, k) => {
+      const t = Math.sin(x * 12.9898 + z * 78.233 + k * 37.719) * 43758.5453;
+      return t - Math.floor(t);
+    };
+    const qYaw = new THREE.Quaternion();
+    const leanAxis = new THREE.Vector3();
+    const pose = (x, z, h0, maxLean) => {
+      qYaw.setFromAxisAngle(Y_AXIS, hash(x, z, 1) * Math.PI * 2);
+      const b = hash(x, z, 2) * Math.PI * 2;
+      leanAxis.set(Math.cos(b), 0, Math.sin(b));
+      q.setFromAxisAngle(leanAxis, maxLean * hash(x, z, 3) ** 2).multiply(qYaw);
+      const size = 0.7 + hash(x, z, 4) * 0.65;
+      return { h: h0 * size, wd: 0.82 + hash(x, z, 5) * 0.36 };
+    };
+    // A point up the tree's own (leaning) axis.
+    const lift = new THREE.Vector3();
+    const up = (x, y, z, d) => v.set(x, y, z).add(lift.set(0, d, 0).applyQuaternion(q));
     let total = 0;
     for (const [k, g] of groups) {
       const group = new THREE.Group();
       if (g.trees.length) {
         const trunks = new THREE.InstancedMesh(trunk, trunkMat, g.trees.length);
-        const crowns = new THREE.InstancedMesh(crown, crownMat, g.trees.length);
-        g.trees.forEach(([x, y, z, h], n) => {
-          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(1, h * 0.35, 1)));
-          crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.22, z), q, sc.set(h * 0.19, h * 0.82, h * 0.19)));
-          const b = 0.75 + noise2(x * 3, z * 3) * 0.5;
-          crowns.setColorAt(n, col.setRGB(0.1 * b, 0.22 * b, 0.13 * b));
+        const crowns = new THREE.InstancedMesh(crown, needleMat, g.trees.length);
+        g.trees.forEach(([x, y, z, h0, tint = 0, sh = 1], n) => {
+          const { h, wd } = pose(x, z, h0, tint === 2 ? 0.09 : 0.05);
+          const w = (tint === 1 ? 0.15 : tint === 2 ? 0.28 : 0.19) * wd;
+          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(0.8 + h * 0.02, h * 0.35, 0.8 + h * 0.02)));
+          trunks.setColorAt(n, col.setRGB(sh, sh, sh));
+          crowns.setMatrixAt(n, m.compose(up(x, y, z, h * 0.16), q, sc.set(h * w * 1.35, h * 0.88, h * w * 1.35)));
+          const b = (0.75 + noise2(x * 3, z * 3) * 0.5) * sh;
+          // Cedar green; lodgepole and spruce darker and bluer; wind-stunted trees at treeline.
+          if (tint === 1) crowns.setColorAt(n, col.setRGB(0.07 * b, 0.17 * b, 0.13 * b));
+          else if (tint === 2) crowns.setColorAt(n, col.setRGB(0.1 * b, 0.2 * b, 0.14 * b));
+          else crowns.setColorAt(n, col.setRGB(0.1 * b, 0.22 * b, 0.13 * b));
         });
+        q.identity();
         group.add(trunks, crowns);
       }
+      // Broadleaf trees (maples and the rest) come in three branch patterns, so neighbours differ.
+      const leafVariants = (list, color) => {
+        for (let k = 0; k < BROAD_VARIANTS.length; k++) {
+          const mine = list.filter(([x, , z]) => Math.floor(hash(x, z, 9) * BROAD_VARIANTS.length) === k);
+          if (!mine.length) continue;
+          const [tg, cg] = BROAD_VARIANTS[k];
+          const trunks = new THREE.InstancedMesh(tg, trunkMat, mine.length);
+          const crowns = new THREE.InstancedMesh(cg, leafMat, mine.length);
+          mine.forEach((t, n) => {
+            const [x, y, z, h0] = t;
+            const sh = t.sh ?? 1;
+            const { h, wd } = pose(x, z, h0, 0.08);
+            const flat = (t.flat ?? 1) * wd;
+            m.compose(v.set(x, y, z), q, sc.set(h * flat, h, h * flat));
+            trunks.setMatrixAt(n, m);
+            crowns.setMatrixAt(n, m);
+            trunks.setColorAt(n, col.setRGB(sh, sh, sh));
+            crowns.setColorAt(n, color(t, col));
+          });
+          q.identity();
+          group.add(trunks, crowns);
+        }
+      };
       if (g.maples.length) {
-        const trunks = new THREE.InstancedMesh(trunk, trunkMat, g.maples.length);
-        const crowns = new THREE.InstancedMesh(bush, crownMat, g.maples.length);
         const autumn = [
           [0.62, 0.16, 0.08],
           [0.72, 0.32, 0.08],
           [0.74, 0.5, 0.12],
           [0.5, 0.13, 0.1],
         ];
-        g.maples.forEach(([x, y, z, h], n) => {
-          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(0.9, h * 0.45, 0.9)));
-          crowns.setMatrixAt(n, m.compose(v.set(x, y + h * 0.62, z), q.setFromAxisAngle(Y_AXIS, x * 1.7), sc.set(h * 0.33, h * 0.3, h * 0.33)));
-          q.identity();
+        const list = g.maples.map(([x, y, z, h, sh = 1]) => Object.assign([x, y, z, h], { sh }));
+        leafVariants(list, (t, c) => {
+          const [x, , z] = t;
           const [r, gg, b] = autumn[Math.floor(noise2(x * 0.9, z * 0.9) * 4) % 4];
-          const k2 = 0.8 + noise2(x * 3, z * 2) * 0.35;
-          crowns.setColorAt(n, col.setRGB(r * k2, gg * k2, b * k2));
+          const k2 = (0.8 + noise2(x * 3, z * 2) * 0.35) * t.sh;
+          return c.setRGB(r * k2, gg * k2, b * k2);
         });
+      }
+      if (g.redwoods.length) {
+        // Redwoods: thick red-brown trunks, bare for the first third, then a narrow dark crown.
+        const trunks = new THREE.InstancedMesh(rwTrunk, redwoodMat, g.redwoods.length);
+        const crowns = new THREE.InstancedMesh(rwCrown, sprayMat, g.redwoods.length);
+        g.redwoods.forEach(([x, y, z, h0, sh = 1], n) => {
+          const { h, wd } = pose(x, z, h0, 0.025);
+          const r = (2.2 + noise2(x, z) * 2.2) * (h / h0);
+          trunks.setColorAt(n, col.setRGB(sh, sh, sh));
+          trunks.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(r, h * 0.85, r)));
+          crowns.setMatrixAt(n, m.compose(up(x, y, z, h * 0.3), q, sc.set(h * 0.15 * wd, h * 0.7, h * 0.15 * wd)));
+          const b = (0.75 + noise2(x * 3, z * 3) * 0.45) * sh;
+          crowns.setColorAt(n, col.setRGB(0.07 * b, 0.17 * b, 0.1 * b));
+        });
+        q.identity();
         group.add(trunks, crowns);
+      }
+      if (g.broad.length) {
+        // Broadleaf trees. Appalachian hardwoods, coastal oaks (wide), junipers, aspens.
+        const tints = [
+          [0.13, 0.27, 0.09],
+          [0.2, 0.25, 0.12],
+          [0.16, 0.2, 0.13],
+          [0.42, 0.5, 0.16],
+        ];
+        const list = g.broad.map(([x, y, z, h, tint, sh = 1]) => Object.assign([x, y, z, h], { tint, sh, flat: tint === 1 ? 1.5 : 1 }));
+        leafVariants(list, (t, c) => {
+          const [x, , z] = t;
+          const [r, gg, b] = tints[t.tint];
+          const k2 = (0.78 + noise2(x * 3, z * 2) * 0.4) * t.sh;
+          return c.setRGB(r * k2, gg * k2, b * k2);
+        });
       }
       if (g.bushes.length) {
         const bushes = new THREE.InstancedMesh(bush, bushMat, g.bushes.length);
-        g.bushes.forEach(([x, y, z, r], n) => {
+        const shrub = [
+          [0.13, 0.25, 0.11], // green undergrowth
+          [0.36, 0.4, 0.33], // sagebrush, silvery grey-green
+          [0.16, 0.3, 0.12], // rhododendron, dark glossy green
+          [0.2, 0.42, 0.12], // ferns, bright green
+          [0.28, 0.3, 0.2], // alpine willow and scrub
+          [0.42, 0.38, 0.22], // dry coastal brush
+        ];
+        g.bushes.forEach(([x, y, z, r, tint = 0, sh = 1], n) => {
           bushes.setMatrixAt(n, m.compose(v.set(x, y + r * 0.4, z), q.setFromAxisAngle(Y_AXIS, x), sc.set(r, r * 0.75, r)));
-          const b = 0.7 + noise2(z * 2, x * 2) * 0.6;
-          bushes.setColorAt(n, col.setRGB(0.13 * b, 0.25 * b, 0.11 * b));
+          const b = (0.7 + noise2(z * 2, x * 2) * 0.6) * sh;
+          const [rr, gg, bb] = shrub[tint];
+          bushes.setColorAt(n, col.setRGB(rr * b, gg * b, bb * b));
         });
         q.identity();
         group.add(bushes);
       }
       const mid = Math.min(road.count - 1, k * ROAD_CHUNK + ROAD_CHUNK / 2);
       this.#addChunk(group, road.x[mid], road.z[mid], ROAD_CHUNK * STEP * 0.6 + 60);
-      total += g.trees.length + g.maples.length;
+      total += g.trees.length + g.maples.length + g.redwoods.length + g.broad.length;
     }
     const farCrown = new THREE.ConeGeometry(1, 1, 5);
     farCrown.translate(0, 0.5, 0);
@@ -1077,10 +1814,17 @@ export class Mountain {
       const crowns = new THREE.InstancedMesh(farCrown, crownMat, list.length);
       let cx = 0;
       let cz = 0;
-      list.forEach(([x, y, z, h], n) => {
-        crowns.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(h * 0.21, h, h * 0.21)));
-        const b = 0.7 + noise2(x * 3, z * 3) * 0.5;
-        crowns.setColorAt(n, col.setRGB(0.09 * b, 0.19 * b, 0.12 * b));
+      list.forEach(([x, y, z, h, tint0], n) => {
+        // Deep forest (tint + 10): the same trees, but dark, as the light barely gets in.
+        const dark = tint0 >= 10 ? 0.4 : 1;
+        const tint = tint0 % 10;
+        const wide = tint === 1 ? 0.55 : tint === 2 ? 0.6 : 0.21;
+        crowns.setMatrixAt(n, m.compose(v.set(x, y, z), q, sc.set(h * wide, h, h * wide)));
+        const b = (0.7 + noise2(x * 3, z * 3) * 0.5) * dark;
+        if (tint === 1) crowns.setColorAt(n, col.setRGB(0.12 * b, 0.24 * b, 0.09 * b));
+        else if (tint === 2) crowns.setColorAt(n, col.setRGB(0.17 * b, 0.21 * b, 0.13 * b));
+        else if (tint === 3) crowns.setColorAt(n, col.setRGB(0.07 * b, 0.16 * b, 0.12 * b));
+        else crowns.setColorAt(n, col.setRGB(0.09 * b, 0.19 * b, 0.12 * b));
         cx += x;
         cz += z;
       });
@@ -1089,6 +1833,53 @@ export class Mountain {
       total += list.length;
     }
     this.treeCount = total;
+  }
+
+  // One spot of the forest beside a real road: what grows there depends on the scenery.
+  #realTree(g, sc, x, z, y, d, toMap) {
+    // Keep the trees off the face of Looking Glass Falls.
+    this.fallsClear ??= this.terrain.zones.filter((zn) => zn.lot?.falls).map((zn) => lotLayout(this.road, zn).falls);
+    for (const f of this.fallsClear) if (Math.hypot(x - f.x, z - f.z) < 16) return;
+    const dense = noise2(x / 30, z / 30) - (1 - sc.trees) * 0.8;
+    const r1 = noise2(x, z);
+    // In a real forest you cannot see far in: the gaps close up and it gets darker the deeper you
+    // look, until it is nearly black between the trunks.
+    const forested = isForest(sc);
+    const deep = forested ? smoothstep(12, 40, d) : 0;
+    const tree = dense > 0.22 - deep * 0.35;
+    const sh = forested ? 1 - 0.86 * smoothstep(8, 40, d) : 1;
+    if (tree && toMap) this.mapTrees.push([x, z, 0]);
+    // Shrubs: sagebrush, rhododendron, ferns or alpine scrub, by the scenery.
+    const shrubTint = sc.sagebrush ? 1 : sc.rhodo ? 2 : sc.ferns ? 3 : sc.ground === 'tundra' ? 4 : sc.ground === 'grass' ? 5 : 0;
+    if (!tree) {
+      if (noise2(x * 1.7, z * 1.3) < 1 - Math.min(1, sc.bush * 0.6)) return;
+      const r = (sc.sagebrush ? 0.45 : sc.ground === 'tundra' ? 0.4 : 0.9) + noise2(z, x) * (sc.sagebrush ? 0.6 : 1.2);
+      g.bushes.push([x, y, z, r, shrubTint, sh]);
+      return;
+    }
+    if (sc.maple && noise2(x / 45 + 9, z / 45) > 1 - sc.maple * 0.5) {
+      g.maples.push([x, y, z, 7 + r1 * 7, sh]);
+    } else if (sc.forest === 'redwood') {
+      // The odd smaller tree between the giants.
+      if (noise2(x * 0.6, z * 0.6) > 0.35) g.redwoods.push([x, y, z, 34 + r1 * 26, sh]);
+      else g.trees.push([x, y, z, 10 + r1 * 8, 0, sh]);
+    } else if (sc.forest === 'pine') {
+      if (sc.aspen && noise2(x / 25 - 3, z / 25) > 0.62) g.broad.push([x, y, z, 7 + r1 * 6, 3, sh]);
+      else g.trees.push([x, y, z, 12 + r1 * 12, 1, sh]);
+    } else if (sc.forest === 'krummholz') {
+      g.trees.push([x, y, z, 1.6 + r1 * 3.5, 2, sh]);
+    } else if (sc.forest === 'hardwood') {
+      if (noise2(x / 20, z / 20 + 5) > 0.75) g.trees.push([x, y, z, 14 + r1 * 10, 1, sh]); // hemlock and white pine
+      else g.broad.push([x, y, z, 10 + r1 * 9, 0, sh]);
+    } else if (sc.forest === 'oak') {
+      g.broad.push([x, y, z, 6 + r1 * 5, 1, sh]);
+    } else if (sc.forest === 'juniper') {
+      g.broad.push([x, y, z, 2.5 + r1 * 3, 2, sh]);
+    } else g.trees.push([x, y, z, 10 + r1 * 10, 0, sh]);
+    // Undergrowth between the trees: thick near the road edge, and deeper in it fills the gaps
+    // between the trunks so the forest reads as a wall.
+    const under = d < 22 ? 1 - Math.min(0.9, 0.55 * sc.bush) : forested ? 0.45 : 2;
+    if (noise2(x * 1.3, z * 1.3) > under) g.bushes.push([x + 2.2, this.terrain.heightAt(x + 2.2, z - 1.5), z - 1.5, (sc.ferns ? 0.6 : 0.8) + noise2(x, 3) * (forested && d > 22 ? 2 : 1.2), shrubTint, sh * 0.85]);
   }
 
   // Roadside furniture: reflector posts, chevron signs on tight corners, utility poles, boulders,
@@ -1249,6 +2040,15 @@ export class Mountain {
       return tx;
     })();
     const wallMat = new THREE.MeshLambertMaterial({ map: wallTex, side: THREE.DoubleSide, flatShading: rocky });
+    // Real roads: red-tan rock in Wyoming, pale granite up high, mossy banks in the redwoods.
+    const tinted = {};
+    const wallFor = (i) => {
+      if (!this.track.sceneAt) return wallMat;
+      const g = this.sceneAt(i).ground;
+      const tint = { sage: 0xe8a27a, tundra: 0xd8d4cc, redwood: 0x8a9a70, grass: 0xc8b48c }[g];
+      if (!tint) return wallMat;
+      return (tinted[g] ??= new THREE.MeshLambertMaterial({ map: wallTex, color: tint, side: THREE.DoubleSide, flatShading: rocky }));
+    };
     // A rock face gets a bulging middle row so it reads as rough stone rather than a flat panel.
     const rows = rocky ? [[8.6, -0.6, 0], [9.9 + 0, 1.8, 1], [11.4, 5.2, 0]] : [[8.6, -0.6, 0], [11, 4.2, 0]];
     for (const side of [1, -1]) {
@@ -1281,7 +2081,7 @@ export class Mountain {
         geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
         geo.computeVertexNormals();
         const mid = Math.floor((i0 + i1) / 2);
-        this.#addChunk(new THREE.Mesh(geo, wallMat), road.x[mid], road.z[mid], ROAD_CHUNK * STEP * 0.6);
+        this.#addChunk(new THREE.Mesh(geo, wallFor(mid)), road.x[mid], road.z[mid], ROAD_CHUNK * STEP * 0.6);
       }
     }
   }
@@ -1319,6 +2119,7 @@ export class Mountain {
   // A few houses, a shop and a vending machine glowing at the bottom of the pass.
   #buildTown() {
     const t = this.terrain;
+    if (t.town.none) return;
     const road = this.road;
     const win = windowsTexture();
     const wallMats = [0x4a4740, 0x5a5048, 0x3e434a, 0x55534d].map((c) => new THREE.MeshLambertMaterial({ color: c, emissive: 0xffffff, emissiveMap: win, emissiveIntensity: 0.9 }));
@@ -1357,7 +2158,7 @@ export class Mountain {
     vend.position.set(p[0], p[1] + 0.95, p[2]);
     vend.rotation.y = road.heading[f];
     const glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture('rgba(190,230,255,0.7)', 'rgba(120,180,255,0)'), blending: THREE.AdditiveBlending, depthWrite: false }));
-    glowSprite.scale.set(5, 5, 1);
+    glowSprite.scale.set(8, 8, 1);
     glowSprite.position.copy(vend.position);
     this.scene.add(vend, glowSprite);
   }
@@ -1575,7 +2376,7 @@ export class Mountain {
       const k = road.kappa[i];
       const side = k > 0 ? -1 : 1; // outside of the corner
       // Curve mirrors on the outside of blind, tight corners.
-      if (Math.abs(k) > 1 / 26 && i - lastMirror > 40) {
+      if (Math.abs(k) > 1 / 26 && i - lastMirror > 40 && this.track.shrines !== false) {
         const g = new THREE.Group();
         g.add(pole(2.6, orange, 0.06));
         const rim = new THREE.Mesh(new THREE.CircleGeometry(0.5, 16), orange);
@@ -1646,11 +2447,13 @@ export class Mountain {
         add(place(g, i, -1, 5.4), i);
       }
       // Stone lanterns, little shrines and torii gates where there is room beside the road.
-      if (i % 170 === 85) {
+      if (i % 300 === 150 && this.track.shrines !== false) {
         const side2 = t.sideProfile(i, 1) >= 0 ? 1 : -1;
         if (road.clearance(i, side2, 20) < 20) continue;
         const g = new THREE.Group();
-        const kind = Math.floor(noise2(i * 0.13, 4) * 3);
+        // Mostly little jizo shrines and stone lanterns; a red torii only now and then.
+        const roll = noise2(i * 0.13, 4);
+        const kind = roll < 0.15 ? 0 : roll < 0.6 ? 1 : 2;
         if (kind === 0) {
           // Torii gate.
           for (const x of [-1.4, 1.4]) {
@@ -1696,20 +2499,173 @@ export class Mountain {
     }
   }
 
+  // What you find alone on a quiet Japanese mountain road at night: a single vending machine
+  // glowing at the edge of the forest, and an old bus stop (tin shelter, a bench, the round sign)
+  // for a bus that comes twice a day. One or the other every couple of kilometres.
+  #buildLonelyStops() {
+    const road = this.road;
+    const t = this.terrain;
+    const lam = (color) => new THREE.MeshLambertMaterial({ color, flatShading: true });
+    const concrete = lam(0x8d8b85);
+    const tin = lam(0x6f7b80);
+    const rust = lam(0x7a4a2c);
+    const wood = lam(0x6b5236);
+    const tex = (w, h, draw) => {
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      draw(c.getContext('2d'));
+      const tx = new THREE.CanvasTexture(c);
+      tx.colorSpace = THREE.SRGBColorSpace;
+      tx.magFilter = THREE.NearestFilter;
+      return tx;
+    };
+    // The machine's front: lit rows of cans and bottles behind glass, price buttons, the slot.
+    const front = tex(32, 64, (g) => {
+      g.fillStyle = '#e9eef2';
+      g.fillRect(0, 0, 32, 64);
+      g.fillStyle = '#f7fbff';
+      g.fillRect(2, 3, 28, 30);
+      const cans = ['#c4261d', '#1d5fb4', '#e0a020', '#2f8a3c', '#f2f2f2', '#6b3a1e', '#d84a8a'];
+      for (let r = 0; r < 3; r++) {
+        for (let k = 0; k < 6; k++) {
+          g.fillStyle = cans[(r * 5 + k * 3) % cans.length];
+          g.fillRect(3 + k * 4.5, 5 + r * 10, 3, 6);
+          g.fillStyle = '#d93a2a';
+          g.fillRect(3 + k * 4.5, 12 + r * 10, 3, 1);
+        }
+      }
+      g.fillStyle = '#26323c';
+      g.fillRect(4, 38, 10, 6);
+      g.fillStyle = '#9aa4ac';
+      g.fillRect(20, 38, 6, 3);
+      g.fillStyle = '#1b1f23';
+      g.fillRect(4, 52, 24, 7);
+    });
+    const machineMat = [lam(0xd9dee2), lam(0xd9dee2), lam(0xd9dee2), lam(0xd9dee2), new THREE.MeshBasicMaterial({ map: front }), lam(0xd9dee2)];
+    const glow = glowTexture('rgba(205,235,255,0.55)', 'rgba(150,200,255,0)');
+    const sign = tex(32, 32, (g) => {
+      g.fillStyle = '#f4f4f0';
+      g.beginPath();
+      g.arc(16, 16, 15, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = '#1d4fa0';
+      g.lineWidth = 3;
+      g.stroke();
+      g.fillStyle = '#1d4fa0';
+      g.font = 'bold 11px sans-serif';
+      g.textAlign = 'center';
+      g.fillText('バス', 16, 20);
+    });
+    const signMat = new THREE.MeshLambertMaterial({ map: sign, side: THREE.DoubleSide });
+    let k = 0;
+    for (let i = 600; i < road.count - 200; i += 1100 + Math.floor(noise2(i * 0.01, 3) * 500)) {
+      // Find a spot nearby with room beside the road and no rail in the way.
+      let at = -1;
+      let side = 1;
+      for (let d = 0; d < 200 && at < 0; d += 4) {
+        for (const sd of [1, -1]) {
+          const j = i + d;
+          if (this.layout?.rail?.[sd]?.[j] || road.clearance(j, sd, 14) < 14 || Math.abs(road.kappa[j]) > 1 / 60) continue;
+          const p = road.pointAt(j, sd * (road.w.RAIL + 2));
+          if (this.#onLot(p[0], p[2], j, 3) || t.inLake?.(p[0], p[2])) continue;
+          at = j;
+          side = sd;
+          break;
+        }
+      }
+      if (at < 0) continue;
+      const g = new THREE.Group();
+      const p = road.pointAt(at, side * (road.w.RAIL + 2.2));
+      const y = Math.max(t.heightAt(p[0], p[2]), road.y[at] - 0.3);
+      g.position.set(p[0], y, p[2]);
+      g.rotation.y = road.heading[at] + (side > 0 ? -Math.PI / 2 : Math.PI / 2); // front to the road
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.25, 2.2), concrete);
+      pad.position.y = 0.08;
+      g.add(pad);
+      if (k++ % 2 === 0) {
+        // Vending machine, glowing, with its little light on the ground.
+        const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1.85, 0.75), machineMat);
+        m.position.set(0, 1.12, 0.2);
+        const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, blending: THREE.AdditiveBlending, depthWrite: false }));
+        halo.scale.set(3.2, 3.2, 1);
+        halo.position.set(0, 1.2, 0.75);
+        const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.2, 0.7, 8), lam(0x2e6a3a));
+        bin.position.set(0.8, 0.55, 0.3);
+        g.add(m, halo, bin);
+        this.lampGlows?.push(halo);
+      } else {
+        // Bus stop: a tin shelter with a rusty edge, a wooden bench, the round sign on its post.
+        const back = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2, 0.06), tin);
+        back.position.set(0, 1.2, -0.8);
+        const roof = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.06, 1.4), rust);
+        roof.position.set(0, 2.25, -0.25);
+        roof.rotation.x = -0.12;
+        for (const x of [-1.25, 1.25]) {
+          const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.1, 0.06), tin);
+          post.position.set(x, 1.15, 0.35);
+          g.add(post);
+        }
+        const bench = new THREE.Mesh(new THREE.BoxGeometry(2, 0.08, 0.4), wood);
+        bench.position.set(0, 0.55, -0.55);
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.2, 6), lam(0xb8b8b0));
+        pole.position.set(1.7, 1.2, 0.8);
+        const disc = new THREE.Mesh(new THREE.CircleGeometry(0.3, 16), signMat);
+        disc.position.set(1.7, 2.3, 0.82);
+        disc.rotation.y = 0;
+        g.add(back, roof, bench, pole, disc);
+      }
+      this.#addChunk(g, p[0], p[2], 8);
+    }
+  }
+
   // Recolour for the time of day and switch the streetlight glow on after dark.
   setTime(preset) {
     this.cloudSea.setTime(preset);
     // The gas station is open by day and at sunset, closed at night.
     if (this.openSigns) {
-      const night = preset.stars >= 0.9;
+      const night = !!preset.night;
       this.openSigns.open.visible = !night;
       this.openSigns.closed.visible = night;
     }
     for (const o of this.lampGlows) o.visible = preset.lights;
+    this.lampsOn = !!preset.lights;
+  }
+
+  // Street lamps shine real light, like the headlights: two spotlights (always the same number,
+  // so nothing has to be rebuilt) sit in the lamps nearest the camera and light whatever is under
+  // them: road, rails, verge, your car.
+  #updateLampLights(camPos) {
+    const N = 2; // you only ever pass under one or two at a time; each costs every pixel a little
+    if (!this.lampLights) {
+      this.lampLights = [];
+      for (let k = 0; k < N; k++) {
+        const l = new THREE.SpotLight(0xffd29a, 0, 26, 0.95, 0.65, 1.6);
+        this.scene.add(l, l.target);
+        this.lampLights.push(l);
+      }
+    }
+    const near = (this.lampSpots || [])
+      .map((p) => [p, (p.pos[0] - camPos.x) ** 2 + (p.pos[2] - camPos.z) ** 2])
+      .sort((a, b) => a[1] - b[1])
+      .slice(0, N);
+    this.lampLights.forEach((l, k) => {
+      const hit = near[k];
+      if (!hit || !this.lampsOn || hit[1] > 240 * 240) {
+        l.intensity = 0;
+        return;
+      }
+      l.position.set(...hit[0].pos);
+      l.target.position.set(...hit[0].aim);
+      // Fade in as it becomes one of the nearest, so lamps never pop on.
+      const fade = Math.min(1, Math.max(0, (240 - Math.sqrt(hit[1])) / 60));
+      l.intensity = 260 * fade;
+    });
   }
 
   // Show only what is within reach: detail (trees, signs) closer in, ground (road, terrain) further.
   update(camPos, detailRange, groundRange = detailRange, dt = 0) {
+    this.#updateLampLights(camPos);
     for (const c of this.chunks) {
       const dx = c.x - camPos.x;
       const dz = c.z - camPos.z;
@@ -1718,6 +2674,8 @@ export class Mountain {
     }
     this.cloudSea.update(dt);
     this.waterfalls.update(dt);
+    if (this.fallsTex) this.fallsTex.offset.y += dt * 1.6;
+    this.#updateCrowds(camPos, dt);
   }
 
   // Height of the far ranges (for checking whether a peak hides the sun).

@@ -1,6 +1,8 @@
 // Chase camera (smoothed, swings toward the direction of travel in a slide) and bumper camera.
 import * as THREE from 'three';
 import { EYE } from './cockpit.js';
+import { drivingLens } from '../game/replay.js';
+import { fishZoom } from './vhs.js';
 
 const GROUND = -0.62; // body space: the car model's body group sits this far below the origin
 
@@ -21,12 +23,36 @@ export class CameraRig {
     this.prevVel = new THREE.Vector3();
     this.acc = new THREE.Vector3();
     this.fov = 60;
+    // Your chosen field of view (50..150, from the pause menu). The chase camera moves in or out
+    // with it so the car stays about the same size on screen: wider shows more of the road around.
+    this.userFov = 60;
     this.t = 0;
     this.react = new THREE.Vector2(); // x: pitch, y: height
   }
 
   snap() {
     this.ready = false;
+  }
+
+  // How far behind and above the car the chase camera sits for the chosen field of view: at 60
+  // degrees, 5.8 m back and 2.3 m up; wider moves it in (never inside the car), narrower back.
+  #chaseOffset(fast) {
+    // The fisheye swells the middle of the picture, where the car is: back off by as much.
+    // Relative to a plain 60-degree lens at 5.8 m back: the car stays the same size on screen.
+    const k = this.#sizeFor(this.userFov) * Math.tan((30 * Math.PI) / 180);
+    return {
+      back: Math.max(3.4, (5.8 + fast * 0.6) * k),
+      up: Math.max(1.45, (2.3 - fast * 0.35) * Math.sqrt(k)),
+    };
+  }
+
+  // How far back the camera has to be (relative) for the car to look the same size on screen.
+  #sizeFor(v) {
+    const lens = drivingLens(v);
+    const hv = (lens.fov * Math.PI) / 360;
+    const z = lens.fish > 0.001 ? fishZoom(lens.fish, hv, this.camera.aspect || 2, 0.7) : 1;
+    const mag = 1 / (z * (1 - lens.fish * (1 - hv / Math.tan(hv))));
+    return mag / Math.tan(hv);
   }
 
   // carObject: the rendered car (interpolated pose). velocity: world linear velocity.
@@ -40,9 +66,10 @@ export class CameraRig {
   #speedFeel(dt, carObject, velocity) {
     const cam = this.camera;
     const mph = Math.hypot(velocity.x, velocity.z) * 2.237;
-    const base = BASE_FOV[this.mode] ?? 60;
-    // Wider view with speed: +0 at 20 mph up to about +16 degrees by 110 mph.
-    const widen = Math.max(0, Math.min(1, (mph - 20) / 90)) ** 1.2 * (this.mode === 'chase' ? 16 : 12);
+    const base = Math.min(150, drivingLens(this.userFov).fov + ((BASE_FOV[this.mode] ?? 60) - 60));
+    const room = Math.max(0, 1 - (this.userFov - 60) / 120);
+    // Only a touch wider at speed (up to +4 degrees by 110 mph), so you can still see ahead.
+    const widen = Math.max(0, Math.min(1, (mph - 20) / 90)) ** 1.2 * 4 * room;
     this.fov += (base + widen - this.fov) * (1 - Math.exp(-dt * 3));
     if (Math.abs(cam.fov - this.fov) > 0.01) {
       cam.fov = this.fov;
@@ -117,7 +144,8 @@ export class CameraRig {
     // no lag and no swing toward the slide, so the car never moves on screen.
     if (this.headSway < 0.5) {
       const yawQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(fwd.x, fwd.z));
-      cam.position.copy(new THREE.Vector3(0, 2.3, -5.8).applyQuaternion(yawQ).add(carObject.position));
+      const { back, up } = this.#chaseOffset(0);
+      cam.position.copy(new THREE.Vector3(0, up, -back).applyQuaternion(yawQ).add(carObject.position));
       cam.lookAt(new THREE.Vector3(0, 0.6, 9).applyQuaternion(yawQ).add(carObject.position));
       this.pos.copy(cam.position);
       this.look.copy(carObject.position);
@@ -131,7 +159,8 @@ export class CameraRig {
     if (speed > 3 && v.dot(fwd) > 0) dir.lerp(v.normalize(), 0.35).normalize();
     // At speed the camera drops a little lower and trails a little further back.
     const fast = Math.min(1, speed / 45);
-    const target = carObject.position.clone().addScaledVector(dir, -5.8 - fast * 0.6).add(new THREE.Vector3(0, 2.3 - fast * 0.35, 0));
+    const { back, up } = this.#chaseOffset(fast);
+    const target = carObject.position.clone().addScaledVector(dir, -back).add(new THREE.Vector3(0, up, 0));
     const look = carObject.position.clone().addScaledVector(fwd, 9).add(new THREE.Vector3(0, 0.6, 0));
     if (!this.ready) {
       this.pos.copy(target);

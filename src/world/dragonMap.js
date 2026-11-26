@@ -51,6 +51,6 @@ export function dragonPoints(length = 8000, seed = 318) {
     step(Math.round(angle * radius), side / radius);
     step(Math.round(rand() * 10), 0);
   }
-  step(120, 0); // run-out into the finish
+  step(50, 0); // run-out into the village (short: no straight long enough to get near 80 mph)
   return pts;
 }

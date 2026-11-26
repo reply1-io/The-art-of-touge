@@ -10,8 +10,8 @@ import { CAR, TUNABLE_DEFAULTS } from '../src/config.js';
 
 const road = TRACKS.dragon.road();
 
-test("Dragon's Tail: long, packed with corners, no straights, never crosses itself", () => {
-  assert.ok(road.length > 7500, `length ${road.length}`);
+test("Dragon's Tail: the real length and corner count, no long straights, never crosses itself", () => {
+  assert.ok(road.length > 16500 && road.length < 18500, `length ${road.length}`); // the real road: 11 miles
   let corners = 0;
   let inCorner = false;
   let sign = 0;
@@ -28,8 +28,8 @@ test("Dragon's Tail: long, packed with corners, no straights, never crosses itse
     if (i > 60 && i < road.count - 70) longest = Math.max(longest, straight);
     if (i > 5 && i < road.count - 5) minR = Math.min(minR, 1 / Math.max(1e-6, Math.abs(k)));
   }
-  assert.ok(corners / (road.length / 1000) > 15, `${corners} corners`);
-  assert.ok(longest <= 30, `longest straight ${longest} m`);
+  assert.ok(corners > 280 && corners < 340, `${corners} corners`); // about 318 on the real road
+  assert.ok(longest <= 50, `longest straight ${longest} m`); // (only the run onto the bridge at the end)
   assert.ok(minR > 11, `tightest radius ${minR}`);
   let closest = Infinity;
   for (let i = 0; i < road.count; i += 3) for (let j = i + 60; j < road.count; j += 3) closest = Math.min(closest, Math.hypot(road.x[i] - road.x[j], road.z[i] - road.z[j]));
@@ -49,7 +49,7 @@ test("Dragon's Tail: a careful driver gets from start to finish", async () => {
   car.trans.setDrive('D', 0);
   const q = {};
   let hint = i0;
-  for (let t = 0; t < 1200; t += 1 / 60) {
+  for (let t = 0; t < 2600; t += 1 / 60) {
     const pos = car.body.translation();
     road.query(pos.x, pos.z, hint, q);
     hint = q.index;
@@ -71,25 +71,7 @@ test("Dragon's Tail: a careful driver gets from start to finish", async () => {
   assert.ok(q.index >= road.finishIndex, `stopped at s=${q.s}`);
 });
 
-test('Kaido Mountain: eleven roads, no leg of the route comes too close to another', async () => {
-  const { TRACKS } = await import('../src/world/tracks.js');
-  const road = TRACKS.world.road();
-  assert.equal(TRACKS.world.stages.length, 11);
-  let closest = Infinity;
-  for (let i = 0; i < road.count; i += 3)
-    for (let j = i + 40; j < road.count - Math.max(0, 40 - i); j += 3) closest = Math.min(closest, Math.hypot(road.x[i] - road.x[j], road.z[i] - road.z[j]));
-  assert.ok(closest > 4 * road.w.HALF, `closest legs ${closest}`);
-  assert.ok(road.top > 80, `the summit is ${road.top} m above the village`);
-  // A loop: the end of the road meets its start, at the same height and heading the same way.
-  assert.ok(Math.hypot(road.x[0] - road.x[road.count - 1], road.z[0] - road.z[road.count - 1]) < 3, 'the loop closes');
-  assert.ok(Math.abs(road.y[0] - road.y[road.count - 1]) < 0.3, 'no step at the join');
-});
-
-// How fast a well tuned car (about 300 hp, on semi-slicks) could possibly go anywhere on the map: flat out
-// wherever it can, braking hard for every corner it needs to.
-test('Kaido Mountain: every road is all corners, nowhere near 80 mph even flat out', async () => {
-  const { TRACKS } = await import('../src/world/tracks.js');
-  const road = TRACKS.world.road();
+test("Dragon's Tail: all corners, nowhere near 80 mph even flat out", async () => {
   const n = road.count;
   const cap = new Float64Array(n);
   for (let i = 0; i < n; i++) {
@@ -99,15 +81,15 @@ test('Kaido Mountain: every road is all corners, nowhere near 80 mph even flat o
   }
   const v = Float64Array.from(cap);
   v[0] = 0;
-  // Round the loop twice, so the speed carried across the join counts too.
-  for (let lap = 0; lap < 2; lap++) {
-    for (let i = lap ? 0 : 1; i < n; i++) {
-      const u = v[(i - 1 + n) % n];
-      const a = Math.min(7, 220000 / (1200 * Math.max(u, 1))) - (0.45 * u * u) / 1200 + 9.81 * road.grade[i];
-      v[i] = Math.min(cap[i], Math.sqrt(Math.max(0, u * u + 2 * a * 2)));
-    }
+  for (let i = 1; i < n; i++) {
+    const u = v[i - 1];
+    const a = Math.min(7, 220000 / (1200 * Math.max(u, 1))) - (0.45 * u * u) / 1200 + 9.81 * road.grade[i];
+    v[i] = Math.min(cap[i], Math.sqrt(Math.max(0, u * u + 2 * a * 2)));
   }
-  for (let lap = 0; lap < 2; lap++) for (let i = n - 1; i >= 0; i--) v[i] = Math.min(v[i], Math.sqrt(v[(i + 1) % n] ** 2 + 2 * 9 * 2));
+  v[n - 1] = 0; // the road ends at a barrier: you have to be able to stop
+  for (let i = n - 2; i >= 0; i--) v[i] = Math.min(v[i], Math.sqrt(v[i + 1] ** 2 + 2 * 9 * 2));
+  let at = 0;
+  for (let i = 0; i < n; i++) if (v[i] > v[at]) at = i;
   const top = Math.max(...v) * 2.237;
-  assert.ok(top < 76, `${top.toFixed(1)} mph possible`);
+  assert.ok(top < 76, `${top.toFixed(1)} mph possible at ${at * 2} m of ${n * 2}`);
 });

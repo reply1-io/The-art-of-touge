@@ -28,7 +28,8 @@ export class MiniMap {
     // About 20 times a second is plenty.
     if (this.tick++ % 3) return;
     const c = this.canvas;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    // Low resolution, scaled up with hard edges: chunky pixels like the rest of the HUD.
+    const dpr = 0.4;
     const size = Math.round(c.clientWidth * dpr);
     if (c.width !== size) {
       c.width = size;

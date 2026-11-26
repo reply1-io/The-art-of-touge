@@ -1,8 +1,11 @@
 // Player settings and tuning values, saved on the device.
-import { TUNABLE_DEFAULTS } from './config.js';
+import { TUNABLE_DEFAULTS, BASE_CAR, carKey, carSave } from './config.js';
 
 const KEY = 'touge.settings.v4';
-const TUNE_KEY = 'touge.tuning.v3';
+// The roads there are (kept here so settings need not load the road code).
+const ROADS = ['dragon', 'tunitas-down', 'tunitas-up', 'us276-up', 'us276-down'];
+// Roads only offered one way: an old save naming the other direction moves to the best one.
+const BEST = { 'tunitas-up': 'tunitas-down', 'us276-up': 'us276-down' };
 
 const DEFAULTS = {
   mode: 'manual', // 'manual' | 'autoClutch' | 'auto'
@@ -12,10 +15,11 @@ const DEFAULTS = {
   shifter: 'drag', // 'drag' | 'tap'
   vhs: true,
   picture: 'sharp', // 'sharp' | 'retro'
-  map: 'world', // the Kaido Mountain map is the only map now
+  map: 'dragon', // which road (see TRACKS)
   time: 'night', // 'day' | 'sunset' | 'night'
   stage: -1, // world map: which road to start on (-1 = the whole route)
   money: 'unlimited', // 'career' | 'unlimited'
+  fov: 60, // driving camera field of view, 50..150
   driveMode: 'free', // 'free' (Free Roam) | 'touge' (races)
   netName: '',
   netServer: '',
@@ -38,31 +42,46 @@ function write(key, value) {
 }
 
 export function loadSettings() {
-  // Kaido Mountain is the only map; older saves may still name Akina or the standalone Dragon's Tail.
-  return { ...DEFAULTS, ...read(KEY), map: 'world' };
+  // Older saves may name a road that is gone (Akina, Kaido Mountain): back to the Dragon's Tail.
+  const s = { ...DEFAULTS, ...read(KEY), stage: -1 };
+  if (!ROADS.includes(s.map)) s.map = 'dragon';
+  s.map = BEST[s.map] ?? s.map;
+  return s;
 }
 
 export function saveSettings(s) {
   write(KEY, s);
 }
 
+// Tuning and builds are kept per car. The first car to load claims any old shared save
+// (see carSave), so another car never picks up the same setup.
+function claim(kind) {
+  const c = read('touge.legacyClaim');
+  if (!c[kind]) write('touge.legacyClaim', { ...c, [kind]: BASE_CAR.id });
+}
+
 export function loadTuning() {
-  return { ...TUNABLE_DEFAULTS, ...read(TUNE_KEY) };
+  const t = carSave('tuning');
+  claim('tuning');
+  // The short-lived "factory" wheels (from the downloaded E30 model, since removed) go back to BBS.
+  if (t?.wheel === 'factory') t.wheel = 'bbs';
+  return { ...TUNABLE_DEFAULTS, ...(t || {}) };
 }
 
 export function saveTuning(t) {
-  write(TUNE_KEY, t);
+  claim('tuning');
+  write(carKey('tuning'), t);
 }
 
-// Saved builds: three named slots, each a copy of the tuning-shop setup.
-const BUILDS_KEY = 'touge.builds.v1';
-
+// Saved builds: three named slots per car, each a copy of the tuning-shop setup.
 export function loadBuilds() {
-  const b = read(BUILDS_KEY);
+  const b = carSave('builds') || {};
+  claim('builds');
   const slots = Array.isArray(b.slots) ? b.slots : [];
   return [0, 1, 2].map((i) => (slots[i] && typeof slots[i] === 'object' ? slots[i] : null));
 }
 
 export function saveBuilds(slots) {
-  write(BUILDS_KEY, { slots });
+  claim('builds');
+  write(carKey('builds'), { slots });
 }

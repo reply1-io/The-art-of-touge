@@ -1,10 +1,10 @@
-// Tuning shop: the car on a turntable in a garage, with tabs for wheels, tyres, suspension and
+// Tuning shop: the car in a home workshop, with tabs for wheels, tyres, suspension and
 // drivetrain. Every change shows on the car straight away (wheels, sidewalls, camber and ride
 // height are all visible), applies to the physics, and is saved on the device.
 import * as THREE from 'three';
 import {
-  CAR, BASE_CAR, CARS, ENGINE_SWAPS, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup,
-  SEATS, RIM_WIDTH_IN, PLATES, cleanPlate, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, HEADLIGHTS, TAILLIGHTS,
+  CAR, BASE_CAR, CARS, ENGINE_SWAPS, carSave, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup,
+  SEATS, RIM_WIDTH_IN, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, HEADLIGHTS, TAILLIGHTS,
 } from '../config.js';
 import { dynoRun } from '../physics/dyno.js';
 import { money } from '../game/wallet.js';
@@ -80,101 +80,261 @@ function textTexture(lines, w, h, draw) {
   return t;
 }
 
+// Someone's home workshop: a single-car garage with a bare concrete floor, block walls, a
+// workbench and pegboard of tools, shelves of parts, a rolling tool chest, an engine on a stand and
+// strip lights overhead. The car just sits on the floor; the camera walks round it.
 function buildGarage(scene) {
-  scene.background = new THREE.Color(0x0d0f14);
-  scene.fog = new THREE.Fog(0x0d0f14, 9, 26);
-  scene.add(new THREE.HemisphereLight(0x8a96b8, 0x1a1712, 1.1));
-  const key = new THREE.SpotLight(0xffe9c8, 260, 30, 0.75, 0.6, 1.2);
-  key.position.set(2.5, 7, 4);
-  key.target.position.set(0, 0, 0);
-  scene.add(key, key.target);
-  const rim = new THREE.DirectionalLight(0x7fb0ff, 0.9);
-  rim.position.set(-5, 3, -6);
-  scene.add(rim);
-  const fill = new THREE.DirectionalLight(0xffb36b, 0.5);
-  fill.position.set(-6, 2, 5);
-  scene.add(fill);
+  scene.background = new THREE.Color(0x15130f);
+  scene.fog = new THREE.Fog(0x15130f, 12, 30);
+  const lambert = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, ...extra });
+  const box = (w, h, d, mat, x, y, z, ry = 0) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z);
+    m.rotation.y = ry;
+    scene.add(m);
+    return m;
+  };
+  const W = 7.2; // half width of the room (x)
+  const D = 6.2; // half depth (z)
+  const H = 3.6; // ceiling height
 
-  // Concrete floor with expansion joints.
-  const floorTex = textTexture(null, 256, 256, (g) => {
-    g.fillStyle = '#2a2b2e';
-    g.fillRect(0, 0, 256, 256);
-    for (let i = 0; i < 2600; i++) {
-      const v = 34 + Math.random() * 18;
-      g.fillStyle = `rgb(${v},${v},${v + 2})`;
-      g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+  // Light: warm fill from the strip lights, a cooler spill from the open door.
+  scene.add(new THREE.HemisphereLight(0xfff1d8, 0x2a241c, 0.9));
+  const key = new THREE.PointLight(0xfff0d0, 26, 14, 1.3);
+  key.position.set(0.5, H - 0.3, 0.6);
+  scene.add(key);
+  const fill = new THREE.PointLight(0xffe3b0, 10, 10, 1.4);
+  fill.position.set(-3.6, H - 0.4, -3);
+  scene.add(fill);
+  const door = new THREE.DirectionalLight(0xa8c4ff, 0.7);
+  door.position.set(6, 3, 8);
+  scene.add(door);
+
+  // Concrete floor: speckled, with expansion joints and oil stains where cars have stood.
+  const floorTex = textTexture(null, 512, 512, (g) => {
+    g.fillStyle = '#55524c';
+    g.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 9000; i++) {
+      const v = 70 + Math.random() * 30;
+      g.fillStyle = `rgb(${v},${v - 3},${v - 8})`;
+      g.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
     }
-    g.fillStyle = '#18191b';
-    g.fillRect(0, 0, 256, 3);
-    g.fillRect(0, 0, 3, 256);
+    for (let i = 0; i < 7; i++) {
+      const x = 120 + Math.random() * 270;
+      const y = 120 + Math.random() * 270;
+      const r = 18 + Math.random() * 46;
+      const grd = g.createRadialGradient(x, y, 2, x, y, r);
+      grd.addColorStop(0, 'rgba(18,16,14,0.65)');
+      grd.addColorStop(1, 'rgba(18,16,14,0)');
+      g.fillStyle = grd;
+      g.beginPath();
+      g.arc(x, y, r, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.fillStyle = '#3a3833';
+    g.fillRect(0, 255, 512, 3);
+    g.fillRect(255, 0, 3, 512);
   });
-  floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
-  floorTex.repeat.set(8, 8);
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshLambertMaterial({ map: floorTex }));
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(W * 2, D * 2), lambert(0xffffff, { map: floorTex }));
   floor.rotation.x = -Math.PI / 2;
   scene.add(floor);
 
-  // Turntable: a dark steel disc with a ring of amber lights around its edge.
-  const table = new THREE.Group();
-  const discTex = textTexture(null, 256, 256, (g) => {
-    g.fillStyle = '#1b1c20';
+  // Painted block walls.
+  const blockTex = textTexture(null, 256, 256, (g) => {
+    g.fillStyle = '#8d8a80';
     g.fillRect(0, 0, 256, 256);
-    g.strokeStyle = '#2c2e33';
-    g.lineWidth = 3;
-    for (let r = 20; r < 128; r += 18) {
-      g.beginPath();
-      g.arc(128, 128, r, 0, Math.PI * 2);
-      g.stroke();
+    for (let i = 0; i < 2500; i++) {
+      const v = 125 + Math.random() * 25;
+      g.fillStyle = `rgb(${v},${v - 2},${v - 8})`;
+      g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
     }
-    g.strokeStyle = '#ffb000';
-    g.lineWidth = 2;
-    for (let i = 0; i < 2; i++) {
-      g.beginPath();
-      g.moveTo(128, 128);
-      g.lineTo(128 + Math.cos(i * Math.PI) * 126, 128 + Math.sin(i * Math.PI) * 126);
-      g.stroke();
+    g.fillStyle = '#6c695f';
+    for (let row = 0; row < 8; row++) {
+      g.fillRect(0, row * 32, 256, 3);
+      for (let c = 0; c < 4; c++) g.fillRect(c * 64 + (row % 2) * 32, row * 32, 3, 32);
     }
+    // A grubby band along the bottom.
+    const grd = g.createLinearGradient(0, 200, 0, 256);
+    grd.addColorStop(0, 'rgba(40,36,30,0)');
+    grd.addColorStop(1, 'rgba(40,36,30,0.25)');
+    g.fillStyle = grd;
+    g.fillRect(0, 0, 256, 256);
   });
-  const disc = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.5, 0.08, 48), [
-    new THREE.MeshLambertMaterial({ color: 0x24262b }),
-    new THREE.MeshLambertMaterial({ map: discTex }),
-    new THREE.MeshLambertMaterial({ color: 0x24262b }),
-  ]);
-  disc.position.y = 0.04;
-  table.add(disc);
-  const ledMat = new THREE.MeshBasicMaterial({ color: 0xffa21a });
-  const led = new THREE.BoxGeometry(0.12, 0.03, 0.05);
-  for (let i = 0; i < 40; i++) {
-    const a = (i / 40) * Math.PI * 2;
-    const m = new THREE.Mesh(led, ledMat);
-    m.position.set(Math.cos(a) * 3.47, 0.07, Math.sin(a) * 3.47);
-    m.rotation.y = -a;
-    table.add(m);
-  }
-  scene.add(table);
+  blockTex.wrapS = blockTex.wrapT = THREE.RepeatWrapping;
+  const wallMat = (rx) => {
+    const t = blockTex.clone();
+    t.needsUpdate = true;
+    t.repeat.set(rx, 1.4);
+    return lambert(0xffffff, { map: t });
+  };
+  const back = new THREE.Mesh(new THREE.PlaneGeometry(W * 2, H), wallMat(4));
+  back.position.set(0, H / 2, -D);
+  const left = new THREE.Mesh(new THREE.PlaneGeometry(D * 2, H), wallMat(3.6));
+  left.position.set(-W, H / 2, 0);
+  left.rotation.y = Math.PI / 2;
+  const right = new THREE.Mesh(new THREE.PlaneGeometry(D * 2, H), wallMat(3.6));
+  right.position.set(W, H / 2, 0);
+  right.rotation.y = -Math.PI / 2;
+  const front = new THREE.Mesh(new THREE.PlaneGeometry(W * 2, H), wallMat(4));
+  front.position.set(0, H / 2, D);
+  front.rotation.y = Math.PI;
+  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(W * 2, D * 2), lambert(0x3b3833));
+  ceiling.position.y = H;
+  ceiling.rotation.x = Math.PI / 2;
+  scene.add(back, left, right, front, ceiling);
+  // Exposed roof beams.
+  const beamMat = lambert(0x5c4632);
+  for (const z of [-3.6, -1.2, 1.2, 3.6]) box(W * 2, 0.18, 0.14, beamMat, 0, H - 0.09, z);
 
-  // Back wall: corrugated roller shutters, a tool board and a neon sign.
+  // The roller door on the right wall, half open, with daylight under it.
   const shutterTex = textTexture(null, 64, 128, (g) => {
-    g.fillStyle = '#4a4e56';
+    g.fillStyle = '#9da3a8';
     g.fillRect(0, 0, 64, 128);
     for (let y = 0; y < 128; y += 8) {
-      g.fillStyle = '#3a3d44';
+      g.fillStyle = '#7d8388';
       g.fillRect(0, y, 64, 3);
-      g.fillStyle = '#5a5e67';
+      g.fillStyle = '#b8bdc1';
       g.fillRect(0, y + 3, 64, 1);
     }
   });
   shutterTex.wrapS = shutterTex.wrapT = THREE.RepeatWrapping;
   shutterTex.repeat.set(3, 2);
-  const wallMat = new THREE.MeshLambertMaterial({ color: 0x2a2c31 });
-  const back = new THREE.Mesh(new THREE.PlaneGeometry(40, 9), wallMat);
-  back.position.set(0, 4.5, -7.5);
-  scene.add(back);
-  for (const x of [-5.2, 5.2]) {
-    const sh = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 4.2), new THREE.MeshLambertMaterial({ map: shutterTex }));
-    sh.position.set(x, 2.1, -7.45);
-    scene.add(sh);
+  const shutter = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.9), lambert(0xffffff, { map: shutterTex }));
+  shutter.position.set(W - 0.02, H - 0.95, 0.8);
+  shutter.rotation.y = -Math.PI / 2;
+  const daylight = new THREE.Mesh(new THREE.PlaneGeometry(5, H - 1.9), new THREE.MeshBasicMaterial({ color: 0xc9dcf2 }));
+  daylight.position.set(W - 0.03, (H - 1.9) / 2, 0.8);
+  daylight.rotation.y = -Math.PI / 2;
+  scene.add(shutter, daylight);
+
+  // Strip lights.
+  const tubeMat = new THREE.MeshBasicMaterial({ color: 0xfff6e0 });
+  for (const [x, z] of [[0.5, 0.6], [-3.6, -3]]) {
+    box(1.5, 0.08, 0.16, lambert(0x2b2b2b), x, H - 0.25, z);
+    box(1.4, 0.05, 0.08, tubeMat, x, H - 0.31, z);
   }
+
+  // Workbench along the back wall, with a vice, a pegboard of tools above it and a strip light.
+  const wood = lambert(0x8a6338);
+  const steel = lambert(0x4a4d52);
+  box(3.6, 0.08, 0.8, wood, -2.2, 0.92, -D + 0.45);
+  box(3.4, 0.05, 0.7, wood, -2.2, 0.25, -D + 0.45);
+  for (const x of [-3.9, -0.5]) for (const z of [-D + 0.12, -D + 0.78]) box(0.07, 0.92, 0.07, steel, x, 0.46, z);
+  box(0.22, 0.16, 0.18, lambert(0x2d4f8a), -3.4, 1.04, -D + 0.3); // vice
+  box(0.5, 0.12, 0.3, lambert(0xb42a20), -1.6, 1.02, -D + 0.4); // a small toolbox on the bench
+  box(0.3, 0.3, 0.25, lambert(0xd9c27a), -0.9, 1.11, -D + 0.45); // a box of parts
+  const pegTex = textTexture(null, 512, 256, (g) => {
+    g.fillStyle = '#b08a5c';
+    g.fillRect(0, 0, 512, 256);
+    g.fillStyle = '#7f6240';
+    for (let y = 10; y < 256; y += 16) for (let x = 10; x < 512; x += 16) g.fillRect(x, y, 3, 3);
+    // Tool outlines: spanners, a hammer, screwdrivers, a saw, pliers.
+    g.fillStyle = '#2b2d31';
+    for (let k = 0; k < 9; k++) {
+      const x = 30 + k * 26;
+      g.fillRect(x, 40, 7, 90 + (k % 3) * 14);
+      g.beginPath();
+      g.arc(x + 3.5, 40, 9, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.fillStyle = '#a32a22';
+    for (let k = 0; k < 5; k++) g.fillRect(300 + k * 22, 50, 10, 70);
+    g.fillStyle = '#2b2d31';
+    for (let k = 0; k < 5; k++) g.fillRect(303 + k * 22, 120, 4, 50);
+    g.fillRect(420, 40, 18, 90);
+    g.fillRect(400, 40, 58, 18);
+    g.fillStyle = '#c9ccd1';
+    g.beginPath();
+    g.moveTo(40, 190);
+    g.lineTo(230, 190);
+    g.lineTo(230, 222);
+    g.lineTo(40, 205);
+    g.fill();
+  });
+  const peg = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 1.25), lambert(0xffffff, { map: pegTex }));
+  peg.position.set(-2.2, 1.85, -D + 0.02);
+  scene.add(peg);
+
+  // Shelving on the left wall: tyres, oil, boxes of parts.
+  const shelfMat = lambert(0x6d7076);
+  for (const y of [0.45, 1.2, 1.95]) box(0.55, 0.04, 3.2, shelfMat, -W + 0.3, y, 0.6);
+  for (const z of [-0.95, 2.15]) for (const x of [-W + 0.05, -W + 0.55]) box(0.04, 2.1, 0.04, shelfMat, x, 1.05, z);
+  const tyreGeo = new THREE.TorusGeometry(0.3, 0.11, 6, 14);
+  const tyreMat = lambert(0x161618);
+  for (let k = 0; k < 4; k++) {
+    const t = new THREE.Mesh(tyreGeo, tyreMat);
+    t.position.set(-W + 0.32, 0.88, -0.5 + k * 0.62);
+    t.rotation.y = Math.PI / 2;
+    scene.add(t);
+  }
+  const colours = [0xd6382c, 0x2f6fbe, 0xe0b23a, 0x3d8a4a, 0xdedede];
+  for (let k = 0; k < 9; k++) box(0.3, 0.22 + (k % 3) * 0.06, 0.26, lambert(colours[k % colours.length]), -W + 0.3, 1.33 + (k % 3) * 0.03, -0.6 + k * 0.33);
+  for (let k = 0; k < 6; k++) box(0.42, 0.3, 0.4, lambert(0xa4875a), -W + 0.3, 2.13, -0.4 + k * 0.48);
+  for (let k = 0; k < 5; k++) {
+    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.26, 8), lambert(k % 2 ? 0x1f5aa0 : 0xd8a21d));
+    can.position.set(-W + 0.3, 0.6, -0.6 + k * 0.25);
+    scene.add(can);
+  }
+
+  // A red rolling tool chest, an engine on a stand, a floor jack and a stack of tyres.
+  const red = lambert(0xb3241c);
+  box(1.0, 1.05, 0.55, red, 2.6, 0.55, -D + 0.4);
+  box(1.0, 0.45, 0.55, red, 2.6, 1.32, -D + 0.4);
+  for (let k = 0; k < 6; k++) box(0.9, 0.02, 0.01, lambert(0xcfd2d6), 2.6, 0.2 + k * 0.17, -D + 0.68);
+  const engStand = new THREE.Group();
+  engStand.add(new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.52, 0.42), lambert(0x6f6a62)));
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.16, 0.36), lambert(0x9a9da2));
+  head.position.y = 0.34;
+  engStand.add(head);
+  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.7, 6), red);
+  leg.position.y = -0.55;
+  engStand.add(leg);
+  const foot = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.05, 0.08), red);
+  foot.position.y = -0.9;
+  engStand.add(foot);
+  engStand.position.set(4.6, 0.95, -3.4);
+  engStand.rotation.y = -0.5;
+  scene.add(engStand);
+  const jack = new THREE.Group();
+  jack.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.8), red));
+  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.1, 6), steel);
+  handle.rotation.x = 1.0;
+  handle.position.set(0, 0.35, 0.75);
+  jack.add(handle);
+  jack.position.set(3.4, 0.08, 2.9);
+  jack.rotation.y = 0.6;
+  scene.add(jack);
+  for (let k = 0; k < 4; k++) {
+    const t = new THREE.Mesh(tyreGeo, tyreMat);
+    t.rotation.x = Math.PI / 2;
+    t.position.set(-4.7, 0.11 + k * 0.22, 4.4);
+    scene.add(t);
+  }
+
+  // A poster and a sign on the walls.
+  const poster = textTexture(null, 256, 360, (g) => {
+    g.fillStyle = '#e9e1cc';
+    g.fillRect(0, 0, 256, 360);
+    g.fillStyle = '#c8241d';
+    g.fillRect(16, 16, 224, 160);
+    g.fillStyle = '#111';
+    g.font = 'bold 40px sans-serif';
+    g.textAlign = 'center';
+    g.fillText('TOUGE', 128, 230);
+    g.font = '22px sans-serif';
+    g.fillText('NIGHT RUN', 128, 268);
+    g.fillStyle = '#e9e1cc';
+    g.beginPath();
+    g.moveTo(30, 160);
+    g.lineTo(110, 70);
+    g.lineTo(150, 110);
+    g.lineTo(190, 60);
+    g.lineTo(230, 160);
+    g.fill();
+  });
+  const post = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.98), lambert(0xffffff, { map: poster }));
+  post.position.set(1.0, 1.9, -D + 0.02);
+  scene.add(post);
   const sign = textTexture(null, 512, 128, (g) => {
     g.clearRect(0, 0, 512, 128);
     g.font = '80px VT323, monospace';
@@ -185,24 +345,395 @@ function buildGarage(scene) {
     g.fillStyle = '#ffd38a';
     g.fillText('TOUGE GARAGE', 256, 66);
   });
-  const neon = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.25), new THREE.MeshBasicMaterial({ map: sign, transparent: true, fog: false }));
-  neon.position.set(0, 5.1, -7.4);
+  const neon = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.65), new THREE.MeshBasicMaterial({ map: sign, transparent: true, fog: false }));
+  neon.position.set(-W + 0.02, 2.75, 0.6);
+  neon.rotation.y = Math.PI / 2;
   scene.add(neon);
-  // Tyre stacks and a tool chest to fill the corners.
-  const tyreGeo = new THREE.TorusGeometry(0.32, 0.12, 6, 14);
-  tyreGeo.rotateX(Math.PI / 2);
-  const tyreMat = new THREE.MeshLambertMaterial({ color: 0x141416 });
-  for (const [x, z, n] of [[-6.4, -5.6, 5], [-5.6, -6.2, 3], [6.6, -4.6, 4]]) {
+
+  // ---------- More of the workshop ----------
+  // Workbenches: one along the front wall and one on the right by the door.
+  const bench = (x, z, ry, len) => {
+    const g = new THREE.Group();
+    const add = (w, h, d, mat, px, py, pz) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      m.position.set(px, py, pz);
+      g.add(m);
+    };
+    add(len, 0.08, 0.8, wood, 0, 0.92, 0);
+    add(len - 0.2, 0.05, 0.7, wood, 0, 0.25, 0);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(0.07, 0.92, 0.07, steel, sx * (len / 2 - 0.15), 0.46, sz * 0.33);
+    // Clutter: a toolbox, a vice, a battery, a box of bits, a can.
+    add(0.45, 0.12, 0.28, lambert(0xb42a20), -len / 2 + 0.6, 1.02, 0);
+    add(0.2, 0.16, 0.18, lambert(0x2d4f8a), len / 2 - 0.4, 1.04, -0.15);
+    add(0.3, 0.22, 0.2, lambert(0x1b1c1e), 0.1, 1.07, 0.1);
+    add(0.32, 0.2, 0.26, lambert(0xa4875a), -0.5, 1.06, -0.15);
+    g.position.set(x, 0, z);
+    g.rotation.y = ry;
+    scene.add(g);
+  };
+  bench(-1.5, D - 0.45, Math.PI, 3.2);
+  bench(W - 0.45, -4.6, -Math.PI / 2, 2.6);
+
+  // A tyre rack in the corner and more stacks of tyres.
+  for (const [rx, rz] of [[-W + 1.5, D - 0.5]]) {
+    for (const y of [0.05, 0.9, 1.75]) box(2.2, 0.05, 0.6, shelfMat, rx, y, rz);
+    for (const sx of [-1.05, 1.05]) box(0.05, 2.0, 0.6, shelfMat, rx + sx, 1.0, rz);
+    for (const y of [0.42, 1.27]) {
+      for (let k = 0; k < 4; k++) {
+        const t = new THREE.Mesh(tyreGeo, tyreMat);
+        t.position.set(rx - 0.75 + k * 0.5, y, rz);
+        scene.add(t);
+      }
+    }
+  }
+  for (const [x, z, n] of [[W - 1.1, D - 1.0, 5], [W - 1.9, D - 0.9, 3], [-W + 0.9, -D + 1.2, 4]]) {
     for (let k = 0; k < n; k++) {
       const t = new THREE.Mesh(tyreGeo, tyreMat);
-      t.position.set(x, 0.12 + k * 0.24, z);
+      t.rotation.x = Math.PI / 2;
+      t.position.set(x, 0.11 + k * 0.22, z);
       scene.add(t);
     }
   }
-  const chest = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, 0.6), new THREE.MeshLambertMaterial({ color: 0xa3241f }));
-  chest.position.set(5.6, 0.55, -6.6);
-  scene.add(chest);
+
+  // Jacks and axle stands.
+  const floorJack = (x, z, ry) => {
+    const j = new THREE.Group();
+    j.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.8), red));
+    const h = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.1, 6), steel);
+    h.rotation.x = 1.0;
+    h.position.set(0, 0.35, 0.75);
+    j.add(h);
+    j.position.set(x, 0.08, z);
+    j.rotation.y = ry;
+    scene.add(j);
+  };
+  floorJack(-2.6, 3.4, -0.4);
+  const standMat = lambert(0xe0b23a);
+  for (const [x, z] of [[2.4, 4.2], [2.9, 4.4], [2.4, 4.8], [2.9, 5.0]]) {
+    const st = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.5, 4), standMat);
+    st.position.set(x, 0.25, z);
+    scene.add(st);
+    box(0.06, 0.25, 0.06, standMat, x, 0.6, z);
+  }
+
+  // Posters on the walls.
+  const posterTex = (bg, ink, accent, title, sub, draw) =>
+    textTexture(null, 256, 360, (g) => {
+      g.fillStyle = bg;
+      g.fillRect(0, 0, 256, 360);
+      g.fillStyle = accent;
+      g.fillRect(16, 16, 224, 170);
+      draw?.(g);
+      g.fillStyle = ink;
+      g.textAlign = 'center';
+      g.font = 'bold 34px sans-serif';
+      g.fillText(title, 128, 240);
+      g.font = '20px sans-serif';
+      g.fillText(sub, 128, 276);
+      g.fillRect(40, 300, 176, 4);
+    });
+  const mountains = (g) => {
+    g.fillStyle = 'rgba(255,255,255,0.85)';
+    g.beginPath();
+    g.moveTo(24, 180);
+    g.lineTo(100, 80);
+    g.lineTo(140, 120);
+    g.lineTo(190, 60);
+    g.lineTo(232, 180);
+    g.fill();
+  };
+  const carShape = (g) => {
+    g.fillStyle = '#111';
+    g.fillRect(50, 120, 156, 30);
+    g.fillRect(85, 95, 80, 28);
+    g.fillStyle = '#ddd';
+    g.beginPath();
+    g.arc(85, 152, 14, 0, Math.PI * 2);
+    g.arc(175, 152, 14, 0, Math.PI * 2);
+    g.fill();
+  };
+  const rotor = (g) => {
+    g.fillStyle = '#111';
+    g.beginPath();
+    g.moveTo(128, 50);
+    g.quadraticCurveTo(200, 110, 190, 160);
+    g.quadraticCurveTo(128, 175, 66, 160);
+    g.quadraticCurveTo(56, 110, 128, 50);
+    g.fill();
+  };
+  const posters = [
+    [posterTex('#e9e1cc', '#111', '#c8241d', 'TOUGE', 'NIGHT RUN', mountains), -6.0, -D + 0.02, 0],
+    [posterTex('#141414', '#f2c51e', '#f2c51e', 'DOWNHILL', 'NO BRAKES', carShape), 4.8, -D + 0.02, 0],
+    [posterTex('#1d3a8a', '#f2f2f2', '#e6e6e6', 'ROTARY', 'BRAAAP', rotor), 6.3, -D + 0.02, 0],
+    [posterTex('#f2f1ea', '#1f5a32', '#2f6b4f', 'KAIDO', 'MOUNTAIN PASS', mountains), 1.8, D - 0.02, Math.PI],
+    [posterTex('#c8241d', '#fff', '#111', 'DRIFT', 'SIDEWAYS CLUB', carShape), -W + 0.02, -1.9, Math.PI / 2],
+    [posterTex('#2a2a2a', '#e8711c', '#e8711c', 'HACHI', '1600 TWIN CAM', carShape), -W + 0.02, -3.5, Math.PI / 2],
+  ];
+  for (const [tex, x, z, ry] of posters) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.75, 1.05), lambert(0xffffff, { map: tex }));
+    m.position.set(x, 1.95, z);
+    m.rotation.y = ry;
+    scene.add(m);
+  }
+
+  // ---------- Clutter: the stuff that piles up in a real workshop ----------
+  const cyl = (r, h, mat, x, y, z, rx = 0, rz = 0) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 12), mat);
+    m.position.set(x, y, z);
+    m.rotation.set(rx, 0, rz);
+    scene.add(m);
+    return m;
+  };
+  // Oil drums by the door.
+  for (const [x, z, c] of [[6.6, -2.4, 0x2f5fa8], [6.0, -2.6, 0xb3241c], [5.45, -2.5, 0x3d6b3f]]) {
+    cyl(0.29, 0.88, lambert(c), x, 0.44, z);
+    cyl(0.3, 0.03, lambert(0x1b1c1e), x, 0.89, z);
+  }
+  // Stacks of cardboard boxes along the front wall.
+  const card = lambert(0xa4875a);
+  const card2 = lambert(0x8f7448);
+  for (const [x, n] of [[0.9, 3], [1.5, 2], [2.1, 3], [2.7, 1]]) {
+    for (let k = 0; k < n; k++) box(0.55, 0.42, 0.5, k % 2 ? card2 : card, x + (k % 2) * 0.05, 0.21 + k * 0.42, D - 0.35, k * 0.08);
+  }
+  // Spare wheels leaning against the back wall, and a set of four on the floor.
+  const rimMat = lambert(0xc7c9cf);
+  for (let k = 0; k < 3; k++) {
+    const t = new THREE.Mesh(tyreGeo, tyreMat);
+    t.position.set(3.6 + k * 0.28, 0.42, -D + 0.25);
+    t.rotation.set(0.15, 0, 0);
+    scene.add(t);
+    cyl(0.2, 0.2, rimMat, 3.6 + k * 0.28, 0.42, -D + 0.25, Math.PI / 2 + 0.15);
+  }
+  for (let k = 0; k < 4; k++) {
+    const t = new THREE.Mesh(tyreGeo, tyreMat);
+    t.rotation.x = Math.PI / 2;
+    t.position.set(-4.6, 0.11 + k * 0.22, -4.2);
+    scene.add(t);
+    cyl(0.2, 0.2, lambert(0xd6b04a), -4.6, 0.11 + k * 0.22, -4.2);
+  }
+  // An engine crane by the engine stand.
+  const crane = new THREE.Group();
+  const cm = (w, h, d, x, y, z, rz = 0) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), red);
+    m.position.set(x, y, z);
+    m.rotation.z = rz;
+    crane.add(m);
+  };
+  cm(0.1, 1.7, 0.1, 0, 0.85, 0);
+  cm(1.4, 0.1, 0.1, 0.55, 1.65, 0, -0.25);
+  cm(0.1, 0.06, 1.2, 0, 0.05, 0.3);
+  cm(1.0, 0.06, 0.1, 0.4, 0.05, 0.8);
+  crane.position.set(3.7, 0, -4.3);
+  crane.rotation.y = 0.6;
+  scene.add(crane);
+  // An air compressor and its hose by the left wall.
+  cyl(0.22, 0.75, red, -6.6, 0.32, -3.2, Math.PI / 2);
+  box(0.4, 0.3, 0.4, lambert(0x2b2b2b), -6.6, 0.75, -3.0);
+  const hose = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.025, 6, 20), lambert(0xe0b23a));
+  hose.position.set(-6.4, 0.05, -2.3);
+  hose.rotation.x = Math.PI / 2;
+  scene.add(hose);
+  // An old fridge, a stool with a radio on it, a fan, a broom and a bucket.
+  box(0.62, 1.5, 0.62, lambert(0xd9d6cc), -4.0, 0.75, D - 0.4);
+  box(0.05, 0.4, 0.04, lambert(0x8a8a8a), -3.72, 1.05, D - 0.72);
+  cyl(0.18, 0.04, wood, -1.2, 0.62, -D + 1.3);
+  for (const [dx, dz] of [[-0.1, -0.1], [0.1, -0.1], [-0.1, 0.1], [0.1, 0.1]]) cyl(0.02, 0.6, steel, -1.2 + dx, 0.3, -D + 1.3 + dz);
+  box(0.34, 0.2, 0.12, lambert(0x3a3a3a), -1.2, 0.74, -D + 1.3, 0.4);
+  cyl(0.2, 0.05, lambert(0x2d4f8a), -5.6, 1.0, -D + 0.6, Math.PI / 2);
+  cyl(0.02, 1.0, steel, -5.6, 0.5, -D + 0.6);
+  cyl(0.015, 1.4, wood, 6.9, 0.7, 4.6, 0, 0.12);
+  box(0.3, 0.06, 0.08, lambert(0xb3241c), 6.85, 0.05, 4.6);
+  cyl(0.16, 0.3, lambert(0x2f5fa8), 6.2, 0.15, 5.3);
+  // Exhaust pipes and a bumper hung up on the left wall, a hose reel on the right.
+  for (let k = 0; k < 3; k++) cyl(0.04, 2.2, lambert(k === 1 ? 0x9a9da2 : 0x6d6f73), -W + 0.12, 2.75 + k * 0.12, 0.6, Math.PI / 2);
+  box(0.12, 0.2, 1.6, lambert(0x1d1e21), -W + 0.1, 2.4, 0.6);
+  const reel = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.06, 6, 16), lambert(0x3d8a4a));
+  reel.position.set(W - 0.12, 1.9, -1.9);
+  reel.rotation.y = Math.PI / 2;
+  scene.add(reel);
+  // ---------- Body panels: a project car's worth, stripped and stored ----------
+  // Hard-edged, flat panels in all the colours they came off in: white, red, black, blue, grey
+  // primer and bare metal.
+  const panelMats = [0xe6e3d8, 0xa4231c, 0x1d1e21, 0x2a4a7a, 0x8d8f91, 0xa7aaae, 0x6d4a2e].map((c) => lambert(c, { flatShading: true }));
+  const glassMat = lambert(0x1b2329, { transparent: true, opacity: 0.55 });
+  const extrude = (pts, holes, depth) => {
+    const sh = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y)));
+    for (const h of holes) sh.holes.push(new THREE.Path(h.map(([x, y]) => new THREE.Vector2(x, y))));
+    const g = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false });
+    g.translate(0, 0, -depth / 2);
+    return g;
+  };
+  // Each panel stands upright in its own x/y plane, centred, thickness along z.
+  const PANELS = {
+    // Door: square-cut frame round the window, the window glass still in some.
+    door: (mat, glass) => {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(extrude([[-0.58, -0.5], [0.58, -0.5], [0.58, 0.05], [0.5, 0.5], [-0.58, 0.5]], [[[-0.5, 0.1], [0.46, 0.1], [0.4, 0.43], [-0.5, 0.43]]], 0.07), mat));
+      if (glass) g.add(new THREE.Mesh(extrude([[-0.5, 0.1], [0.46, 0.1], [0.4, 0.43], [-0.5, 0.43]], [], 0.01), glassMat));
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.03, 0.03), lambert(0x111111));
+      handle.position.set(0.38, -0.02, 0.045);
+      g.add(handle);
+      return g;
+    },
+    hood: (mat) => new THREE.Mesh(extrude([[-0.68, -0.62], [0.68, -0.62], [0.6, 0.62], [-0.6, 0.62]], [], 0.05), mat),
+    trunk: (mat) => new THREE.Mesh(extrude([[-0.66, -0.36], [0.66, -0.36], [0.64, 0.36], [-0.64, 0.36]], [], 0.05), mat),
+    // Front wing with a straight-sided, cut-off wheel arch.
+    fender: (mat) => new THREE.Mesh(extrude([[-0.55, -0.32], [-0.42, -0.32], [-0.34, -0.06], [-0.12, 0.04], [0.12, 0.04], [0.34, -0.06], [0.42, -0.32], [0.55, -0.32], [0.55, 0.3], [-0.55, 0.3]], [], 0.05), mat),
+    bumper: (mat) => new THREE.Mesh(new THREE.BoxGeometry(1.62, 0.17, 0.13), mat),
+  };
+  const panel = (kind, mi, x, y, z, rx, ry, rz, glass = false) => {
+    const m = PANELS[kind](panelMats[mi], glass);
+    m.position.set(x, y, z);
+    m.rotation.set(rx, ry, rz, 'YXZ');
+    scene.add(m);
+    return m;
+  };
+  const FLAT = -Math.PI / 2; // lying flat on its face
+  // A tall steel rack along the front wall, full of panels.
+  {
+    const rx = 4.8;
+    const rz = D - 0.42;
+    const rackMat = lambert(0x3a5f8a);
+    for (const y of [0.12, 1.05, 1.95]) box(2.9, 0.05, 0.75, steel, rx, y, rz);
+    for (const sx of [-1.43, 1.43]) for (const sz of [-0.35, 0.35]) box(0.06, 2.7, 0.06, rackMat, rx + sx, 1.35, rz + sz);
+    // Bottom: doors standing on edge, side by side, and a bumper on the floor in front.
+    panel('door', 0, rx - 0.75, 0.67, rz, 0, 0.05, 0.02, true);
+    panel('door', 1, rx - 0.75, 0.67, rz - 0.12, 0, -0.04, -0.03);
+    panel('door', 4, rx + 0.6, 0.67, rz + 0.1, 0, 0.1, 0.0, true);
+    panel('bumper', 2, rx + 0.4, 0.21, rz - 0.18, 0, 0.06, 0);
+    // Middle: a hood and a boot lid stacked flat, a wing on top.
+    panel('hood', 3, rx - 0.6, 1.11, rz, FLAT, 0.03, 0);
+    panel('trunk', 5, rx + 0.75, 1.11, rz, FLAT, -0.05, 0);
+    panel('fender', 0, rx + 0.7, 1.17, rz + 0.02, FLAT, 0.2, 0);
+    // Top: wings and bumpers.
+    panel('fender', 4, rx - 0.75, 2.01, rz, FLAT, -0.1, 0);
+    panel('fender', 1, rx - 0.6, 2.07, rz + 0.05, FLAT, 0.25, 0);
+    panel('bumper', 5, rx + 0.55, 2.06, rz + 0.12, 0, 0.02, 0);
+    panel('bumper', 2, rx + 0.55, 2.06, rz - 0.15, 0, -0.03, 0);
+    panel('trunk', 6, rx + 0.6, 2.33, rz, -0.15, 0.02, 0);
+  }
+  // More on the rack: every shelf crammed, things hanging off the ends.
+  {
+    const rx = 4.8;
+    const rz = D - 0.42;
+    for (let k = 0; k < 3; k++) panel('door', [3, 5, 2][k], rx + 0.1 + k * 0.08, 0.67, rz - 0.05 + k * 0.13, 0, 0.12 - k * 0.08, 0.02 * k, k === 1);
+    for (let k = 0; k < 3; k++) panel('hood', [0, 4, 2][k], rx - 0.62, 1.17 + k * 0.06, rz + 0.02 * k, FLAT, 0.03 - k * 0.04, 0);
+    for (let k = 0; k < 2; k++) panel('trunk', [1, 4][k], rx + 0.78, 1.17 + k * 0.06, rz - 0.02 * k, FLAT, 0.05 * k, 0);
+    panel('bumper', 2, rx - 0.2, 2.21, rz + 0.25, 0, 0.12, 0);
+    for (let k = 0; k < 3; k++) panel('fender', [2, 3, 5][k], rx - 0.7 + k * 0.08, 2.13 + k * 0.06, rz - 0.05, FLAT, -0.3 + k * 0.25, 0);
+    panel('door', 6, rx + 0.55, 2.47, rz + 0.05, 0, 0.0, 0.01);
+  }
+  // A pallet stacked with hoods and boot lids, by the right wall.
+  {
+    const px = 5.6;
+    const pz = 3.9;
+    const wood2 = lambert(0x8a6a44);
+    for (const dz of [-0.5, 0, 0.5]) box(1.3, 0.1, 0.12, wood2, px, 0.05, pz + dz);
+    box(1.3, 0.03, 1.2, wood2, px, 0.115, pz);
+    const stack = ['hood', 'hood', 'trunk', 'hood', 'trunk', 'hood'];
+    stack.forEach((kind, k) => panel(kind, (k * 3) % 7, px + (k % 2 ? 0.04 : -0.03), 0.16 + k * 0.055, pz + (k % 3) * 0.03, FLAT, Math.PI / 2 + (k % 2 ? 0.06 : -0.05), 0));
+  }
+  // A row of bumpers stood on end against the left wall, and a heap of wings on the floor.
+  for (let k = 0; k < 4; k++) {
+    const b = panel('bumper', [2, 5, 2, 0][k], -W + 0.18 + k * 0.05, 0.8, -4.3 + k * 0.2, 0, Math.PI / 2, Math.PI / 2 - 0.1);
+    b.rotation.set(0, Math.PI / 2, Math.PI / 2 - 0.12);
+  }
+  for (let k = 0; k < 5; k++) panel('fender', [4, 0, 1, 5, 3][k], 1.6 + (k % 2) * 0.15, 0.03 + k * 0.05, -4.5 + (k % 3) * 0.1, FLAT, k * 0.7, 0);
+  // Doors leaning in a row against the back wall's end.
+  for (let k = 0; k < 4; k++) panel('door', [1, 4, 0, 2][k], 5.6 + k * 0.1, 0.52, -D + 0.18 + k * 0.1, -0.15 - k * 0.03, 0, 0, k % 2 === 0);
+
+  // Panels leaning against the walls.
+  panel('hood', 1, -W + 0.32, 0.62, -5.0, -0.25, Math.PI / 2, 0);
+  panel('hood', 4, -W + 0.42, 0.62, -4.9, -0.32, Math.PI / 2 + 0.05, 0);
+  panel('door', 2, W - 0.2, 0.52, 3.3, -0.12, -Math.PI / 2, 0);
+  panel('door', 0, W - 0.3, 0.52, 3.45, -0.18, -Math.PI / 2 + 0.06, 0, true);
+  panel('trunk', 3, W - 0.25, 0.37, 2.25, -0.2, -Math.PI / 2, 0);
+  panel('fender', 5, 1.05, 0.33, -D + 0.12, -0.25, 0, 0);
+  // And on the floor round the car: stripped off and dropped where the work is.
+  panel('bumper', 5, 2.5, 0.07, -2.5, Math.PI / 2, 0.4, 0);
+  panel('fender', 2, -2.45, 0.03, 2.7, FLAT, 0.9, 0);
+  panel('door', 4, -2.7, 0.04, -1.3, FLAT, 0.15, 0);
+  panel('trunk', 0, 2.7, 0.03, 2.4, FLAT, -0.5, 0);
+  panel('bumper', 2, -2.2, 0.07, -3.4, Math.PI / 2, -0.25, 0);
+  // Moving blankets under the floor panels.
+  for (const [x, z, ry] of [[-2.7, -1.3, 0.15], [-2.45, 2.7, 0.9]]) {
+    const b = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.3), lambert(0x34507a));
+    b.rotation.set(-Math.PI / 2, 0, ry);
+    b.position.set(x, 0.008, z);
+    scene.add(b);
+  }
+
+  // Rubber mat under the car, and a drop light hanging from the ceiling.
+  const mat = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 5.6), lambert(0x1d1e20));
+  mat.rotation.x = -Math.PI / 2;
+  mat.position.set(0, 0.006, 0.2);
+  scene.add(mat);
+  cyl(0.008, 1.0, lambert(0x111111), -0.6, H - 0.6, 1.4);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe2a8 }));
+  bulb.position.set(-0.6, H - 1.15, 1.4);
+  scene.add(bulb);
+  const drop = new THREE.PointLight(0xffd59a, 3, 5, 1.6);
+  drop.position.copy(bulb.position);
+  scene.add(drop);
+
+  // A creeper left beside the car.
+  const padMat = lambert(0x1b1c1e);
+  const creeper = new THREE.Group();
+  const board = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.04, 1.0), lambert(0x232427));
+  board.position.y = 0.09;
+  creeper.add(board);
+  for (const [cx, cz] of [[-0.18, -0.4], [0.18, -0.4], [-0.18, 0.4], [0.18, 0.4]]) {
+    const w = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 4), padMat);
+    w.position.set(cx, 0.04, cz);
+    creeper.add(w);
+  }
+  creeper.position.set(1.75, 0, -1.4);
+  creeper.rotation.y = 0.5;
+  scene.add(creeper);
+
+  // The car stands on its wheels in the middle of the floor.
+  const table = new THREE.Group();
+  table.position.set(0, -0.08, 0.2); // (the car's own height sits it on the floor)
+  table.userData.lift = 0;
+  scene.add(table);
   return table;
+}
+
+// Wheel positions for a car model standing still (what syncWheels needs in place of the physics).
+function fakeWheels(spec) {
+  return {
+    mountY: spec.wheelMountY,
+    wheels: [
+      [spec.trackFront / 2, spec.frontAxleZ, true],
+      [-spec.trackFront / 2, spec.frontAxleZ, true],
+      [spec.trackRear / 2, spec.rearAxleZ, false],
+      [-spec.trackRear / 2, spec.rearAxleZ, false],
+    ].map(([x, z, front]) => ({ x, z, front, compression: 0, steer: 0, angle: 0 })),
+  };
+}
+
+// Set a car model on its wheels with its setup: each corner sinks by its share of the weight over
+// its spring rate, wheels pushed out by their offset. lifted: up on the lift, so the body sits at
+// its normal height (the lift raises the whole thing) and the wheels hang down at full droop.
+function seatCar(model, spec, t, fake, lifted = false) {
+  const ws = wheelSetup(t);
+  model.applySetup(t);
+  const rh = t.coilovers ? Math.max(-0.2, Math.min(0.05, (t.rideHeight || 0) / 1000)) : 0;
+  const mountY = spec.wheelMountY - rh;
+  fake.mountY = mountY;
+  const g = (spec.mass * 9.81) / 4;
+  for (const w of fake.wheels) {
+    w.baseX ??= w.x;
+    w.x = w.baseX + Math.sign(w.baseX) * (w.front ? ws.pokeFront : ws.pokeRear);
+    w.compression = Math.min(spec.suspensionRest, (g * (w.front ? 1.04 : 0.96)) / (t.coilovers ? (w.front ? t.springFront : t.springRear) : w.front ? TUNABLE_DEFAULTS.springFront : TUNABLE_DEFAULTS.springRear));
+  }
+  const yF = mountY - spec.suspensionRest + fake.wheels[0].compression;
+  const yR = mountY - spec.suspensionRest + fake.wheels[2].compression;
+  // Body origin height so the tyres sit on the floor, with the rake from the springs.
+  model.root.position.y = 0.08 + ws.radius - (yF + yR) / 2;
+  model.root.rotation.x = lifted ? 0 : Math.atan2(yF - yR, spec.frontAxleZ - spec.rearAxleZ);
+  if (lifted) for (const w of fake.wheels) w.compression = 0;
+  model.syncWheels(fake);
 }
 
 export class Shop {
@@ -215,21 +746,30 @@ export class Shop {
     this.isOpen = false;
     this.scene = new THREE.Scene();
     this.table = buildGarage(this.scene);
-    this.camera = new THREE.PerspectiveCamera(34, 1, 0.1, 80);
+    this.camera = new THREE.PerspectiveCamera(52, 1, 0.1, 80);
     this.car = new CarModel(CAR);
     this.table.add(this.car.root);
+    // The camera walks round the car: which way it looks from, how high, and how far back.
     this.yaw = -2.4; // front three-quarter view
-    this.spin = 0; // the table only turns when you drag it
+    this.pitch = 0.22;
+    this.dist = 6.4;
     this.dragging = false;
-    this.fake = {
-      mountY: CAR.wheelMountY,
-      wheels: [
-        [CAR.trackFront / 2, CAR.frontAxleZ, true],
-        [-CAR.trackFront / 2, CAR.frontAxleZ, true],
-        [CAR.trackRear / 2, CAR.rearAxleZ, false],
-        [-CAR.trackRear / 2, CAR.rearAxleZ, false],
-      ].map(([x, z, front]) => ({ x, z, front, compression: 0, steer: 0, angle: 0 })),
-    };
+    this.revHeld = false; // the rev button is held down
+    this.fake = fakeWheels(CAR);
+    // Your other cars, parked by the roller door, each with its own saved setup.
+    let slot = 0;
+    for (const spec of Object.values(CARS)) {
+      if (spec.id === BASE_CAR.id) continue;
+      const model = new CarModel(spec);
+      const own = { ...TUNABLE_DEFAULTS, paint: '#' + spec.paint.toString(16).padStart(6, '0'), finalDrive: spec.finalDrive, ...(carSave('tuning', spec.id) || {}) };
+      const holder = new THREE.Group();
+      holder.position.set(5.4 - slot * 0.2, -0.08, 0.6 - slot * 5.2);
+      holder.rotation.y = Math.PI + 0.12;
+      holder.add(model.root);
+      this.scene.add(holder);
+      seatCar(model, spec, own, fakeWheels(spec));
+      slot++;
+    }
     this.#applyCar();
   }
 
@@ -241,13 +781,14 @@ export class Shop {
   }
 
   close() {
+    this.revHeld = false;
     this.el.classList.add('hidden');
     document.body.classList.remove('in-shop');
     this.isOpen = false;
     this.onClose?.();
   }
 
-  // Size the turntable view so the car sits in the open space left of the panel.
+  // Size the view so the car sits in the open space left of the panel.
   resize(w, h) {
     this.camera.aspect = w / Math.max(1, h);
     const panel = Math.min(w * 0.56, 520);
@@ -255,35 +796,25 @@ export class Shop {
     this.camera.updateProjectionMatrix();
   }
 
-  // Turn the table, settle the car on its springs, and aim the camera.
+  // Aim the camera at the car from where you have walked to, staying inside the workshop.
   update(dt) {
-    if (!this.dragging) this.yaw += this.spin * dt;
     this.car.updateFx(dt);
-    this.table.rotation.y = this.yaw;
-    this.camera.position.set(0, 2.2, 10.5);
-    this.camera.lookAt(0, 0.45, 0);
+    const target = new THREE.Vector3(0, 0.9, 0.2);
+    const dir = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch));
+    // Walls at x = ±7.2 and z = ±6.2: pull the camera in rather than through them.
+    let d = this.dist;
+    if (Math.abs(dir.x) > 1e-3) d = Math.min(d, (6.7 - Math.sign(dir.x) * target.x) / Math.abs(dir.x));
+    if (Math.abs(dir.z) > 1e-3) d = Math.min(d, (5.7 - Math.sign(dir.z) * target.z) / Math.abs(dir.z));
+    if (dir.y > 1e-3) d = Math.min(d, (3.3 - target.y) / dir.y);
+    d = Math.max(2.6, d);
+    this.camera.position.copy(target).addScaledVector(dir, d);
+    // Low down you can crouch and look under the car on the lift, but not through the floor.
+    this.camera.position.y = Math.max(0.3, this.camera.position.y);
+    this.camera.lookAt(target);
   }
 
   #applyCar() {
-    const t = this.tune;
-    const ws = wheelSetup(t);
-    this.car.applySetup(t);
-    // Static ride: each corner sinks by its share of the weight over its spring rate.
-    const rh = t.coilovers ? Math.max(-0.2, Math.min(0.05, (t.rideHeight || 0) / 1000)) : 0;
-    const mountY = CAR.wheelMountY - rh;
-    this.fake.mountY = mountY;
-    const g = (CAR.mass * 9.81) / 4;
-    for (const w of this.fake.wheels) {
-      w.baseX ??= w.x;
-      w.x = w.baseX + Math.sign(w.baseX) * (w.front ? ws.pokeFront : ws.pokeRear);
-      w.compression = Math.min(CAR.suspensionRest, (g * (w.front ? 1.04 : 0.96)) / (t.coilovers ? (w.front ? t.springFront : t.springRear) : w.front ? TUNABLE_DEFAULTS.springFront : TUNABLE_DEFAULTS.springRear));
-    }
-    const yF = mountY - CAR.suspensionRest + this.fake.wheels[0].compression;
-    const yR = mountY - CAR.suspensionRest + this.fake.wheels[2].compression;
-    // Body origin height so the tyres sit on the turntable, with the rake from the springs.
-    this.car.root.position.y = 0.08 + ws.radius - (yF + yR) / 2;
-    this.car.root.rotation.x = Math.atan2(yF - yR, CAR.frontAxleZ - CAR.rearAxleZ);
-    this.car.syncWheels(this.fake);
+    seatCar(this.car, CAR, this.tune, this.fake, this.table.userData.lift > 0);
   }
 
   #change(key, value, rerender = false) {
@@ -422,7 +953,6 @@ export class Shop {
           this.#chips('Headlights', 'headlights', Object.entries(HEADLIGHTS).map(([k, v]) => [k, v[0]])),
           this.#chips('Tail lights', 'taillights', Object.entries(TAILLIGHTS).map(([k, v]) => [k, v[0]])),
         ),
-        this.#section('Licence plate', this.#chips('Colour', 'plateStyle', Object.entries(PLATES).map(([k, v]) => [k, v.name])), this.#plateInput()),
         this.#section(
           'Number boards',
           this.#chips('On the doors', 'numbers', [[false, 'None'], [true, 'Fitted']]),
@@ -451,7 +981,7 @@ export class Shop {
         card.addEventListener('click', () => c.id !== CAR.id && this.onCar?.(c.id));
         row.append(card);
       }
-      return [this.#section('Your cars', row, this.#hint('Switching car reloads the game. Your parts and paint come with you.'))];
+      return [this.#section('Your cars', row, this.#hint('Switching car reloads the game. Each car keeps its own parts, paint and builds.'))];
     }
     if (this.tab === 'interior') {
       return [this.#section('Seats', this.#cards(SEATS, 'seats')), this.#section('Weight reduction', this.#cards(WEIGHTS, 'weight'))];
@@ -652,26 +1182,6 @@ export class Shop {
   }
 
   // Plate text: up to 7 letters and numbers, upper case as you type.
-  #plateInput() {
-    const wrap = document.createElement('label');
-    wrap.className = 'shop-chips';
-    const name = document.createElement('span');
-    name.textContent = 'Plate text (up to 7)';
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'plate-input';
-    input.maxLength = 7;
-    input.autocapitalize = 'characters';
-    input.spellcheck = false;
-    input.value = cleanPlate(this.tune.plateText);
-    input.addEventListener('input', () => {
-      const v = cleanPlate(input.value);
-      if (input.value !== v) input.value = v;
-      this.#change('plateText', v);
-    });
-    wrap.append(name, input);
-    return wrap;
-  }
 
   // Paint: period colours plus a picker for anything else.
   #paint() {
@@ -944,26 +1454,77 @@ export class Shop {
     const el = this.el;
     el.innerHTML = '';
 
-    // Turntable stage: drag to turn the car.
+    // The workshop view: drag to walk round the car, pinch (or scroll) to step in and out.
     const stage = document.createElement('div');
     stage.className = 'shop-stage';
-    let lastX = 0;
+    const pts = new Map();
+    let pinch = 0;
     stage.addEventListener('pointerdown', (e) => {
-      this.dragging = true;
-      lastX = e.clientX;
+      if (e.target.closest('.shop-rev')) return;
+      pts.set(e.pointerId, [e.clientX, e.clientY]);
       stage.setPointerCapture(e.pointerId);
+      this.dragging = true;
+      if (pts.size === 2) {
+        const [a, b] = [...pts.values()];
+        pinch = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      }
     });
     stage.addEventListener('pointermove', (e) => {
-      if (!this.dragging) return;
-      this.yaw += (e.clientX - lastX) * 0.012;
-      lastX = e.clientX;
+      const last = pts.get(e.pointerId);
+      if (!last) return;
+      const now = [e.clientX, e.clientY];
+      pts.set(e.pointerId, now);
+      if (pts.size === 2) {
+        const [a, b] = [...pts.values()];
+        const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+        if (pinch > 0) this.dist = Math.max(3, Math.min(9, this.dist * (pinch / d)));
+        pinch = d;
+        return;
+      }
+      this.yaw -= (now[0] - last[0]) * 0.008;
+      this.pitch = Math.max(-0.12, Math.min(1.1, this.pitch + (now[1] - last[1]) * 0.006));
     });
-    const up = () => (this.dragging = false);
+    const up = (e) => {
+      pts.delete(e.pointerId);
+      pinch = 0;
+      this.dragging = pts.size > 0;
+    };
     stage.addEventListener('pointerup', up);
     stage.addEventListener('pointercancel', up);
+    stage.addEventListener(
+      'wheel',
+      (e) => {
+        e.preventDefault();
+        this.dist = Math.max(3, Math.min(9, this.dist * (1 + Math.sign(e.deltaY) * 0.08)));
+      },
+      { passive: false },
+    );
+    // Hold to rev the engine.
+    const rev = document.createElement('button');
+    rev.type = 'button';
+    rev.className = 'shop-rev';
+    rev.setAttribute('aria-label', 'Hold to rev the engine');
+    rev.innerHTML = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 22a11 11 0 1 1 22 0" /><path d="M16 22l6-8" /><circle cx="16" cy="22" r="2" /></svg><span>REV</span>';
+    const revOn = (e) => {
+      e.preventDefault();
+      rev.setPointerCapture?.(e.pointerId);
+      this.revHeld = true;
+      rev.classList.add('on');
+      this.onRev?.();
+    };
+    const revOff = () => {
+      this.revHeld = false;
+      rev.classList.remove('on');
+    };
+    rev.addEventListener('pointerdown', revOn);
+    rev.addEventListener('pointerup', revOff);
+    rev.addEventListener('pointercancel', revOff);
+    rev.addEventListener('lostpointercapture', revOff);
+    rev.addEventListener('contextmenu', (e) => e.preventDefault());
+    stage.append(rev);
     const title = document.createElement('div');
     title.className = 'shop-car';
-    title.innerHTML = '<b></b><span>Drag to turn</span>';
+    title.innerHTML = '<b></b><span>Drag to look around · pinch to zoom</span>';
     title.querySelector('b').textContent = CAR.name;
     this.readoutEl = document.createElement('div');
     this.readoutEl.className = 'shop-readout';

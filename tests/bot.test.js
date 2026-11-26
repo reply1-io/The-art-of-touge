@@ -39,7 +39,7 @@ async function botRun(id) {
   });
   let t = 0;
   let railHits = 0;
-  for (; t < 900; t += 1 / 60) {
+  for (; t < 2000; t += 1 / 60) {
     const pos = car.body.translation();
     road.query(pos.x, pos.z, hint, q);
     hint = q.index;

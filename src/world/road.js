@@ -8,24 +8,24 @@
 export const STEP = 2; // metres between centreline samples
 // Samples either side of a junction kept clear of rails and walls.
 export const JUNCTION = 8;
-export const HALF = 3.4; // half the lane width, out to the white edge lines (two narrow lanes)
-export const PAVED = 4.2; // edge of the asphalt: a paved shoulder about half a car wide past the line
-export const SHOULDER = 5.4; // end of the gravel shoulder
+// Every road is a skinny Japanese touge road: two tight lanes, the gutter right at the edge.
+export const HALF = 2.6; // half the road, out to the white edge lines
+export const PAVED = 2.75; // edge of the asphalt
+export const SHOULDER = 3.9; // end of the gravel shoulder
 export const VERGE = 8.4; // end of the verge strip that blends into the terrain
-export const RAIL = 4.95; // guardrail line
+export const RAIL = 3.45; // guardrail line
 export const WALL = 9.6; // invisible wall line
 // Drainage gutter: a shallow concrete dish with sloped sides, so a tyre rolls in and out of it.
-export const GUTTER_IN = 4.42;
-export const GUTTER_OUT = 4.82;
+export const GUTTER_IN = 2.92;
+export const GUTTER_OUT = 3.3;
 export const GUTTER_DEPTH = 0.1;
 
 // Road widths. 'wide' is the two-lane Dragon's Tail with a paved shoulder; 'narrow' is a skinny
 // Japanese touge road: two tight lanes, the gutter right at the edge, the rail just past it.
 // LANE is the middle of the left (downhill) lane.
-export const WIDTHS = {
-  wide: { HALF, PAVED, SHOULDER, RAIL, GUTTER_IN, GUTTER_OUT, LANE: 1.7 },
-  narrow: { HALF: 2.6, PAVED: 2.75, SHOULDER: 3.9, RAIL: 3.45, GUTTER_IN: 2.92, GUTTER_OUT: 3.3, LANE: 1.3 },
-};
+// (Every road now uses the narrow width; 'wide' is kept as a name so old road definitions load.)
+const NARROW = { HALF, PAVED, SHOULDER, RAIL, GUTTER_IN, GUTTER_OUT, LANE: 1.3 };
+export const WIDTHS = { wide: NARROW, narrow: NARROW };
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
@@ -86,7 +86,9 @@ export class Road {
   // points: map pixels scaled to targetLength, or (opts.world) world metres used as they are.
   // opts.gradeBase / opts.twistGain shape the elevation profile.
   constructor(points, targetLength = 5000, opts = {}) {
-    const { world: inMetres = false, gradeBase = 0.058, twistGain = 1.1, width = 'wide', gradeAt = null, heightAt = null, loop = false, ends = null } = opts;
+    // profile(f): the road's height (m) at fraction f (0..1) of the way along it, for roads built
+    // to a real climb. bankAt(f): how much of the usual banking the road has there (0 = flat).
+    const { world: inMetres = false, gradeBase = 0.058, twistGain = 1.1, width = 'wide', gradeAt = null, heightAt = null, loop = false, ends = null, profile = null, bankAt = null } = opts;
     this.w = WIDTHS[width] || WIDTHS.wide;
     // ---- Plan view: spline, scale to length, resample at STEP ----
     const dense = inMetres ? points : catmullRom(points);
@@ -111,17 +113,18 @@ export class Road {
       zs[i] = world[j][1] + (world[j + 1][1] - world[j][1]) * f;
     }
     // Light smoothing removes tracing jitter without opening up the hairpins.
+    // On a loop, smoothing wraps round the join: a stretch of each end is laid onto the other, so the
+    // two ends (the same place) come out the same.
+    const PADN = 40;
+    const wrapSmooth = (a, w, passes) => {
+      const ext = new Float64Array(n + 2 * PADN);
+      for (let i = 0; i < ext.length; i++) ext[i] = a[(((i - PADN) % (n - 1)) + (n - 1)) % (n - 1)];
+      return smooth(ext, w, passes).slice(PADN, PADN + n);
+    };
+    const sm = (a, w, passes = 1) => (loop ? wrapSmooth(a, w, passes) : smooth(a, w, passes));
     if (loop) {
-      // Smooth round the join as well: wrap a stretch of each end onto the other.
-      const PADN = 20;
-      const wrapSmooth = (a) => {
-        const ext = new Float64Array(n + 2 * PADN);
-        for (let i = 0; i < ext.length; i++) ext[i] = a[(i - PADN + 2 * (n - 1)) % (n - 1)];
-        const sm = smooth(ext, 5, 2);
-        return sm.slice(PADN, PADN + n);
-      };
-      xs = wrapSmooth(xs);
-      zs = wrapSmooth(zs);
+      xs = wrapSmooth(xs, 5, 2);
+      zs = wrapSmooth(zs, 5, 2);
     } else {
       const ex = [xs[0], zs[0], xs[n - 1], zs[n - 1]];
       xs = smooth(xs, 5, 2);
@@ -150,13 +153,15 @@ export class Road {
       const b = loop && i === n - 1 ? 1 : Math.min(n - 1, i + 1);
       this.heading[i] = Math.atan2(xs[b] - xs[a], zs[b] - zs[a]);
     }
-    for (let i = 1; i < n - 1; i++) {
-      let d = this.heading[i + 1] - this.heading[i - 1];
+    for (let i = loop ? 0 : 1; i < (loop ? n : n - 1); i++) {
+      const a = loop && i === 0 ? n - 2 : i - 1;
+      const b = loop && i === n - 1 ? 1 : i + 1;
+      let d = this.heading[b] - this.heading[a];
       while (d > Math.PI) d -= 2 * Math.PI;
       while (d < -Math.PI) d += 2 * Math.PI;
       kappaRaw[i] = d / (2 * STEP);
     }
-    this.kappa = smooth(kappaRaw, 3);
+    this.kappa = sm(kappaRaw, 3);
 
     // ---- Elevation: rolling crests and dips, steep plunges through the twisty parts, the odd short
     // climb, flat at the lake and in town ----
@@ -195,11 +200,16 @@ export class Road {
       for (let i = 0; i < n; i++) this.y[i] = y[i];
       for (let i = 1; i < n; i++) this.grade[i] = (this.y[i - 1] - this.y[i]) / STEP;
       this.grade[0] = this.grade[1];
+    } else if (profile) {
+      const y = smooth(Float64Array.from({ length: n }, (_, i) => profile(i / (n - 1))), 9, 2);
+      for (let i = 0; i < n; i++) this.y[i] = y[i];
+      for (let i = 1; i < n; i++) this.grade[i] = (this.y[i - 1] - this.y[i]) / STEP;
+      this.grade[0] = this.grade[1];
     } else {
       for (let i = 1; i < n; i++) this.y[i] = this.y[i - 1] - this.grade[i] * STEP;
     }
     let bottom = this.y[n - 1];
-    if (heightAt) for (let i = 0; i < n; i++) bottom = Math.min(bottom, this.y[i]);
+    if (heightAt || profile) for (let i = 0; i < n; i++) bottom = Math.min(bottom, this.y[i]);
     for (let i = 0; i < n; i++) this.y[i] -= bottom;
     // ends: [y0, y1] heights the two ends must meet (a link road joining another road), shared out
     // along the road.
@@ -210,12 +220,12 @@ export class Road {
       for (let i = 1; i < n; i++) this.grade[i] = (this.y[i - 1] - this.y[i]) / STEP;
     }
     // The highest point of the road (the summit end of a downhill pass).
-    this.top = heightAt ? Math.max(...this.y) : this.y[0];
+    this.top = heightAt || profile ? Math.max(...this.y) : this.y[0];
     this.loop = loop;
 
     // ---- Banking: corners lean hard into the turn, hairpins most of all (up to about 12 degrees) ----
-    const bankRaw = this.kappa.map((k) => clamp(-k * 3.4, -0.21, 0.21));
-    this.bank = smooth(bankRaw, 13, 2);
+    const bankRaw = this.kappa.map((k, i) => clamp(-k * 3.4 * (bankAt ? bankAt(i / (n - 1)) : 1), -0.21, 0.21));
+    this.bank = sm(bankRaw, 13, 2);
 
     // ---- Drainage gutters on the inside of a few medium corners ----
     this.gutterLeft = new Float64Array(n);
@@ -419,9 +429,8 @@ export function barrierLayout(road, terrain) {
   const wall = { 1: new Float32Array(n), [-1]: new Float32Array(n) };
   for (const side of [1, -1]) {
     for (let i = 0; i < n; i += 1) {
-      // Rails on both sides of every real corner (inside and out), and wherever the road drops away.
-      const corner = Math.abs(road.kappa[i]) > 1 / 160;
-      rail[side][i] = terrain.sideProfile(i, side) < 0 || corner ? 1 : 0;
+      // Rails only where they are needed: over a real drop beside the road (and on bridges).
+      rail[side][i] = (terrain.dropAt ? terrain.dropAt(i, side) : terrain.sideProfile(i, side) < 0) ? 1 : 0;
     }
     // Fill short gaps and drop short runs so rails come in sensible lengths.
     const r = rail[side];
