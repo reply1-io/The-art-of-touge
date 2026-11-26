@@ -329,7 +329,7 @@ const ENGINES = {
     idleNoise: 0.4,                            // ...and less turbulence noise at idle, or it hisses
     muff: [300, 620, 0.08, 1200, 1100], body: [80, 6], drone: [165, 1],
     rasp: [900, 0.12, 0.75], rumble: [180, 0.05, 1.35], intake: [300, 0.06, 0.14],
-    itb: { level: 0.7 },
+    itb: { level: 0.55 },
     level: 1.4,
   },
   rotary13b: {
@@ -364,7 +364,7 @@ const ENGINES = {
     stumble: 0,                                // a rotary's brap is metronome-regular
     mid: [290, 6],                             // third pipe resonance heard on the reference
     rasp: [1300, 0.2, 0.8], rumble: [300, 0.06, 1.0], intake: [600, 0.12, 0.25],
-    itb: { level: 1.7 },                     // its output stage turns everything down
+    itb: { level: 1.9, width: 0.6, roarBand: [250, 1800] }, // shorter gulps: its note is low and pure
     level: 1.3, post: 0.62,                    // driven harder, then turned down: rounder thumps
   },
 };
@@ -453,14 +453,15 @@ function randn() { // cheap gaussian-ish
 // engine-cycle rate around it. With the throttles shut they add nothing. An engine can
 // override any of these with its own `itb: {...}`.
 const ITB = {
-  width: 1.5,     // one gulp lasts this many firing intervals
-  skew: 0.8,      // <1: the gulp builds fast and tails off (sets the upper harmonics)
+  width: 1.0,     // one gulp lasts this many firing intervals
+  skew: 1.8,      // >1: the gulp builds fast and tails off (sets the overtones); it always
+                  // starts and ends with zero slope, so it never clicks
   uneven: 2.0,    // how differently the trumpets breathe: the growl
   spread: 10,     // and how far apart in timing (crank degrees)
   jitter: 0.08,   // stroke-to-stroke variation
-  level: 0.6,     // the note
-  roar: 0.7,      // rush of air through the trumpets
-  roarBand: [300, 4000],
+  level: 0.5,     // the note
+  roar: 1.2,      // rush of air through the trumpets
+  roarBand: [300, 2200],
   duck: 3.6,      // how much of the exhaust the trumpets cover up on the throttle
   tick: 0,        // valve-train tick left on the throttle
 };
@@ -779,7 +780,7 @@ class M20Dsp {
           let xs = xi - I.spread * ITB_UNEVEN[(k + 3) % 8];
           if (xs < 0) xs += cyc;
           const u = xs / (I.width * sp);
-          if (u < 1) { const g = Math.sin(Math.PI * Math.pow(u, I.skew)); itbB += g * g * this.itbJ[k]; }
+          if (u < 1) { const g = Math.sin(Math.PI * (1 - Math.pow(1 - u, I.skew))); itbB += g * g * this.itbJ[k]; }
         }
       }
 
