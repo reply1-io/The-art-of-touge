@@ -508,7 +508,7 @@ class M20Dsp {
     this.itbRoarHp = new Biquad(); this.itbRoarLp = new Biquad(); this.itbDc = new Biquad();
     this.itbEq = [new Biquad(), new Biquad(), new Biquad(), new Biquad(), new Biquad(), new Biquad()]; // low cut x2, drone, rasp x2, drone
     this.itbHiss = [new Biquad(), new Biquad(), new Biquad()]; this.itbPost = [new Biquad(), new Biquad()]; this.itbBark = new Biquad();
-    this.itbThrSlow = 0; this.itbEqW = 0; this.cutS = 0; this.itbBarkEnv = 0; this.itbBarkSrc = 0;
+    this.itbThrSlow = 0; this.itbEqW = 0; this.itbBarkEnv = 0; this.itbBarkSrc = 0;
     this.itbBox = new Delay(2048); this.itbBoxLp = 0; this.itbBoxA = 0; this.itbBoom = new Biquad();
     // turbo state: boost and shaft speed 0..1, lift-off envelopes and oscillator phases
     this.T = { on: 0, boost: 0, shaft: 0, armed: false, flut: 0, flutRate: 0, flutPh: 0,
@@ -644,18 +644,14 @@ class M20Dsp {
     const P = EXHAUSTS[exhaustName(t.exhaust)];
     for (const k in P) this.X[k] += (P[k] - this.X[k]) * 0.03; // ~0.1 s glide when you swap pipes
     c.idleRpm = t.idleRpm;
-    // a limiter cut (t.cut) is a fuel cut with the throttle still open. With ITBs that matters:
-    // the air keeps rushing through the trumpets. Through a stock airbox the old voicing, which
-    // treats the cut as a closed throttle, stays as it was tuned
-    const cutThr = t.cut && t.intake !== 'itb' ? 0 : t.throttle;
     if (this.mode === 'crank') {
       c.rpm = crankRpm(dt, t.idleRpm, this.E.crankFlare); c.throttle = 0;
       c.starter = dt < 1.05 ? 1 : 0; c.ignition = dt >= 0.95 ? 1 : 0;
       if (dt >= CRANK_SECONDS) { this.mode = 'run'; t.rpm = c.rpm; }
     } else if (this.mode === 'run') {
-      c.rpm = t.rpm; c.throttle = cutThr; c.ignition = 1; c.starter = 0;
+      c.rpm = t.rpm; c.throttle = t.throttle; c.ignition = 1; c.starter = 0;
     } else if (this.mode === 'direct') {
-      c.rpm = t.rpm; c.throttle = cutThr; c.ignition = t.ignition; c.starter = t.starter;
+      c.rpm = t.rpm; c.throttle = t.throttle; c.ignition = t.ignition; c.starter = t.starter;
     } else if (this.mode === 'stopping') {
       c.rpm = Math.max(0, this.stopFrom * (1 - dt / 0.9)); c.throttle = 0; c.ignition = 0; c.starter = 0;
       if (dt > 0.9) this.mode = 'off';
@@ -759,10 +755,7 @@ class M20Dsp {
 
       // combustion strength
       const overrun = thr < 0.06 && rpm > idle * 1.35; // fuel cut
-      // rev limiter / shift cut (set({ cut: 1 })): the fuel is cut with the throttle still open,
-      // so the air keeps rushing in; only the combustion stops
-      this.cutS += ((this.target.cut && this.target.intake === 'itb' ? 1 : 0) - this.cutS) * 0.02;
-      const fuel = overrun ? 0 : 1 - this.cutS;
+      const fuel = overrun ? 0 : 1;
       // idle firings hit harder with a free-flowing exhaust (louder, punchier idle)
       const load = ign * fuel * (0.32 * (1 + (X.idleHit - 1) * (E.idleHitScale || 1) * (1 - thr)) + 0.68 * thr);
       const pump = E.pump;                     // air being pushed out with no combustion
@@ -917,8 +910,7 @@ class M20Dsp {
         this.itbBoxLp += (back - this.itbBoxLp) * this.itbBoxA;
         const inBox = dry + I.boxRing * this.itbBoxLp;
         this.itbBox.write(inBox);
-        // with the fuel cut the trumpets still suck air, but without combustion's push-back they go softer
-        const it = this.itbBoom.run(inBox * (1 - 0.2 * I.boxRing)) * this.itbOn * ign * thrI * (1 - 0.5 * this.cutS);
+        const it = this.itbBoom.run(inBox * (1 - 0.2 * I.boxRing)) * this.itbOn * ign * thrI;
         // the same on every engine and exhaust (the output stage scales by their levels)
         // the same on every engine (the output stage scales by its level); a louder exhaust's
         // output stage drives the trumpets harder too: louder, and into the limiter's bite
@@ -1579,8 +1571,7 @@ let last = performance.now(), shown = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   step(dt);
-  // a limiter cut is a fuel cut with your foot still down: the throttle stays open
-  if (engine && state === 'running') { engine.setRpm(sim.rpm); engine.setThrottle(sim.cut > 0 ? sim.thrIn : sim.thr); engine.setState({ cut: sim.cut > 0 ? 1 : 0 }); }
+  if (engine && state === 'running') { engine.setRpm(sim.rpm); engine.setThrottle(sim.thr); }
   shown += (sim.rpm - shown) * Math.min(1, dt * 18);
   const [nx, ny] = pt(132, ang(Math.min(MAXDIAL + 150, shown)));
   needle.setAttribute('x2', nx); needle.setAttribute('y2', ny);
