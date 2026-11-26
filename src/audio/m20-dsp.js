@@ -171,14 +171,17 @@ export const ENGINES = {
     bank: [0, 1, 0, 1],                        // 1+4 and 3+2 share a header pair
     cylGain: [1.06, 0.9, 1.04, 0.92],          // pairs 1+4 and 3+2 differ: the once-a-turn beat
     cylTiming: [0, 1.5, -1, 1],
-    idleRpm: 900, redline: 7100, crankFlare: 1600, starterRatio: 12,
+    idleRpm: 1080, redline: 7100, crankFlare: 1600, starterRatio: 12,
     dual: false,
     header: [0.0014, 0.0017], pipe: [3.0, 3.0], pipeRefl: 0.45,
-    width: [28, 4], pump: 0.12, jitter: 0.05, idleJitter: 0.06, lope: [0.006, 0.003],
+    width: [34, 4], pump: 0.12, jitter: 0.08, idleJitter: 0.06, lope: [0.006, 0.003],
     chop: [1.1, 0.9, 1.2, 0.5, 1.05, 1, 1.15, 0.8],
     sizzle: 1.0, idleNoise: 1.8, tick: 1.5, raspFloor: 0.6, subMin: 40, // a buzzy, tappy idle; the 25 Hz fundamental is felt more than heard
-    muff: [380, 500, 0.07, 1000, 400], muffRpm: 0.6, muffRpm2: 0.03,
-    body: [64, 5], drone: [480, 8], mid: [520, 3], // a low boom, and the 3x-firing ring of the pipe
+    muff: [380, 500, 0.07, 1000, 400], muffRpm: 0.15, muffRpm2: 0,
+    body: [64, 5], drone: [440, 8], mid: [460, 3], // a low boom, and the pipe's main ring at 400-500 Hz
+    eq: [[105, 0.8, 4], [720, 1.1, -6], [1700, 0.7, -6], [3800, 0.7, -5]], // more 70-150 Hz body; darker above
+    overrunFire: true,                         // off the throttle it falls back to an idle-like level, never a gap
+    idleHitScale: 0.35,                        // a loud exhaust hardens its idle less (its idle is already full)
     // filters that follow the revs: [multiple of the firing note, dB, Q]. Its exhaust carries the
     // odd multiples (1x, 3x) and little of 2x
     orderEq: [[2, -10, 2.2, 1500, 3000]],      // (fades in between those rpm: at idle 2x stays on top)
@@ -358,6 +361,7 @@ export class M20Dsp {
     this.muffLp = new Biquad(); this.muffLp2 = new Biquad();
     this.body = new Biquad(); this.drone = new Biquad(); this.mid = new Biquad();
     this.orderEq = [new Biquad(), new Biquad(), new Biquad()];
+    this.eq = [new Biquad(), new Biquad(), new Biquad(), new Biquad()]; this.eqFor = '';
     this.dcHp = new Biquad().set('hp', 28, 0.7, 0, fs);
     this.raspBp = new Biquad(); this.raspHp = new Biquad().set('hp', 900, 0.7, 0, fs);
     this.rumbleBp = new Biquad(); this.rumbleLp = new Biquad().set('lp', 1200, 0.5, 0, fs);
@@ -525,6 +529,7 @@ export class M20Dsp {
       this.body.set('pk', E.body[0], 1.1, E.body[1] + X.bodyDb, fs);
       this.drone.set('pk', E.drone[0] * X.droneHz, 1.6, E.drone[1] + X.droneDb, fs);
       if (E.mid) this.mid.set('pk', E.mid[0], 1.4, E.mid[1], fs);
+      if (E.eq && this.eqFor !== this.engine) { this.eqFor = this.engine; E.eq.forEach(([hz, q, db], k) => this.eq[k].set('pk', hz, q, db, fs)); }
       if (E.orderEq) { // follow the firing note (crank rpm / 60 x firings per turn)
         const ff = Math.max(10, this.rpmS) / 60 * E.firing.length * 360 / (E.cycleDeg || 720);
         E.orderEq.forEach(([h, db, q, r0, r1], k) => {
@@ -588,7 +593,8 @@ export class M20Dsp {
 
       // combustion strength
       const overrun = thr < 0.06 && rpm > idle * 1.35; // fuel cut
-      const fuel = overrun ? 0 : 1;
+      // engines with overrunFire keep firing at idle strength off the throttle (no fuel-cut silence)
+      const fuel = overrun && !E.overrunFire ? 0 : 1;
       // idle firings hit harder with a free-flowing exhaust (louder, punchier idle)
       const load = ign * fuel * (0.32 * (1 + (X.idleHit - 1) * (E.idleHitScale || 1) * (1 - thr)) + 0.68 * thr);
       const pump = E.pump;                     // air being pushed out with no combustion
@@ -824,6 +830,8 @@ export class M20Dsp {
         this.envF += (env - this.envF) * 0.02;
         y += z * this.zingAmp * (0.75 + 0.25 * Math.min(1.5, this.envF * 2)) * itbDuck;
       }
+      // an engine's own tone EQ, on everything it makes (exhaust, rasp, intake, tick)
+      if (E.eq) for (let k = 0; k < E.eq.length; k++) y = this.eq[k].run(y);
       y = this.dcHp.run(y);
       // outdoor room: a ground reflection (~3 ms) and nearby surfaces (7, 13 ms), plus a short,
       // soft diffuse tail; quiet, but it takes away the dry, in-the-box sound

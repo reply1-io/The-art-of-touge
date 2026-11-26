@@ -214,8 +214,9 @@ const CARS = {
     intro: 'No recordings are used. A 2.4 L Honda four firing 1-3-4-2 through a 4-2-1 header: a deep, boomy bark and a lumpy idle. Hold the gas past 5,800 rpm and VTEC kicks in: the high-lift cam opens up the intake and it goes hard. Press Start, then hold the gas.',
     bankA: 'Cylinders 1 and 4', bankB: 'Cylinders 2 and 3',
     noteH: 'Why VTEC kicks in',
-    noteP: 'A four fires every 180°, so the main pitch is rpm ÷ 30 (30 Hz at idle, 237 Hz at the limiter). Its exhaust carries the odd multiples of that note (1x and 3x) and little of 2x, and the two cylinder pairs pulse a little differently: a deep, boomy bark with a once-a-turn lump. Past 5,800 rpm under load the high-lift cam takes over and it opens up; lift or drop below 5,500 and it falls back.',
+    noteP: 'A four fires every 180°, so the main pitch is rpm ÷ 30 (36 Hz at idle, 237 Hz at the limiter). Its exhaust carries the odd multiples of that note (1x and 3x) and little of 2x, and the two cylinder pairs pulse a little differently: a deep, boomy bark with a once-a-turn lump. Past 5,800 rpm under load the high-lift cam takes over and it opens up; lift or drop below 5,500 and it falls back.',
     peakNm: 224, peakRpm: 4500, spread: 6000, mass: 1250, freeRev: 11000,
+    decay: 1.3, // off the gas it slides back to idle in about 2.5 s
   },
   m20: {
     eyebrow: 'E30 325i · M20B25 2.5 straight-six · 168 hp', title: 'M20 Engine Sound',
@@ -482,7 +483,7 @@ function step(dt) {
   sim.thr = sim.cut > 0 ? 0 : sim.blip > 0 ? Math.max(0.75, sim.thrIn) : sim.shift > 0 ? 0 : sim.thrIn;
 
   if (mode === 'free' || sim.gear === 0) {
-    let a = sim.thr * (torque(sim.rpm) * (1 + boostGain() * boostNow()) / CARS[eng].peakNm) * CARS[eng].freeRev - (250 + (sim.rpm - IDLE) * 0.75);
+    let a = sim.thr * (torque(sim.rpm) * (1 + boostGain() * boostNow()) / CARS[eng].peakNm) * CARS[eng].freeRev - (250 + (sim.rpm - IDLE) * (CARS[eng].decay ?? 0.75));
     if (sim.rpm < IDLE) a += (IDLE - sim.rpm) * 6;
     sim.rpm += a * dt;
     return;
