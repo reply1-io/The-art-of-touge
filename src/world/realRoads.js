@@ -132,12 +132,15 @@ function realTrack(def, reverse = false) {
     road() {
       const r = get();
       const pts = reverse ? [...r.pts].reverse() : r.pts;
-      const yAt = (f) => {
-        const s = fb(f) * r.length;
-        const i = Math.max(0, Math.min(r.length - 1, Math.floor(s)));
-        return r.y[i] + (r.y[i + 1] - r.y[i]) * (s - i);
-      };
-      return new Road(pts, 0, { world: true, width: def.width || 'wide', profile: yAt, bankAt: (f) => per(f)[1] });
+      const yAt = def.elev
+        ? (f) => elevAt(def.elev, fb(f))
+        : (f) => {
+            const s = fb(f) * r.length;
+            const i = Math.max(0, Math.min(r.length - 1, Math.floor(s)));
+            return r.y[i] + (r.y[i + 1] - r.y[i]) * (s - i);
+          };
+      const bank = def.superelevation != null ? { superAt: () => def.superelevation } : { bankAt: (f) => per(f)[1] };
+      return new Road(pts, 0, { world: true, width: def.width || 'wide', profile: yAt, ...bank });
     },
     sceneAt: (f) => SCENES[per(f)[2]] || SCENES.pine,
     cornerLights: false,
@@ -188,6 +191,21 @@ function realTrack(def, reverse = false) {
 
 import { Road } from './road.js';
 
+// Height (m above sea level) at fraction f along a real road, from its surveyed profile:
+// [[km along the real road, metres], ...] in the direction the road is built. The game road is
+// stretched to the real length, so each point lands where it does on the real road.
+export function elevAt(elev, f) {
+  const total = elev[elev.length - 1][0];
+  const km = Math.max(0, Math.min(1, f)) * total;
+  let k = 0;
+  while (k < elev.length - 2 && elev[k + 1][0] < km) k++;
+  const [a, ya] = elev[k];
+  const [b, yb] = elev[k + 1];
+  const t = Math.max(0, Math.min(1, (km - a) / (b - a)));
+  // Eased between survey points so the grade changes smoothly.
+  return ya + (yb - ya) * (t * t * (3 - 2 * t) * 0.35 + t * 0.65);
+}
+
 const SW = (dir, leg, r, extra = {}) => [{ H: dir, r, g: 0.035, b: 0.12, ...extra }, { S: leg, g: 0.075, b: 0.3 }];
 
 const TUNITAS = {
@@ -197,12 +215,18 @@ const TUNITAS = {
   rails: false,
   peaks: 420,
   relief: 120,
+  // The real road, Skyline Blvd (Kings Mountain) down to Highway 1: 14.35 km, 625 m down to
+  // 38 m. Gentle off the ridge, then the steep two miles (8-9%) through the redwoods, easing to
+  // the Lobitos Creek junction (151 m, 9.3 km), then a gentle run out through the hills.
+  elev: [[0, 625], [1.5, 592], [3.3, 520], [6.3, 255], [9.28, 151], [12, 78], [14.35, 38]],
+  // A narrow county road: crowned, barely banked.
+  superelevation: 0.015,
   pieces: [
     { S: 120, g: 0, b: 0.05, sc: 'redwood' },
-    { W: 3600, r: [14, 40], a: [35, 120], gap: 14, g: -0.072 },
+    { W: 9050, r: [14, 40], a: [35, 120], gap: 14, g: -0.072 },
     { S: 60, g: -0.05, sc: 'oakGrass' },
-    { W: 1900, r: [40, 110], a: [25, 70], gap: 50, g: -0.035, b: 0.1 },
-    { W: 500, r: [70, 160], a: [15, 40], gap: 60, g: -0.015, sc: 'coast' },
+    { W: 3500, r: [40, 110], a: [25, 70], gap: 50, g: -0.035, b: 0.1 },
+    { W: 1500, r: [70, 160], a: [15, 40], gap: 60, g: -0.015, sc: 'coast' },
     { S: 130, g: 0 },
   ],
   lots: [
@@ -230,22 +254,29 @@ const US276 = {
   peaks: 650,
   relief: 170,
   waterfalls: 2,
+  // The real road, built uphill: the forest entrance by Brevard (651 m) along the Davidson River
+  // and Looking Glass Creek, past Looking Glass Falls (km 8.9) and Sliding Rock, to the Pink Beds
+  // (about 990 m, km 17.7), then the switchbacks up the Pisgah Ridge to Wagon Road Gap (1,380 m)
+  // at the Blue Ridge Parkway: about 24 km.
+  elev: [[0, 651], [4, 680], [8.9, 720], [12.2, 800], [15, 900], [17.7, 990], [21, 1200], [24.1, 1380]],
+  // A US highway: corners superelevated to about 6%.
+  superelevation: 0.06,
   pieces: [
     { S: 140, g: 0.004, b: 0.3, sc: 'hardwood' },
-    { W: 1300, r: [40, 95], a: [30, 80], gap: 35, g: 0.025, b: 2 },
+    { W: 8600, r: [40, 95], a: [30, 80], gap: 35, g: 0.025, b: 2 },
     { S: 60, mark: 'falls' },
     { S: 120, b: 0.3 },
-    { W: 1500, r: [35, 85], a: [30, 85], gap: 35, g: 0.035, b: 1.8 },
+    { W: 8300, r: [35, 85], a: [30, 85], gap: 35, g: 0.035, b: 1.8 },
     { E: 70, g: 0.05, b: 0.35 },
-    { S: 260 },
-    ...SW(1, 220, 18),
-    ...SW(-1, 240, 19),
-    { W: 600, r: [35, 70], a: [30, 70], gap: 30, g: 0.06, b: 0.4, sc: 'ridge' },
+    { S: 300 },
+    ...SW(1, 320, 18),
+    ...SW(-1, 340, 19),
+    { W: 2300, r: [35, 70], a: [30, 70], gap: 30, g: 0.06, b: 0.4, sc: 'ridge' },
     { E: 60 },
-    { S: 260 },
-    ...SW(1, 200, 17),
-    ...SW(-1, 180, 18),
-    { S: 160, g: 0.03, b: 0.3 },
+    { S: 300 },
+    ...SW(1, 300, 17),
+    ...SW(-1, 280, 18),
+    { S: 400, g: 0.03, b: 0.3 },
     { S: 150, g: 0 },
   ],
   lots: [
@@ -273,6 +304,12 @@ const DRAGON = {
   show: false,
   homeAt: 2200, // your cabin and workshop, in the forest past the gap
   town: false,
+  // The real US 129: the store at the NC 28 junction (506 m), up 1.1 km to Deals Gap (606 m),
+  // then down the Tennessee side past Calderwood (about 350 m) and along Chilhowee Lake (pool
+  // 266 m) to the Tabcat Creek bridge.
+  elev: [[0, 506], [0.55, 560], [1.15, 606], [4.5, 520], [8, 430], [11.5, 350], [13.4, 296], [17.4, 280]],
+  // A US highway: corners superelevated to about 7%.
+  superelevation: 0.07,
   pieces: [
     { S: 110, g: 0.01, b: 0.2, sc: 'cedar' },
     // Up to the gap.

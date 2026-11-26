@@ -1590,7 +1590,9 @@ export class Mountain {
         const jx = x + (noise2(x * 0.7, z * 0.3) - 0.5) * 6;
         const jz = z + (noise2(x * 0.3, z * 0.7) - 0.5) * 6;
         const near0 = t.nearestRoad(jx, jz, 60);
-        if (near0.d < 9.5 || near0.d > 58) continue;
+        // Trees stand right at the road: trunks from about 5 m out (the bushes along the edge
+        // itself are placed separately, below).
+        if (near0.d < 5.2 || near0.d > 58) continue;
         // Near a link road, group with the loop at its junction.
         const near = { d: near0.d, i: t.road.mainIdx ? t.road.mainIdx[near0.i] : near0.i };
         if (this.#onLot(jx, jz, near.i, 5)) continue;
@@ -1617,6 +1619,27 @@ export class Mountain {
         else bucket(near.i).bushes.push([jx, y, jz, 1 + noise2(jz, jx) * 1.4]);
         // Undergrowth between the trees, thicker near the road edge.
         if (near.d < 22 && noise2(jx * 1.3, jz * 1.3) > 0.45) bucket(near.i).bushes.push([jx + 2.2, t.heightAt(jx + 2.2, jz - 1.5), jz - 1.5, 0.8 + noise2(jx, 3) * 1.2]);
+      }
+    }
+    // No shoulder: a solid edge of undergrowth right where the road ends, every couple of metres
+    // down both sides (thinner in open grass, none on lots, junctions, bridges or water).
+    for (let i = 2; i < road.count - 2; i++) {
+      if (this.bridges.some((b) => i > b.i0 - 6 && i < b.i1 + 6)) continue;
+      const sc = this.sceneAt(i);
+      const shrubTint = sc.sagebrush ? 1 : sc.rhodo ? 2 : sc.ferns ? 3 : sc.ground === 'tundra' ? 4 : sc.ground === 'grass' ? 5 : 0;
+      const forested = isForest(sc);
+      for (const side of [1, -1]) {
+        if (this.inZone(i, side, 2)) continue;
+        const n1 = noise2(i * 0.73 + side * 17, 4.1);
+        if (n1 > 0.25 + Math.min(1, sc.bush) * 0.75) continue;
+        const r = (sc.sagebrush ? 0.5 : sc.ground === 'grass' ? 0.55 : 0.85) + noise2(i * 1.9, side * 5) * (forested ? 0.8 : 0.5);
+        const p = road.pointAt(i, side * (road.w.SHOULDER + 0.15 + r * 0.75 + noise2(i * 2.3, side) * 0.5));
+        p[0] += (noise2(i * 3.1, side) - 0.5) * 1.2;
+        p[2] += (noise2(side, i * 3.1) - 0.5) * 1.2;
+        if (t.inLake(p[0], p[2]) || this.#onLot(p[0], p[2], i, 1)) continue;
+        if (t.nearestRoad(p[0], p[2], 8).d < road.w.SHOULDER) continue; // another leg of the road
+        const y = Math.min(t.heightAt(p[0], p[2]), road.y[i] - 0.2) - 0.25;
+        bucket(i).bushes.push([p[0], y, p[2], r, shrubTint, forested ? 0.8 : 1]);
       }
     }
     // The deep forest beyond: a ring of simpler trees out to about 160 m, bucketed by area.
@@ -1879,7 +1902,7 @@ export class Mountain {
     // Undergrowth between the trees: thick near the road edge, and deeper in it fills the gaps
     // between the trunks so the forest reads as a wall.
     const under = d < 22 ? 1 - Math.min(0.9, 0.55 * sc.bush) : forested ? 0.45 : 2;
-    if (noise2(x * 1.3, z * 1.3) > under) g.bushes.push([x + 2.2, this.terrain.heightAt(x + 2.2, z - 1.5), z - 1.5, (sc.ferns ? 0.6 : 0.8) + noise2(x, 3) * (forested && d > 22 ? 2 : 1.2), shrubTint, sh * 0.85]);
+    if (noise2(x * 1.3, z * 1.3) > under && (d > 8 || this.terrain.nearestRoad(x + 2.2, z - 1.5, 8).d > this.road.w.SHOULDER + 0.6)) g.bushes.push([x + 2.2, this.terrain.heightAt(x + 2.2, z - 1.5), z - 1.5, (sc.ferns ? 0.6 : 0.8) + noise2(x, 3) * (forested && d > 22 ? 2 : 1.2), shrubTint, sh * 0.85]);
   }
 
   // Roadside furniture: reflector posts, chevron signs on tight corners, utility poles, boulders,
