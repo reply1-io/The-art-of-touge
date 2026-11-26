@@ -20,10 +20,10 @@
 // Browser rule: create/resume the AudioContext inside the click/tap handler,
 // before any await, or phones keep it silent.
 
-import { M20Dsp, Biquad, Delay, randn, crankRpm, exhaustName, CRANK_SECONDS, IDLE_RPM, ENGINES, EXHAUSTS, TURBOS, ITB, TAU } from './m20-dsp.js';
+import { M20Dsp, Biquad, Delay, randn, crankRpm, exhaustName, CRANK_SECONDS, IDLE_RPM, ENGINES, EXHAUSTS, TURBOS, ITB, ITB_UNEVEN, TAU } from './m20-dsp.js';
 export { crankRpm, CRANK_SECONDS, IDLE_RPM, ENGINES, EXHAUSTS };
 
-function workletSource(dspSource) {
+export function workletSource(dspSource) {
   // Best: the original m20-dsp.js text (bundlers rename things when minifying, which breaks
   // rebuilding it from function text). Otherwise rebuild it from the live classes.
   const dsp = dspSource
@@ -34,6 +34,7 @@ function workletSource(dspSource) {
         `const EXHAUSTS = ${JSON.stringify(EXHAUSTS)};`,
         `const TURBOS = ${JSON.stringify(TURBOS)};`,
         `const ITB = ${JSON.stringify(ITB)};`,
+        `const ITB_UNEVEN = ${JSON.stringify(ITB_UNEVEN)};`,
         `const IDLE_RPM = ${IDLE_RPM};`,
         `const CRANK_SECONDS = ${CRANK_SECONDS};`,
         randn, crankRpm, exhaustName, Biquad, Delay, M20Dsp,

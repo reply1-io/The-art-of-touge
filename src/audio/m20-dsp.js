@@ -261,7 +261,7 @@ export const ITB = {
   tick: 0,        // valve-train tick left on the throttle
 };
 // how each trumpet differs from the average (firing order), scaled by `uneven`
-const ITB_UNEVEN = [0.26, 0.05, -0.23, -0.22, 0.25, -0.1, 0.15, -0.16];
+export const ITB_UNEVEN = [0.26, 0.05, -0.23, -0.22, 0.25, -0.1, 0.15, -0.16];
 
 export class M20Dsp {
   constructor(fs) {
