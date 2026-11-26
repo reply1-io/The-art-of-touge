@@ -66,6 +66,8 @@ export function loadTuning() {
   // The short-lived "factory" wheels (from the downloaded E30 model, since removed) go back to BBS.
   // Rims no longer sold (and the short-lived factory ones) go back to the Style 5s.
   if (t && !['bbs', 'bottlecap', 'watanabe', 'te37', 'rpf1'].includes(t.wheel)) t.wheel = 'bbs';
+  // Cars already running a turbo from before internals existed keep it, on forged internals.
+  if (t && t.turbo && t.turbo !== 'none' && t.internals !== 'forged') t.internals = 'forged';
   return { ...TUNABLE_DEFAULTS, ...(t || {}) };
 }
 

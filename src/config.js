@@ -268,6 +268,7 @@ export const DIFFS = {
 
 // Live-tunable values (tuning shop and dev panel). Defaults chosen for a planted but slidable street car.
 export const TUNABLE_DEFAULTS = {
+  internals: 'stock', // 'forged' is needed before a turbo can be fitted
   tire: 'street',
   diff: 'lsd',
   rideHeight: 0, // mm from stock (negative = lowered)
@@ -325,6 +326,11 @@ export const INTAKES = {
   stock: { name: 'Stock airbox', blurb: 'Quiet factory airbox and paper filter.' },
   pod: { name: 'Pod filter', blurb: 'Open cone filter. A few extra Nm up top and an audible gulp of air.' },
   itb: { name: 'ITBs', blurb: 'Individual throttle bodies in a carbon airbox: +20 Nm and +15 hp, razor response, and a deep, hollow trumpet howl that takes over on the throttle. Louder and angrier with a race exhaust.' },
+};
+// Engine internals. The stock bottom end can't take boost: forged internals come before a turbo.
+export const INTERNALS = {
+  stock: { name: 'Stock internals', blurb: 'Cast pistons and factory rods. Fine as it comes, but boost would break it.' },
+  forged: { name: 'Forged internals', blurb: 'Forged pistons, H-beam rods, lower compression and head studs. Built to take boost: you need these before you can fit a turbo.' },
 };
 export const TURBOS = {
   none: { name: 'None', blurb: 'Naturally aspirated. Smooth, linear and predictable.' },

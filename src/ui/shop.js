@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import {
   CAR, BASE_CAR, CARS, ENGINE_SWAPS, carSave, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup,
-  SEATS, RIM_WIDTH_IN, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, WHEEL_COLORS, wheelColorOf,
+  SEATS, RIM_WIDTH_IN, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, WHEEL_COLORS, wheelColorOf, INTERNALS,
 } from '../config.js';
 import { dynoRun } from '../physics/dyno.js';
 import { money } from '../game/wallet.js';
@@ -38,7 +38,7 @@ function hexToHsl(hex) {
   return [h / 6, s, l];
 }
 
-const SHOP_KEYS = ['seats', 'offsetFront', 'offsetRear', 'plateStyle', 'plateText', 'stretch', 'intake', 'turbo', 'clutch', 'gearbox', 'finalDrive', 'coilovers', 'brakes', 'handbrake', 'angleKit', 'weight', 'paint', 'numbers', 'number', 'numberW', 'numberH', 'exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'wheelColor', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
+const SHOP_KEYS = ['seats', 'offsetFront', 'offsetRear', 'plateStyle', 'plateText', 'stretch', 'intake', 'internals', 'turbo', 'clutch', 'gearbox', 'finalDrive', 'coilovers', 'brakes', 'handbrake', 'angleKit', 'weight', 'paint', 'numbers', 'number', 'numberW', 'numberH', 'exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'wheelColor', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
 
 const TABS = [
   ['car', 'Car'],
@@ -809,6 +809,12 @@ export class Shop {
   }
 
   #change(key, value, rerender = false) {
+    // A turbo needs forged internals under it.
+    if (key === 'turbo' && value !== 'none' && this.tune.internals !== 'forged') {
+      this.flashMsg = 'Not yet: fit forged internals before a turbo';
+      this.render();
+      return;
+    }
     // Parts must be bought before they are fitted.
     const w = this.wallet;
     if (w && !w.owns(key, value)) {
@@ -821,6 +827,11 @@ export class Shop {
       rerender = true;
     }
     this.tune[key] = value;
+    if (key === 'internals' && value !== 'forged' && this.tune.turbo && this.tune.turbo !== 'none') {
+      this.tune.turbo = 'none'; // stock internals can't hold boost
+      this.flashMsg = 'Turbo removed: stock internals can’t take boost';
+      rerender = true;
+    }
     if (key === 'wheel') rerender = true; // its colour choices change with it
     this.#applyCar();
     this.onChange();
@@ -850,6 +861,21 @@ export class Shop {
       this.#tag(card.querySelector('em'), key, valueOf(id));
       card.addEventListener('click', () => this.#change(key, valueOf(id), true));
       row.append(card);
+    }
+    return row;
+  }
+
+  // Turbos: locked until forged internals are fitted.
+  #turbos() {
+    const row = this.#cards(TURBOS, 'turbo');
+    if (this.tune.internals !== 'forged') {
+      for (const card of row.children) {
+        if (card.classList.contains('sel')) continue;
+        card.classList.add('locked');
+        const em = card.querySelector('em');
+        em.textContent = 'NEEDS FORGED INTERNALS';
+        em.className = 'lock';
+      }
     }
     return row;
   }
@@ -930,13 +956,37 @@ export class Shop {
     const t = this.tune;
     const ws = wheelSetup(t);
     const style = WHEELS[t.wheel] || WHEELS.bbs;
+    const run = dynoRun(t);
+    const hp = Math.round(run.peakHp.hp);
+    const nm = Math.round(run.peakNm.nm);
+    const mu = (TIRES[t.tire] || TIRES.street).mu;
+    const brake = (t.brakes === 'bbk' ? 1.3 : 1) * mu;
     this.readoutEl.innerHTML = '';
+    const head = document.createElement('div');
+    head.className = 'spec-head';
+    head.textContent = 'SPEC';
+    this.readoutEl.append(head);
+    // Segmented meters, 2000s style: ten blocks each.
+    for (const [name, frac, val] of [
+      ['POWER', hp / 420, `${hp} HP`],
+      ['TORQUE', nm / 520, `${nm} NM`],
+      ['GRIP', (mu - 0.6) / 0.9, ''],
+      ['BRAKES', (brake - 0.6) / 1.4, ''],
+    ]) {
+      const row = document.createElement('div');
+      row.className = 'spec-row';
+      const lit = Math.max(1, Math.min(10, Math.round(frac * 10)));
+      row.innerHTML = `<span></span><i>${'<b></b>'.repeat(lit)}${'<u></u>'.repeat(10 - lit)}</i><em></em>`;
+      row.querySelector('span').textContent = name;
+      row.querySelector('em').textContent = val;
+      this.readoutEl.append(row);
+    }
     for (const line of [
-      `${style.name} ${ws.rim}x${RIM_WIDTH_IN[ws.rim]} ET${35 - (t.offsetFront ?? 0)}`,
-      `${ws.width}/${ws.profile}R${ws.rim} ${TIRES[t.tire]?.name || ''}${ws.stretched ? ' stretched' : ''}`,
-      `Camber ${deg(t.camberFront)} F  ${deg(t.camberRear)} R`,
+      `${Math.round(run.mass).toLocaleString('en-US')} kg · ${(run.mass / run.peakHp.hp).toFixed(1)} kg/hp`,
+      `${style.name} ${ws.rim}x${RIM_WIDTH_IN[ws.rim]} ET${35 - (t.offsetFront ?? 0)} · ${ws.width}/${ws.profile}R${ws.rim}`,
     ]) {
       const d = document.createElement('div');
+      d.className = 'spec-line';
       d.textContent = line;
       this.readoutEl.append(d);
     }
@@ -948,9 +998,6 @@ export class Shop {
     if (this.tab === 'body') {
       return [
         this.#section('Paint', this.#paint()),
-        this.#section(
-          'Lights',
-        ),
         this.#section(
           'Number boards',
           this.#chips('On the doors', 'numbers', [[false, 'None'], [true, 'Fitted']]),
@@ -1010,7 +1057,8 @@ export class Shop {
       return [
         this.#section('Engine swap', this.#engineNow(), this.#swapButton()),
         this.#section('Intake', this.#cards(INTAKES, 'intake')),
-        this.#section('Turbo', this.#cards(TURBOS, 'turbo')),
+        this.#section('Internals', this.#cards(INTERNALS, 'internals')),
+        this.#section('Turbo', this.#turbos()),
         this.#section('Exhaust', this.#cards(EXHAUSTS, 'exhaust')),
       ];
     }
@@ -1422,6 +1470,11 @@ export class Shop {
           if (this.wallet && !this.wallet.owns(k, v)) missing++;
           else this.tune[k] = v;
         }
+        // A turbo needs forged internals: builds saved before internals existed get them.
+        if (this.tune.turbo && this.tune.turbo !== 'none' && this.tune.internals !== 'forged') {
+          if (b.tune && !('internals' in b.tune)) this.tune.internals = 'forged';
+          else this.tune.turbo = 'none';
+        }
         this.#applyCar();
         this.onChange();
         this.flash = missing ? `Loaded "${b.name}" except ${missing} part(s) you don't own yet` : `Loaded "${b.name}"`;
@@ -1532,7 +1585,7 @@ export class Shop {
     panel.className = 'shop-panel';
     const head = document.createElement('div');
     head.className = 'shop-head';
-    head.innerHTML = '<h2>TUNING SHOP</h2><span class="shop-money"></span>';
+    head.innerHTML = '<h2><span>TUNING</span> SHOP</h2><span class="shop-money"></span>';
     if (this.wallet) head.querySelector('.shop-money').textContent = money(this.wallet.balance);
     const done = document.createElement('button');
     done.type = 'button';
