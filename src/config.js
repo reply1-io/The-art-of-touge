@@ -73,76 +73,7 @@ const E30 = {
   sound: 'm20',
 };
 
-// Mazda RX-7 (FC3S, 1990 non-turbo): 13B two-rotor, about 160 hp at 7,000 rpm and a 7,500 rpm
-// redline, near 50:50 balance with the engine behind the front axle, a light, quick-revving
-// rotor pack and little engine braking.
-const RX7 = {
-  id: 'rx7',
-  shape: 'rx7',
-  name: 'Mazda RX-7 FC',
-  blurb: '13B rotary, 160 hp, 7,500 rpm. Balanced and light on its feet; loves to rev, little engine braking.',
-  mass: 1250,
-  halfExtents: { x: 0.83, y: 0.3, z: 2.14 },
-  centerOfMass: { x: 0, y: -0.2, z: 0.0 },
-  inertia: { x: 1500, y: 1800, z: 440 },
-  dragArea: 0.53, // Cd 0.31 x 1.7 m2
-  rollingResistance: 0.013,
-
-  wheelbase: 2.43,
-  trackFront: 1.45,
-  trackRear: 1.44,
-  frontAxleZ: 1.2,
-  rearAxleZ: -1.23,
-  wheelMountY: -0.1,
-  wheelRadius: 0.305,
-  wheelWidth: 0.195,
-  wheelInertia: 1.0,
-  suspensionRest: 0.3,
-  suspensionTravel: 0.18,
-  maxSteer: (36 * Math.PI) / 180,
-
-  engine: {
-    idleRpm: 790, // settles about 40 rpm lower: a 750 rpm idle
-    idleMaxThrottle: 0.25,
-    redline: 7500,
-    limiterRpm: 7600,
-    limiterResumeRpm: 7300,
-    stallRpm: 450,
-    inertia: 0.13, // rotors and a light flywheel: revs climb and fall quickly
-    torqueCurve: [
-      [0, 90],
-      [800, 120],
-      [1500, 140],
-      [2500, 160],
-      [3500, 176],
-      [4500, 190],
-      [5500, 186],
-      [6500, 175],
-      [7000, 165],
-      [7500, 150],
-      [8000, 125],
-    ],
-    frictionTorque: 14,
-    frictionPerRpm: 0.005, // a rotary has little engine braking
-  },
-
-  gears: [3.475, 2.002, 1.366, 1.0, 0.711],
-  reverse: 3.493,
-  finalDrive: 4.1,
-  drivelineEfficiency: 0.9,
-  clutchTorque: 300,
-
-  brakeTorqueFront: 1700,
-  brakeTorqueRear: 800,
-  handbrakeTorque: 1800,
-
-  paint: 0xc8241d,
-  engineName: '13B',
-  engineKg: 125,
-  sound: 'rotary13b',
-};
-
-export const CARS = { e30: E30, rx7: RX7 };
+export const CARS = { e30: E30 };
 
 // Cars you made in the Car Builder (kept in this browser): each drives like the car it is built on.
 for (const d of loadDesigns()) {
@@ -157,24 +88,6 @@ for (const d of loadDesigns()) {
 // the engine model the physics runs. `ready: false` swaps are listed but not fittable yet.
 // kg: the engine's dressed weight, so the car gets lighter or heavier than with its own engine.
 export const ENGINE_SWAPS = {
-  rotary: {
-    ready: true,
-    name: '13B Rotary',
-    code: '13B',
-    donor: 'Mazda RX-7 FC3S',
-    layout: 'Two-rotor Wankel',
-    displacement: '1.3 L',
-    aspiration: 'Naturally aspirated',
-    hp: 162,
-    hpRpm: 7000,
-    nm: 190,
-    nmRpm: 4500,
-    redline: 7500,
-    kg: 125,
-    blurb: 'The FC\'s two-rotor: smooth, light and happy to rev, with the rotary brap. Lighter than a six, so the nose turns in sharper.',
-    sound: 'rotary13b',
-    engine: RX7.engine,
-  },
   '1jz': {
     ready: true,
     name: '1JZ-GTE VVT-i',
@@ -232,35 +145,6 @@ export const ENGINE_SWAPS = {
     redline: 7600,
     kg: 115,
     blurb: 'The Hachi-Roku\'s twin-cam four. Not much torque, but it loves to rev and weighs next to nothing.',
-  },
-  ls3: {
-    ready: true,
-    name: 'LS3',
-    code: 'LS3',
-    donor: 'Chevrolet Corvette C6',
-    layout: 'V8, pushrod 16v',
-    displacement: '6.2 L',
-    aspiration: 'Naturally aspirated',
-    hp: 430,
-    hpRpm: 5900,
-    nm: 575,
-    nmRpm: 4600,
-    redline: 6600,
-    kg: 185,
-    blurb: 'All-aluminium American V8. Torque everywhere and a lazy, thunderous rumble.',
-    sound: 'ls3', // cross-plane V8 burble; street and race exhausts add the lope
-    engine: {
-      idleRpm: 900,
-      idleMaxThrottle: 0.25,
-      redline: 6600,
-      limiterRpm: 6700,
-      limiterResumeRpm: 6450,
-      stallRpm: 450,
-      inertia: 0.28,
-      torqueCurve: [[0, 260], [800, 390], [1500, 480], [2500, 540], [3500, 565], [4600, 575], [5200, 555], [5900, 519], [6400, 482], [6700, 455], [7200, 380]],
-      frictionTorque: 28,
-      frictionPerRpm: 0.009,
-    },
   },
   k24: {
     ready: false,

@@ -14,7 +14,7 @@ import m20DspSource from './m20-dsp.js?raw';
 import { CAR } from '../config.js';
 
 // Which synth engine profile each car uses (see ENGINES in m20-dsp.js).
-const ENGINE_SOUND = { e30: 'm20', rx7: 'rotary13b' };
+const ENGINE_SOUND = { e30: 'm20' };
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 

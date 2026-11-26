@@ -1,5 +1,5 @@
-// M20EngineSound - procedural engine audio: the E30 325i's BMW M20B25 straight-six, and a
-// GM LS3 6.2 V8 (engine.setEngine('ls3')). No samples: the sound is synthesized by M20Dsp
+// M20EngineSound - procedural engine audio: the E30 325i's BMW M20B25 straight-six and the
+// swap engines (engine.setEngine(name)). No samples: the sound is synthesized by M20Dsp
 // (m20-dsp.js). The class keeps its M20 name so existing code keeps working.
 //
 //   const engine = await M20EngineSound.create(audioCtx);
@@ -63,7 +63,7 @@ const timeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout((
 export class M20EngineSound {
   /**
    * @param {AudioContext} ctx
-   * @param {{ dspSource?: string, engine?: 'm20' | 'ls3' }} [opts] dspSource: the text of
+   * @param {{ dspSource?: string, engine?: string }} [opts] dspSource: the text of
    *   m20-dsp.js. Pass it when the code is minified by a bundler (with Vite:
    *   import dspSource from './m20-dsp.js?raw'). engine: which engine to start with.
    */
@@ -126,7 +126,7 @@ export class M20EngineSound {
    */
   setTurbo(on, size = 'small') { this._send({ set: { turbo: on ? 1 : 0, turboSize: size } }); }
 
-  /** 'm20' (BMW straight-six) or 'ls3' (GM V8). Switches instantly, even while running. */
+  /** An engine profile name ('m20', or a swap). Switches instantly, even while running. */
   setEngine(name) {
     if (!ENGINES[name]) throw new Error(`unknown engine ${name}`);
     this.engine = name;

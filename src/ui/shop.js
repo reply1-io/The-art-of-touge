@@ -452,19 +452,10 @@ function buildGarage(scene) {
     g.arc(175, 152, 14, 0, Math.PI * 2);
     g.fill();
   };
-  const rotor = (g) => {
-    g.fillStyle = '#111';
-    g.beginPath();
-    g.moveTo(128, 50);
-    g.quadraticCurveTo(200, 110, 190, 160);
-    g.quadraticCurveTo(128, 175, 66, 160);
-    g.quadraticCurveTo(56, 110, 128, 50);
-    g.fill();
-  };
   const posters = [
     [posterTex('#e9e1cc', '#111', '#c8241d', 'TOUGE', 'NIGHT RUN', mountains), -6.0, -D + 0.02, 0],
     [posterTex('#141414', '#f2c51e', '#f2c51e', 'DOWNHILL', 'NO BRAKES', carShape), 4.8, -D + 0.02, 0],
-    [posterTex('#1d3a8a', '#f2f2f2', '#e6e6e6', 'ROTARY', 'BRAAAP', rotor), 6.3, -D + 0.02, 0],
+    [posterTex('#1d3a8a', '#f2f2f2', '#e6e6e6', 'STRAIGHT', 'SIX', mountains), 6.3, -D + 0.02, 0],
     [posterTex('#f2f1ea', '#1f5a32', '#2f6b4f', 'KAIDO', 'MOUNTAIN PASS', mountains), 1.8, D - 0.02, Math.PI],
     [posterTex('#c8241d', '#fff', '#111', 'DRIFT', 'SIDEWAYS CLUB', carShape), -W + 0.02, -1.9, Math.PI / 2],
     [posterTex('#2a2a2a', '#e8711c', '#e8711c', 'HACHI', '1600 TWIN CAM', carShape), -W + 0.02, -3.5, Math.PI / 2],
@@ -1119,7 +1110,6 @@ export class Shop {
       ready: true,
       factory: true,
     };
-    // (A car's own engine is the factory card, not a swap: no 13B swap into an RX-7.)
     for (const [id, sw] of [['stock', stockCard], ...Object.entries(ENGINE_SWAPS).filter(([, w]) => w.code !== BASE_CAR.engineName)]) {
       const card = document.createElement('div');
       card.className = 'swap-card' + (id === fitted ? ' sel' : '') + (sw.ready ? '' : ' soon');

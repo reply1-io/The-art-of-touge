@@ -8,7 +8,7 @@ export const START_MONEY = 3000;
 
 // key -> option value -> price. Anything not listed is free; the stock option is always owned.
 export const PRICES = {
-  engine: { stock: 0, rotary: 7000 },
+  engine: { stock: 0 },
   tire: { drift: 360, stock: 0, street: 640, semi: 1100 },
   diff: { open: 150, lsd: 0, welded: 250 },
   wheel: { bbs: 0, bottlecap: 400, watanabe: 1600, te37: 2200, rpf1: 1500 },
