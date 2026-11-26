@@ -8,7 +8,7 @@ import { RX7_SHAPE } from './shapes/rx7.js';
 import { customShape, registerStockShapes } from './shapes/custom.js';
 import { loadDesigns } from '../builder/customStore.js';
 import { paintTexture, addPaintLayer } from './shapes/paintLayer.js';
-import { PLATES, WHEELS, EXHAUSTS, HEADLIGHTS, TAILLIGHTS, wheelSetup, TUNABLE_DEFAULTS } from '../config.js';
+import { PLATES, WHEELS, WHEEL_COLORS, EXHAUSTS, HEADLIGHTS, TAILLIGHTS, wheelSetup, TUNABLE_DEFAULTS } from '../config.js';
 
 const GROUND = -0.62; // ground level in body space at static ride height
 
@@ -310,9 +310,54 @@ function detailPolys() {
 // lip, a shaded dish (darker towards the middle, so the face reads as concave), its spokes, and a
 // hub with four lug nuts on the E30's 4x100 circle.
 const faceCache = new Map();
-export function rimTexture(styleId) {
-  if (faceCache.has(styleId)) return faceCache.get(styleId);
+export function rimTexture(styleId, color = 'original') {
+  const tint = WHEEL_COLORS[color]?.[1];
+  const ck = tint ? `${styleId}|${color}` : styleId;
+  if (faceCache.has(ck)) return faceCache.get(ck);
   const st = WHEELS[styleId] || WHEELS.bbs;
+  // Recoloured: the photo redrawn with its metal in the new colour (same light and shade), while
+  // badges, caps and stickers (colours unlike the wheel's own) stay as they are.
+  if (st.image && tint) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 48;
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.magFilter = THREE.NearestFilter;
+    t.minFilter = THREE.NearestFilter;
+    t.generateMipmaps = false;
+    const img = new Image();
+    img.onload = () => {
+      const g = c.getContext('2d');
+      g.drawImage(img, 0, 0, 48, 48);
+      const d = g.getImageData(0, 0, 48, 48);
+      const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+      const base = hex(st.face);
+      const to = hex(tint);
+      const lumOf = (r, gg, b) => (0.3 * r + 0.59 * gg + 0.11 * b) / 255;
+      const hueOf = (r, gg, b) => Math.atan2(Math.sqrt(3) * (gg - b), 2 * r - gg - b);
+      const satOf = (r, gg, b) => (Math.max(r, gg, b) - Math.min(r, gg, b)) / Math.max(1, Math.max(r, gg, b));
+      const baseLum = Math.max(0.15, lumOf(...base));
+      const baseSat = satOf(...base);
+      const baseHue = hueOf(...base);
+      for (let i = 0; i < d.data.length; i += 4) {
+        const [r, gg, b] = [d.data[i], d.data[i + 1], d.data[i + 2]];
+        const lum = lumOf(r, gg, b);
+        if (lum < 0.07) continue; // the dark gaps behind the spokes
+        const sat = satOf(r, gg, b);
+        let dh = Math.abs(hueOf(r, gg, b) - baseHue);
+        if (dh > Math.PI) dh = 2 * Math.PI - dh;
+        const metal = sat < 0.22 || (baseSat > 0.2 && dh < 0.45 && sat < baseSat + 0.25);
+        if (!metal) continue;
+        const k = Math.min(1.7, lum / baseLum);
+        for (let c2 = 0; c2 < 3; c2++) d.data[i + c2] = Math.min(255, to[c2] * k);
+      }
+      g.putImageData(d, 0, 0);
+      t.needsUpdate = true;
+    };
+    img.src = `${import.meta.env?.BASE_URL ?? './'}${st.image}`;
+    faceCache.set(ck, t);
+    return t;
+  }
   // A style with its own picture (a low-res photo of the real wheel): show it crisp and pixelated.
   if (st.image) {
     const t = new THREE.TextureLoader().load(`${import.meta.env?.BASE_URL ?? './'}${st.image}`);
@@ -540,7 +585,7 @@ export function rimTexture(styleId) {
 
 // One wheel: tyre tread, sidewalls between the rim and the tread, the rim face and the inner side.
 // Built facing +x (outward for a left wheel).
-function makeWheel(ws, styleId, tyreMat, wallMat) {
+function makeWheel(ws, styleId, tyreMat, wallMat, color = 'original') {
   const group = new THREE.Group();
   const R = ws.radius;
   const r = ws.rimRadius + 0.012;
@@ -558,7 +603,7 @@ function makeWheel(ws, styleId, tyreMat, wallMat) {
   }
   const face = new THREE.CircleGeometry(r, 20);
   face.rotateY(Math.PI / 2);
-  const rim = new THREE.Mesh(face, new THREE.MeshLambertMaterial({ map: rimTexture(styleId) }));
+  const rim = new THREE.Mesh(face, new THREE.MeshLambertMaterial({ map: rimTexture(styleId, color) }));
   rim.position.x = ws.stretched ? rimHalf + 0.004 : half - 0.02; // inside the sidewall, or proud when stretched
   group.add(rim);
   const back = new THREE.Mesh(new THREE.CircleGeometry(R, 20).rotateY(-Math.PI / 2), tyreMat);
@@ -873,14 +918,14 @@ export class CarModel {
     this.#applyLooks(tune);
     if (this.exhaustType !== (tune.exhaust || 'stock')) this.#buildPipe(tune.exhaust || 'stock');
     const ws = wheelSetup(tune);
-    const key = `${tune.wheel}|${ws.rim}|${ws.profile}|${ws.stretched}`;
+    const key = `${tune.wheel}|${tune.wheelColor}|${ws.rim}|${ws.profile}|${ws.stretched}`;
     for (const w of this.wheels) {
       if (this.wheelKey !== key) {
         if (w.spin) {
           w.camber.remove(w.spin);
           w.spin.traverse((o) => o.geometry?.dispose());
         }
-        w.spin = makeWheel(ws, tune.wheel, this.tyreMat, this.wallMat);
+        w.spin = makeWheel(ws, tune.wheel, this.tyreMat, this.wallMat, tune.wheelColor);
         if (w.side < 0) w.spin.scale.x = -1; // right-hand wheels: rim faces outward
         w.camber.add(w.spin);
       }
@@ -960,12 +1005,11 @@ export class CarModel {
     this.cockpit.setSeats(t.seats === 'bucket' ? 'bucket' : 'stock');
     this.paintMat.color.set(t.paint || '#efeee6');
     this.lidMat.color.set(t.paint || '#efeee6');
-    this.headColor = t.headlights || 'white';
+    this.headColor = 'white'; // (lamp colours are not customisable)
     const head = (HEADLIGHTS[this.headColor] || HEADLIGHTS.white)[1];
     this.headMat.color.setHex(head).lerp(new THREE.Color(0xe8ecf0), 0.35);
     this.lensMat.color.setHex(head).lerp(new THREE.Color(0xffffff), 0.6);
-    this.tailMat.color.setHex((TAILLIGHTS[t.taillights] || TAILLIGHTS.red)[1]);
-    this.tailLensMat?.color.setHex(t.taillights === 'smoked' ? 0x5a4a4c : 0xffffff);
+    this.tailMat.color.setHex(TAILLIGHTS.red[1]);
     if (!this.plateDrawn) {
       this.plateDrawn = true;
       this.#drawPlate();

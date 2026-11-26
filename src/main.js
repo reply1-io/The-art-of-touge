@@ -673,7 +673,7 @@ const shop = new Shop($('shop'), tune, () => {
   saveTuning(tune);
   carModel?.applySetup(tune);
   online?.sendLook(tune);
-  headlight.color.setHex((HEADLIGHTS[tune.headlights] || HEADLIGHTS.white)[1]);
+  headlight.color.setHex(HEADLIGHTS.white[1]);
 }, wallet);
 wallet.onChange = () => {
   for (const el of document.querySelectorAll('.title-money')) el.textContent = money(wallet.balance);
@@ -1910,7 +1910,7 @@ async function boot() {
   });
   carModel = new CarModel(CAR);
   carModel.applySetup(tune);
-  headlight.color.setHex((HEADLIGHTS[tune.headlights] || HEADLIGHTS.white)[1]);
+  headlight.color.setHex(HEADLIGHTS.white[1]);
   scene.add(carModel.root);
   sparks = new Sparks(scene);
   glints = new Glints(carModel.root);

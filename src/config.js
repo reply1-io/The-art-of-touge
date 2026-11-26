@@ -400,6 +400,7 @@ export const TUNABLE_DEFAULTS = {
   lsdLock: 0.3, // limited-slip locking ratio (E30 factory LSD is about 25%)
   lsdPreload: 40, // N m
   wheel: 'bbs', // rim style (looks only)
+  wheelColor: 'original', // rim colour: 'original' (as the wheel comes) or one of WHEEL_COLORS
   rim: 14, // rim diameter, inches
   profile: 65, // tyre sidewall height as % of width
   camberFront: 1.0, // degrees of negative camber
@@ -543,13 +544,23 @@ export const EXHAUSTS = {
 // Wheels (tuning shop). Looks only: size, sidewall and camber are separate settings.
 export const WHEELS = {
   bbs: { name: 'Style 5 Basket Weave', blurb: 'The factory BBS-made cross-spoke: a silver basket weave round a roundel cap.', face: '#c7c9cf', lip: '#d8dadf', dish: '#26272b', spokes: 'mesh', image: 'wheels/style5.png' },
-  gold: { name: 'Gold Mesh', blurb: 'Gold cross-spoke with a deep polished lip. Pure 80s.', face: '#d6b04a', lip: '#e4e6ea', dish: '#3a3020', spokes: 'mesh' },
-  six: { name: 'Bronze 6-Spoke', blurb: 'Light forged six-spoke in bronze, the Japanese touge classic.', face: '#8e6a3f', lip: '#8e6a3f', dish: '#231c15', spokes: 'six' },
-  steel: { name: 'Black Steelies', blurb: 'Plain black steel wheels. Cheap, tough, honest.', face: '#1d1e21', lip: '#26272b', dish: '#141517', spokes: 'steel' },
   bottlecap: { name: 'Factory Bottle Caps', blurb: 'The E30\'s standard 14-inch alloys: a flat silver face with a ring of slots and a metal centre cap.', face: '#c3c5ca', lip: '#c3c5ca', dish: '#2a2b2f', spokes: 'bottlecap', image: 'wheels/bottlecap.png' },
   watanabe: { name: 'Watanabe 8-Spoke', blurb: 'Eight slender spokes in gunmetal with a red centre cap. Old-school Japanese street racing.', face: '#6f716c', lip: '#7a7c78', dish: '#1a1b1c', spokes: 'watanabe', image: 'wheels/watanabe.png' },
   rpf1: { name: 'Enkei RPF1', blurb: 'Six pairs of twin spokes in silver. Light, cheap, and on every time-attack car.', face: '#c9cbce', lip: '#c9cbce', dish: '#1a1b1c', spokes: 'six', image: 'wheels/rpf1.png' },
   te37: { name: 'TE37', blurb: 'Six wide, flat forged spokes in bronze. Light, stiff, legendary.', face: '#8d7a55', lip: '#8d7a55', dish: '#1e160d', spokes: 'te37', image: 'wheels/te37.png' },
+};
+
+// Rim colours: the wheel's picture recoloured (its metal, keeping the shading; badges, caps and
+// stickers stay as they are). 'original' leaves the wheel as it comes.
+export const WHEEL_COLORS = {
+  original: ['Original', null],
+  silver: ['Silver', '#c9ccd1'],
+  black: ['Gloss black', '#4a4c52'],
+  gunmetal: ['Gunmetal', '#5c5f63'],
+  white: ['White', '#eef0f0'],
+  gold: ['Gold', '#d4a843'],
+  bronze: ['Bronze', '#8c6a3c'],
+  red: ['Red', '#b8261c'],
 };
 
 // Wheel and tyre sizes: tyre width grows with the rim, as you would fit on the real car.

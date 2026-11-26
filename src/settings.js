@@ -64,7 +64,8 @@ export function loadTuning() {
   const t = carSave('tuning');
   claim('tuning');
   // The short-lived "factory" wheels (from the downloaded E30 model, since removed) go back to BBS.
-  if (t?.wheel === 'factory') t.wheel = 'bbs';
+  // Rims no longer sold (and the short-lived factory ones) go back to the Style 5s.
+  if (t && !['bbs', 'bottlecap', 'watanabe', 'te37', 'rpf1'].includes(t.wheel)) t.wheel = 'bbs';
   return { ...TUNABLE_DEFAULTS, ...(t || {}) };
 }
 

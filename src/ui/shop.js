@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import {
   CAR, BASE_CAR, CARS, ENGINE_SWAPS, carSave, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup,
-  SEATS, RIM_WIDTH_IN, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, HEADLIGHTS, TAILLIGHTS,
+  SEATS, RIM_WIDTH_IN, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, WHEEL_COLORS,
 } from '../config.js';
 import { dynoRun } from '../physics/dyno.js';
 import { money } from '../game/wallet.js';
@@ -38,7 +38,7 @@ function hexToHsl(hex) {
   return [h / 6, s, l];
 }
 
-const SHOP_KEYS = ['seats', 'offsetFront', 'offsetRear', 'plateStyle', 'plateText', 'stretch', 'intake', 'turbo', 'clutch', 'gearbox', 'finalDrive', 'coilovers', 'brakes', 'handbrake', 'angleKit', 'weight', 'paint', 'headlights', 'taillights', 'numbers', 'number', 'numberW', 'numberH', 'exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
+const SHOP_KEYS = ['seats', 'offsetFront', 'offsetRear', 'plateStyle', 'plateText', 'stretch', 'intake', 'turbo', 'clutch', 'gearbox', 'finalDrive', 'coilovers', 'brakes', 'handbrake', 'angleKit', 'weight', 'paint', 'numbers', 'number', 'numberW', 'numberH', 'exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'wheelColor', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
 
 const TABS = [
   ['car', 'Car'],
@@ -950,8 +950,6 @@ export class Shop {
         this.#section('Paint', this.#paint()),
         this.#section(
           'Lights',
-          this.#chips('Headlights', 'headlights', Object.entries(HEADLIGHTS).map(([k, v]) => [k, v[0]])),
-          this.#chips('Tail lights', 'taillights', Object.entries(TAILLIGHTS).map(([k, v]) => [k, v[0]])),
         ),
         this.#section(
           'Number boards',
@@ -988,7 +986,7 @@ export class Shop {
     }
     if (this.tab === 'wheels') {
       return [
-        this.#section('Rims', this.#cards(WHEELS, 'wheel')),
+        this.#section('Rims', this.#cards(WHEELS, 'wheel'), this.#chips('Colour', 'wheelColor', Object.entries(WHEEL_COLORS).map(([k, v]) => [k, v[0]]))),
         this.#section(
           'Size & fitment',
           this.#chips('Rim size', 'rim', RIM_SIZES.map((r) => [r, `${r}"`])),

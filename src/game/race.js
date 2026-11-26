@@ -113,7 +113,7 @@ export class Race {
       this.bot = new Vehicle(this.world, CAR, { ...TUNABLE_DEFAULTS, tire: 'street', diff: 'lsd' }, 'auto');
       this.bot.surfaceOf = this.mountain.layout.surfaceOf;
       this.botModel = new CarModel(CAR);
-      this.botModel.applySetup({ ...TUNABLE_DEFAULTS, paint: '#16171b', wheel: 'gold', rim: 15, profile: 50, numbers: true, number: 86, plateStyle: 'yellow', plateText: 'RIVAL', rideHeight: -30, coilovers: true });
+      this.botModel.applySetup({ ...TUNABLE_DEFAULTS, paint: '#16171b', wheel: 'te37', wheelColor: 'gold', rim: 15, profile: 50, numbers: true, number: 86, plateStyle: 'yellow', plateText: 'RIVAL', rideHeight: -30, coilovers: true });
       this.scene.add(this.botModel.root);
       const layout = this.mountain.layout;
       const road = this.road;
