@@ -1,6 +1,6 @@
 // Chase camera (smoothed, swings toward the direction of travel in a slide) and bumper camera.
 import * as THREE from 'three';
-import { EYE } from './cockpit.js';
+import { CAM } from './cockpit.js';
 import { drivingLens } from '../game/replay.js';
 import { fishZoom } from './vhs.js';
 
@@ -8,7 +8,7 @@ const GROUND = -0.62; // body space: the car model's body group sits this far be
 
 const tmp = new THREE.Vector3();
 // Field of view at a standstill for each camera.
-const BASE_FOV = { chase: 60, cockpit: 68, bumper: 70 };
+const BASE_FOV = { chase: 60, cockpit: 88, bumper: 70 };
 
 export class CameraRig {
   constructor(camera) {
@@ -123,11 +123,12 @@ export class CameraRig {
         Math.max(-0.06, Math.min(0.06, -this.acc.z * 0.006 * k)),
       );
       this.head.lerp(target, 1 - Math.exp(-dt * 8));
-      const p = new THREE.Vector3(EYE.x + this.head.x, EYE.y + GROUND + this.head.y, EYE.z + this.head.z).applyQuaternion(q).add(carObject.position);
+      // An action camera bolted to the car: it moves with the cabin, only a little with the head.
+      const p = new THREE.Vector3(CAM.x + this.head.x * 0.3, CAM.y + GROUND + this.head.y * 0.3, CAM.z + this.head.z * 0.3).applyQuaternion(q).add(carObject.position);
       cam.position.copy(p);
       // The head tilts a little with the lean.
-      cam.up.set(this.head.x * 1.5, 1, 0).normalize().applyQuaternion(q);
-      cam.lookAt(p.clone().add(new THREE.Vector3(0, -0.9, 10).applyQuaternion(q)));
+      cam.up.set(0, 1, 0).applyQuaternion(q);
+      cam.lookAt(p.clone().add(new THREE.Vector3(0.3, -1.1, 10).applyQuaternion(q)));
       this.ready = false;
       return;
     }

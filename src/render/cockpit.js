@@ -10,7 +10,12 @@ const WHEEL_R = 0.185;
 const WHEEL_TILT = 0.42; // rad: the wheel leans back toward the driver
 const STEER_RATIO = 15; // road-wheel angle -> steering-wheel angle
 export const EYE = new THREE.Vector3(DRIVER_X, 1.15, -0.5); // sitting low
-const SHOULDERS = [new THREE.Vector3(DRIVER_X + 0.21, 1.0, -0.44), new THREE.Vector3(DRIVER_X - 0.21, 1.0, -0.44)];
+// The in-car camera: a wide action camera on a mount by the headliner, just behind and to the
+// right of the driver's head, looking down over the wheel and out through the windscreen (like
+// an onboard video): wheel and hands at the bottom, the A-pillar and door mirror at the left,
+// the rear-view mirror at the top right.
+export const CAM = new THREE.Vector3(DRIVER_X - 0.15, 1.22, -0.44);
+const SHOULDERS = [new THREE.Vector3(DRIVER_X + 0.22, 0.98, -0.5), new THREE.Vector3(DRIVER_X - 0.22, 0.98, -0.5)];
 const UPPER = 0.32;
 const FORE = 0.36;
 const LEVER_BASE = new THREE.Vector3(0.02, 0.5, 0.02);
@@ -66,9 +71,11 @@ export class Cockpit {
   constructor() {
     this.root = new THREE.Group();
     this.root.visible = false;
-    const dark = new THREE.MeshLambertMaterial({ color: 0x1b1c20, flatShading: true });
-    const panel = new THREE.MeshLambertMaterial({ color: 0x2a2b30, flatShading: true });
-    const cloth = new THREE.MeshLambertMaterial({ color: 0x3a3c44, side: THREE.DoubleSide });
+    // At night the cabin is lit only by the gauges and the road: a faint glow on everything so its
+    // shapes still read.
+    const dark = new THREE.MeshLambertMaterial({ color: 0x1b1c20, emissive: 0x0a0a0c, flatShading: true });
+    const panel = new THREE.MeshLambertMaterial({ color: 0x2a2b30, emissive: 0x0e0e11, flatShading: true });
+    const cloth = new THREE.MeshLambertMaterial({ color: 0x3a3c44, emissive: 0x131418, side: THREE.DoubleSide });
     const sleeve = new THREE.MeshLambertMaterial({ map: sleeveTexture(), flatShading: true });
     this.sleeve = sleeve;
 
@@ -84,14 +91,59 @@ export class Cockpit {
     face.position.set(DRIVER_X, 0.955, 0.24);
     face.rotation.x = -0.35;
     face.rotation.y = Math.PI;
-    // Two little orange-lit dials.
+    // The gauges, lit orange at night: speedo and tach with red needles, a few warning lights.
     const dialMat = new THREE.MeshBasicMaterial({ color: 0xff8c1a });
+    const dialFace = new THREE.MeshBasicMaterial({ color: 0x2a1406 });
+    const needleMat = new THREE.MeshBasicMaterial({ color: 0xff2a14 });
+    this.needles = [];
     for (const dx of [-0.08, 0.08]) {
-      const d = new THREE.Mesh(new THREE.RingGeometry(0.03, 0.036, 16), dialMat);
-      d.position.set(DRIVER_X + dx, 0.958, 0.238);
-      d.rotation.copy(face.rotation);
-      this.root.add(d);
+      const back = new THREE.Mesh(new THREE.CircleGeometry(0.044, 18), dialFace);
+      const d = new THREE.Mesh(new THREE.RingGeometry(0.038, 0.045, 20), dialMat);
+      const needle = new THREE.Mesh(new THREE.PlaneGeometry(0.004, 0.036).translate(0, 0.016, 0), needleMat);
+      for (const [m, lift] of [[back, 0.001], [d, 0.002], [needle, 0.003]]) {
+        m.position.set(DRIVER_X + dx, 0.958 + lift * 0.35, 0.238 - lift);
+        m.rotation.copy(face.rotation);
+        this.root.add(m);
+      }
+      this.needles.push(needle);
     }
+    for (const [dx, col] of [[-0.012, 0xff3020], [0.0, 0xffa020], [0.012, 0x40ff60]]) {
+      const lamp = new THREE.Mesh(new THREE.CircleGeometry(0.004, 6), new THREE.MeshBasicMaterial({ color: col }));
+      lamp.position.set(DRIVER_X + dx, 0.935, 0.245);
+      lamp.rotation.copy(face.rotation);
+      this.root.add(lamp);
+    }
+    // The radio in the middle of the dash, its little display glowing.
+    const radio = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.06, 0.02), dark);
+    radio.position.set(0, 0.8, 0.255);
+    radio.rotation.x = 0.25;
+    const lcd = new THREE.Mesh(new THREE.PlaneGeometry(0.09, 0.025), new THREE.MeshBasicMaterial({ color: 0x3f8cff }));
+    lcd.position.set(0, 0.8, 0.243);
+    lcd.rotation.set(0.25, Math.PI, 0);
+    this.root.add(radio, lcd);
+    // Rear-view mirror at the top of the windscreen, and the driver's door mirror outside the
+    // window, both catching a little of the light behind.
+    const glassy = new THREE.MeshBasicMaterial({ color: 0x1a2230 });
+    const rear = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.07, 0.025), dark);
+    rear.position.set(-0.02, 1.2, 0.36);
+    rear.rotation.set(-0.15, -0.12, 0);
+    const rearFace = new THREE.Mesh(new THREE.PlaneGeometry(0.23, 0.055), glassy);
+    rearFace.position.set(-0.02, 1.2, 0.346);
+    rearFace.rotation.set(-0.15, Math.PI - 0.12, 0);
+    const stalk = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.09, 0.02), dark);
+    stalk.position.set(-0.02, 1.27, 0.38);
+    const door = new THREE.Group();
+    const shell = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.11, 0.17), dark);
+    const mirror = new THREE.Mesh(new THREE.PlaneGeometry(0.19, 0.11), glassy);
+    mirror.position.set(0, 0, -0.031);
+    mirror.rotation.y = Math.PI;
+    const shellBack = new THREE.Mesh(new THREE.BoxGeometry(0.21, 0.13, 0.07), dark);
+    shellBack.position.z = 0.03;
+    door.add(shellBack, mirror);
+    door.position.set(0.9, 1.04, 0.2);
+    door.rotation.y = -0.35;
+    void shell;
+    this.root.add(rear, rearFace, stalk, door);
     // Centre console, door cards and the headliner.
     const consoleBox = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.3, 0.7), panel);
     consoleBox.position.set(0, 0.42, 0.05);
@@ -152,10 +204,13 @@ export class Cockpit {
 
     // Arms: upper arm and forearm each, in a dark jacket. No hands.
     this.arms = [0, 1].map(() => {
-      const upper = limb(0.058, sleeve);
-      const fore = limb(0.05, sleeve);
+      const upper = limb(0.045, sleeve);
+      const fore = limb(0.038, sleeve);
       this.root.add(upper, fore);
-      return { upper, fore, hand: new THREE.Vector3(), elbow: new THREE.Vector3() };
+      // A gloved hand on the end of each arm.
+      const fist = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.09, 0.06), new THREE.MeshLambertMaterial({ color: 0xb48466, emissive: 0x1a100a, flatShading: true }));
+      this.root.add(fist);
+      return { upper, fore, fist, hand: new THREE.Vector3(), elbow: new THREE.Vector3() };
     });
     this.rightTask = 'wheel';
     this.shiftTimer = 0;
@@ -226,6 +281,13 @@ export class Cockpit {
     if (!this.root.visible) return;
     const wheelAngle = -vehicle.steer * STEER_RATIO;
     this.wheel.rotation.z = wheelAngle;
+    // Needles: speed on the left dial, revs on the right.
+    const mph = Math.abs(vehicle.forwardSpeed ?? 0) * 2.237;
+    const rpm = vehicle.engine?.rpm ?? vehicle.rpm ?? 0;
+    if (this.needles) {
+      this.needles[0].rotation.z = 2.3 - Math.min(1, mph / 140) * 4.6;
+      this.needles[1].rotation.z = 2.3 - Math.min(1, rpm / 7000) * 4.6;
+    }
     // Lever position follows the gear through the H pattern.
     const g = GATE[vehicle.trans.gear] || GATE[0];
     this.leverTilt.x += (g[0] - this.leverTilt.x) * Math.min(1, dt * 18);
@@ -247,7 +309,8 @@ export class Cockpit {
       } else if (i === 1 && task === 'handbrake') {
         target = new THREE.Vector3(0, 0.03, HANDBRAKE_LEN * 0.85).applyEuler(this.handbrake.rotation).add(this.handbrake.position);
       } else {
-        const a = (side > 0 ? Math.PI * 0.18 : Math.PI * 0.82) + held;
+        // Hands at quarter to three, the way you hold it on a mountain road.
+        const a = (side > 0 ? Math.PI * 0.02 : Math.PI * 0.98) + held;
         // A point on the rim, in the wheel's tilted plane.
         const p = new THREE.Vector3(Math.cos(a) * WHEEL_R, Math.sin(a) * WHEEL_R, 0);
         p.applyEuler(this.wheelPivot.rotation).add(WHEEL);
@@ -268,6 +331,8 @@ export class Cockpit {
       const reach = S.clone().addScaledVector(dir, d);
       arm.upper.place(S, arm.elbow);
       arm.fore.place(arm.elbow, reach);
+      arm.fist.position.copy(reach);
+      arm.fist.quaternion.copy(arm.fore.quaternion);
     }
   }
 }
