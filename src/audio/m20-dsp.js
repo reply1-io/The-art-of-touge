@@ -169,22 +169,25 @@ export const ENGINES = {
     firing: [1, 3, 4, 2],
     angles: [0, 180, 360, 540],
     bank: [0, 1, 0, 1],                        // 1+4 and 3+2 share a header pair
-    cylGain: [1.0, 0.94, 1.05, 0.96],
+    cylGain: [1.06, 0.9, 1.04, 0.92],          // pairs 1+4 and 3+2 differ: the once-a-turn beat
     cylTiming: [0, 1.5, -1, 1],
-    idleRpm: 750, redline: 7100, crankFlare: 1600, starterRatio: 12,
+    idleRpm: 900, redline: 7100, crankFlare: 1600, starterRatio: 12,
     dual: false,
     header: [0.0014, 0.0017], pipe: [3.0, 3.0], pipeRefl: 0.45,
-    width: [24, 4], pump: 0.12, jitter: 0.05, idleJitter: 0.06, lope: [0.006, 0.003],
+    width: [28, 4], pump: 0.12, jitter: 0.05, idleJitter: 0.06, lope: [0.006, 0.003],
     chop: [1.1, 0.9, 1.2, 0.5, 1.05, 1, 1.15, 0.8],
-    sizzle: 1.0, idleNoise: 1.4, tick: 1.8, subMin: 40, // a buzzy, tappy idle; the 25 Hz fundamental is felt more than heard
-    muff: [500, 800, 0.11, 1800, 1400], muffRpm: 1.6,
-    body: [140, 3], drone: [260, 2], mid: [1100, 2],
-    rasp: [1600, 0.2, 1.3], rumble: [300, 0.06, 0.7], intake: [500, 0.1, 0.18], intakeRoar: 1.2,
+    sizzle: 1.0, idleNoise: 1.8, tick: 1.5, raspFloor: 0.6, subMin: 40, // a buzzy, tappy idle; the 25 Hz fundamental is felt more than heard
+    muff: [380, 500, 0.07, 1000, 400], muffRpm: 0.6, muffRpm2: 0.03,
+    body: [64, 5], drone: [480, 8], mid: [520, 3], // a low boom, and the 3x-firing ring of the pipe
+    // filters that follow the revs: [multiple of the firing note, dB, Q]. Its exhaust carries the
+    // odd multiples (1x, 3x) and little of 2x
+    orderEq: [[2, -10, 2.2, 1500, 3000]],      // (fades in between those rpm: at idle 2x stays on top)
+    rasp: [1600, 0.2, 0.6], rumble: [300, 0.06, 0.7], intake: [500, 0.1, 0.07], intakeRoar: 0.8,
     level: 1.1,
     // i-VTEC crossover: on above `on` rpm with the throttle past minThr, off below `off` or on a
     // lift (so it doesn't flicker); glides in over `glide` s. Then: intake noise and roar, rasp
     // and level up, and sharper pulses (width, crank degrees)
-    vtec: { on: 5800, off: 5500, minThr: 0.6, glide: 0.04, intake: 5, roar: 3.5, rasp: 2.4, width: 8, level: 1.45 },
+    vtec: { on: 5800, off: 5500, minThr: 0.6, glide: 0.04, intake: 3, roar: 2.2, rasp: 1.6, width: 6, level: 1.35 },
   },
 
 };
@@ -354,6 +357,7 @@ export class M20Dsp {
     this.thrS = 0; this.rpmS = 800;
     this.muffLp = new Biquad(); this.muffLp2 = new Biquad();
     this.body = new Biquad(); this.drone = new Biquad(); this.mid = new Biquad();
+    this.orderEq = [new Biquad(), new Biquad(), new Biquad()];
     this.dcHp = new Biquad().set('hp', 28, 0.7, 0, fs);
     this.raspBp = new Biquad(); this.raspHp = new Biquad().set('hp', 900, 0.7, 0, fs);
     this.rumbleBp = new Biquad(); this.rumbleLp = new Biquad().set('lp', 1200, 0.5, 0, fs);
@@ -521,6 +525,13 @@ export class M20Dsp {
       this.body.set('pk', E.body[0], 1.1, E.body[1] + X.bodyDb, fs);
       this.drone.set('pk', E.drone[0] * X.droneHz, 1.6, E.drone[1] + X.droneDb, fs);
       if (E.mid) this.mid.set('pk', E.mid[0], 1.4, E.mid[1], fs);
+      if (E.orderEq) { // follow the firing note (crank rpm / 60 x firings per turn)
+        const ff = Math.max(10, this.rpmS) / 60 * E.firing.length * 360 / (E.cycleDeg || 720);
+        E.orderEq.forEach(([h, db, q, r0, r1], k) => {
+          const fade = r1 ? Math.min(1, Math.max(0, (this.rpmS - r0) / (r1 - r0))) : 1;
+          this.orderEq[k].set('pk', Math.min(fs * 0.45, h * ff), q, db * fade, fs);
+        });
+      }
       this.raspBp.set('bp', E.rasp[0] + rpm0 * E.rasp[1], 0.6, 0, fs);
       this.rumbleBp.set('bp', E.rumble[0] + rpm0 * E.rumble[1], 0.45, 0, fs);
       this.intakeBp.set('bp', E.intake[0] + rpm0 * E.intake[1], 1.4, 0, fs);
@@ -690,6 +701,7 @@ export class M20Dsp {
       let y = this.muffLp2.run(this.muffLp.run(pipeOut));
       y = this.drone.run(this.body.run(y));
       if (E.mid) y = this.mid.run(y);
+      if (E.orderEq) for (let k = 0; k < E.orderEq.length; k++) y = this.orderEq[k].run(y);
 
       // rumble: gas turbulence in the pipe, fills the gaps between the harmonics
       y += this.rumbleLp.run(this.rumbleBp.run(randn() * hit)) * (0.45 * (1 - 0.75 * lope) * E.idleNoise + 1.5 * thr) * X.rumble * E.rumble[2];
