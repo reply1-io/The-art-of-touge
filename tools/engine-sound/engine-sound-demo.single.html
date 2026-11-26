@@ -478,7 +478,7 @@ const ITB = {
   rasp: [[1700, 1.0, 4.5], [3900, 0.8, 3.5]], // upper-mid rasp: +2 dB 1-2.5 kHz, +4 dB 2.5-6 kHz
   // air sucking through the trumpets: noise above ~5 kHz, gently rolled off above 14 kHz,
   // a steady floor plus a swell with the throttle (not the revs)
-  hiss: 0.45, hissBand: [5000, 14000],
+  hiss: 0, hissBand: [5000, 14000],
   hissFloor: 0.45, // share of it that stays at idle and between blips; the throttle swells it on top
   // the intake bark: a resonance around 700-900 Hz (higher with the revs) that barks on each
   // blip and lets go: it follows the throttle opening, 30 ms attack, 60 ms release
