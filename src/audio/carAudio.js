@@ -702,7 +702,9 @@ export class CarAudio {
       this.m20Cabin.frequency.setTargetAtTime(20000, t, 0.05);
       this.m20.setState({
         rpm: cranking ? 250 : rpm,
-        throttle: cranking ? 0 : load,
+        // a limiter cut is a fuel cut with the throttle still open (the air keeps rushing in)
+        throttle: cranking ? 0 : e.limiterCut ? Math.max(load, vehicle.throttlePedal ?? 0) : load,
+        cut: e.limiterCut ? 1 : 0,
         ignition: running && !cranking ? 1 : 0,
         starter: cranking ? 1 : 0,
         exhaust: this.exhaust || 'stock', // street/race: rowdier voice and a lopey idle

@@ -555,7 +555,8 @@ let last = performance.now(), shown = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   step(dt);
-  if (engine && state === 'running') { engine.setRpm(sim.rpm); engine.setThrottle(sim.thr); }
+  // a limiter cut is a fuel cut with your foot still down: the throttle stays open
+  if (engine && state === 'running') { engine.setRpm(sim.rpm); engine.setThrottle(sim.cut > 0 ? sim.thrIn : sim.thr); engine.setState({ cut: sim.cut > 0 ? 1 : 0 }); }
   shown += (sim.rpm - shown) * Math.min(1, dt * 18);
   const [nx, ny] = pt(132, ang(Math.min(MAXDIAL + 150, shown)));
   needle.setAttribute('x2', nx); needle.setAttribute('y2', ny);
