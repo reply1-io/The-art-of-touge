@@ -161,7 +161,32 @@ export const ENGINES = {
     rasp: [1300, 0.2, 0.8], rumble: [300, 0.06, 1.0], intake: [600, 0.12, 0.25],
     itb: { level: 1.6, width: 0.6, roarBand: [250, 1800] }, // shorter gulps: its note is low and pure
     level: 1.3, post: 0.62,                    // driven harder, then turned down: rounder thumps
+  },  // Honda K24A2 2.4 inline-four (TSX / Accord): fires every 180 deg (pitch = rpm / 30), a 4-2-1
+  // header pairing 1+4 and 2+3, short sharp pulses for the raspy Honda bark, a strong intake,
+  // and i-VTEC: above ~5,800 rpm under load the high-lift cam comes in and it goes hard
+  k24: {
+    label: 'Honda K24A2 2.4 inline-four (i-VTEC)',
+    firing: [1, 3, 4, 2],
+    angles: [0, 180, 360, 540],
+    bank: [0, 1, 0, 1],                        // 1+4 and 3+2 share a header pair
+    cylGain: [1.0, 0.94, 1.05, 0.96],
+    cylTiming: [0, 1.5, -1, 1],
+    idleRpm: 750, redline: 7100, crankFlare: 1600, starterRatio: 12,
+    dual: false,
+    header: [0.0014, 0.0017], pipe: [3.0, 3.0], pipeRefl: 0.45,
+    width: [24, 4], pump: 0.12, jitter: 0.05, idleJitter: 0.06, lope: [0.006, 0.003],
+    chop: [1.1, 0.9, 1.2, 0.5, 1.05, 1, 1.15, 0.8],
+    sizzle: 1.0, idleNoise: 1.4, tick: 1.8, subMin: 40, // a buzzy, tappy idle; the 25 Hz fundamental is felt more than heard
+    muff: [500, 800, 0.11, 1800, 1400], muffRpm: 1.6,
+    body: [140, 3], drone: [260, 2], mid: [1100, 2],
+    rasp: [1600, 0.2, 1.3], rumble: [300, 0.06, 0.7], intake: [500, 0.1, 0.18], intakeRoar: 1.2,
+    level: 1.1,
+    // i-VTEC crossover: on above `on` rpm with the throttle past minThr, off below `off` or on a
+    // lift (so it doesn't flicker); glides in over `glide` s. Then: intake noise and roar, rasp
+    // and level up, and sharper pulses (width, crank degrees)
+    vtec: { on: 5800, off: 5500, minThr: 0.6, glide: 0.04, intake: 5, roar: 3.5, rasp: 2.4, width: 8, level: 1.45 },
   },
+
 };
 
 export const IDLE_RPM = ENGINES.m20.idleRpm;
@@ -298,6 +323,7 @@ export class M20Dsp {
     this.ap = [113, 337, 541, 773].map((n) => ({ d: new Delay(n + 1), n }));
     this.roomLp = new Biquad().set('lp', 2800, 0.7, 0, fs); this.roomHp = new Biquad().set('hp', 120, 0.7, 0, fs);
     this.envF = 0;
+    this.vtecOn = false; this.vtecS = 0; // i-VTEC high cam (engines that have it)
     this.roarLp = new Biquad().set('lp', 3400, 0.6, 0, fs);   // exhaust flow roar (before the muffler)
     this.intakeRoar = new Biquad(); this.zj = 0;
     this.itbOn = 0; this.itbSet = ''; this.itbPrev = 0;
@@ -555,7 +581,15 @@ export class M20Dsp {
       // idle firings hit harder with a free-flowing exhaust (louder, punchier idle)
       const load = ign * fuel * (0.32 * (1 + (X.idleHit - 1) * (E.idleHitScale || 1) * (1 - thr)) + 0.68 * thr);
       const pump = E.pump;                     // air being pushed out with no combustion
-      const width = E.width[0] - E.width[1] * thr; // crank degrees; harder hit under load
+      // i-VTEC: the high-lift cam comes in above the crossover under load, out on a lift
+      const V = E.vtec;
+      if (V) {
+        if (!this.vtecOn && rpm > V.on && thr > V.minThr && ign > 0.5) this.vtecOn = true;
+        else if (this.vtecOn && (rpm < V.off || thr < 0.2 || ign < 0.5)) this.vtecOn = false;
+        this.vtecS += ((this.vtecOn ? 1 : 0) - this.vtecS) / (V.glide * fs);
+      } else this.vtecS = 0;
+      const vt = this.vtecS;
+      const width = E.width[0] - E.width[1] * thr - (V ? V.width * vt : 0); // crank degrees; harder hit under load
 
       let a = 0, b = 0, env = 0, inEnv = 0, hit = 0, itbB = 0;
       this.itbOn += (itbT - this.itbOn) * 0.0005;
@@ -662,16 +696,16 @@ export class M20Dsp {
 
       // rasp: turbulence that rides on each pulse, grows with rpm and load
       // at idle the loud pipes' rasp stays low (it reads as hiss); it opens up with load
-      const raspAmt = (0.05 * (1 - 0.7 * lope) * E.idleNoise + 0.22 * thr) * Math.min(1.3, Math.max(E.raspFloor || 0, rpm / 4500)) * X.rasp * E.rasp[2] * (1 - 0.4 * this.T.on);
+      const raspAmt = (0.05 * (1 - 0.7 * lope) * E.idleNoise + 0.22 * thr) * Math.min(1.3, Math.max(E.raspFloor || 0, rpm / 4500)) * X.rasp * E.rasp[2] * (1 - 0.4 * this.T.on) * (V ? 1 + (V.rasp - 1) * vt : 1);
       // the crack on top of an afterfire: short (popEnv^3 decays fast), band-limited by the
       // rasp filter, and quieter through the stock muffler
       const crack = this.popEnv > 0.02 ? randn() * this.popEnv ** 3 * X.crack : 0;
       y += this.raspHp.run(this.raspBp.run(randn() * hit * raspAmt + crack * 0.9));
 
       // intake roar (heard more than you'd think with the throttle open)
-      y += this.intakeBp.run(randn() * inEnv) * E.intake[2] * thr * (0.3 + rpm / 6500);
+      y += this.intakeBp.run(randn() * inEnv) * E.intake[2] * thr * (0.3 + rpm / 6500) * (V ? 1 + (V.intake - 1) * vt : 1);
       // intake roar: a broad rush that opens up at high revs and full throttle
-      y += this.intakeRoar.run(randn()) * 0.28 * thr * thr * hr * hr * (E.intakeRoar ?? 1);
+      y += this.intakeRoar.run(randn()) * 0.28 * thr * thr * hr * hr * (E.intakeRoar ?? 1) * (V ? 1 + (V.roar - 1) * vt : 1);
 
       // valve-train tick
       // sizzle: a little crackle on the loudest pulses of a loud exhaust (kept low and
@@ -806,7 +840,7 @@ export class M20Dsp {
         const hissLvl = I.hissFloor * Math.min(1, rpm / 400) + (1 - I.hissFloor) * thr; // fades out only when the engine stops
         y += H[2].run(H[1].run(H[0].run(randn()))) * I.hiss * this.itbOn * hissLvl / E.level;
       }
-      let o = Math.tanh(y * 0.38 * E.level * X.level) * 1.35 * (E.post || 1); // gentle: mostly linear, only peaks round off
+      let o = Math.tanh(y * 0.38 * E.level * X.level * (E.vtec ? 1 + (E.vtec.level - 1) * this.vtecS : 1)) * 1.35 * (E.post || 1); // gentle: mostly linear, only peaks round off
       // soft knee above 0.9 so loud engines never clip the output
       if (o > 0.9) o = 0.9 + 0.1 * Math.tanh((o - 0.9) / 0.1);
       else if (o < -0.9) o = -0.9 - 0.1 * Math.tanh((-o - 0.9) / 0.1);
