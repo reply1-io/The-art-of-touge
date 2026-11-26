@@ -926,6 +926,14 @@ export class Shop {
     return el;
   }
 
+  // The colours the fitted wheel comes in (none shown if it only comes in one).
+  #wheelColorChips() {
+    const id = this.tune.wheel in WHEELS ? this.tune.wheel : 'bbs';
+    const cols = Object.keys(WHEELS[id].colors || {});
+    if (cols.length < 2) return [];
+    return [this.#chips('Colour', 'wheelColor', cols.map((k) => [k, WHEEL_COLORS[k][0]]), wheelColorOf(id, this.tune.wheelColor))];
+  }
+
   #readout() {
     if (!this.readoutEl) return;
     const t = this.tune;
@@ -987,7 +995,7 @@ export class Shop {
     }
     if (this.tab === 'wheels') {
       return [
-        this.#section('Rims', this.#cards(WHEELS, 'wheel'), ...(Object.keys(style.colors || {}).length > 1 ? [this.#chips('Colour', 'wheelColor', Object.keys(style.colors).map((k) => [k, WHEEL_COLORS[k][0]]), wheelColorOf(t.wheel in WHEELS ? t.wheel : 'bbs', t.wheelColor))] : [])),
+        this.#section('Rims', this.#cards(WHEELS, 'wheel'), ...this.#wheelColorChips()),
         this.#section(
           'Size & fitment',
           this.#chips('Rim size', 'rim', RIM_SIZES.map((r) => [r, `${r}"`])),
