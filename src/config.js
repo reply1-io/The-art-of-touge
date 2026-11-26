@@ -400,7 +400,7 @@ export const TUNABLE_DEFAULTS = {
   lsdLock: 0.3, // limited-slip locking ratio (E30 factory LSD is about 25%)
   lsdPreload: 40, // N m
   wheel: 'bbs', // rim style (looks only)
-  wheelColor: 'original', // rim colour: 'original' (as the wheel comes) or one of WHEEL_COLORS
+  wheelColor: 'silver', // rim colour (see wheelColorOf: falls back to the wheel's own colour)
   rim: 14, // rim diameter, inches
   profile: 65, // tyre sidewall height as % of width
   camberFront: 1.0, // degrees of negative camber
@@ -543,25 +543,27 @@ export const EXHAUSTS = {
 
 // Wheels (tuning shop). Looks only: size, sidewall and camber are separate settings.
 export const WHEELS = {
-  bbs: { name: 'Style 5 Basket Weave', blurb: 'The factory BBS-made cross-spoke: a silver basket weave round a roundel cap.', face: '#c7c9cf', lip: '#d8dadf', dish: '#26272b', spokes: 'mesh', image: 'wheels/style5.png' },
-  bottlecap: { name: 'Factory Bottle Caps', blurb: 'The E30\'s standard 14-inch alloys: a flat silver face with a ring of slots and a metal centre cap.', face: '#c3c5ca', lip: '#c3c5ca', dish: '#2a2b2f', spokes: 'bottlecap', image: 'wheels/bottlecap.png' },
-  watanabe: { name: 'Watanabe 8-Spoke', blurb: 'Eight slender spokes in gunmetal with a red centre cap. Old-school Japanese street racing.', face: '#6f716c', lip: '#7a7c78', dish: '#1a1b1c', spokes: 'watanabe', image: 'wheels/watanabe.png' },
-  rpf1: { name: 'Enkei RPF1', blurb: 'Six pairs of twin spokes in silver. Light, cheap, and on every time-attack car.', face: '#c9cbce', lip: '#c9cbce', dish: '#1a1b1c', spokes: 'six', image: 'wheels/rpf1.png' },
-  te37: { name: 'TE37', blurb: 'Six wide, flat forged spokes in bronze. Light, stiff, legendary.', face: '#8d7a55', lip: '#8d7a55', dish: '#1e160d', spokes: 'te37', image: 'wheels/te37.png' },
+  bbs: { name: 'Style 5 Basket Weave', blurb: 'The factory BBS-made cross-spoke: a silver basket weave round a roundel cap.', face: '#c7c9cf', lip: '#d8dadf', dish: '#26272b', spokes: 'mesh', image: 'wheels/style5.png', colors: { silver: 'wheels/style5_silver.png', gold: 'wheels/style5_gold.png', bronze: 'wheels/style5_bronze.png', black: 'wheels/style5_black.png' } },
+  bottlecap: { name: 'Factory Bottle Caps', blurb: 'The E30\'s standard 14-inch alloys: a flat silver face with a ring of slots and a metal centre cap.', face: '#c3c5ca', lip: '#c3c5ca', dish: '#2a2b2f', spokes: 'bottlecap', image: 'wheels/bottlecap.png', colors: { silver: 'wheels/bottlecap.png' } },
+  watanabe: { name: 'Watanabe 8-Spoke', blurb: 'Eight slender spokes in gunmetal with a red centre cap. Old-school Japanese street racing.', face: '#6f716c', lip: '#7a7c78', dish: '#1a1b1c', spokes: 'watanabe', image: 'wheels/watanabe.png', colors: { gunmetal: 'wheels/watanabe_gunmetal.png', silver: 'wheels/watanabe_silver.png', gold: 'wheels/watanabe_gold.png', bronze: 'wheels/watanabe_bronze.png' } },
+  rpf1: { name: 'Enkei RPF1', blurb: 'Six pairs of twin spokes in silver. Light, cheap, and on every time-attack car.', face: '#c9cbce', lip: '#c9cbce', dish: '#1a1b1c', spokes: 'six', image: 'wheels/rpf1.png', colors: { silver: 'wheels/rpf1_silver.png', gunmetal: 'wheels/rpf1_gunmetal.png', gold: 'wheels/rpf1_gold.png', bronze: 'wheels/rpf1_bronze.png' } },
+  te37: { name: 'TE37', blurb: 'Six wide, flat forged spokes in bronze. Light, stiff, legendary.', face: '#8d7a55', lip: '#8d7a55', dish: '#1e160d', spokes: 'te37', image: 'wheels/te37.png', colors: { bronze: 'wheels/te37_bronze.png', gold: 'wheels/te37_gold.png', gunmetal: 'wheels/te37_gunmetal.png', silver: 'wheels/te37_silver.png' } },
 };
 
-// Rim colours: the wheel's picture recoloured (its metal, keeping the shading; badges, caps and
-// stickers stay as they are). 'original' leaves the wheel as it comes.
+// Rim colours. Each wheel comes in its own set (WHEELS[id].colors: colour -> picture); the first
+// listed is how it comes from the factory.
 export const WHEEL_COLORS = {
-  original: ['Original', null],
   silver: ['Silver', '#c9ccd1'],
-  black: ['Gloss black', '#4a4c52'],
   gunmetal: ['Gunmetal', '#5c5f63'],
-  white: ['White', '#eef0f0'],
+  black: ['Black', '#2c2d31'],
   gold: ['Gold', '#d4a843'],
   bronze: ['Bronze', '#8c6a3c'],
-  red: ['Red', '#b8261c'],
 };
+// The colour a wheel is actually wearing: the chosen one if that wheel comes in it, else its own.
+export function wheelColorOf(wheelId, color) {
+  const cols = Object.keys(WHEELS[wheelId]?.colors || {});
+  return cols.includes(color) ? color : cols[0];
+}
 
 // Wheel and tyre sizes: tyre width grows with the rim, as you would fit on the real car.
 export const RIM_SIZES = [14, 15, 16, 17, 18, 19, 20];

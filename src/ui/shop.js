@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import {
   CAR, BASE_CAR, CARS, ENGINE_SWAPS, carSave, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup,
-  SEATS, RIM_WIDTH_IN, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, WHEEL_COLORS,
+  SEATS, RIM_WIDTH_IN, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, WHEEL_COLORS, wheelColorOf,
 } from '../config.js';
 import { dynoRun } from '../physics/dyno.js';
 import { money } from '../game/wallet.js';
@@ -830,6 +830,7 @@ export class Shop {
       rerender = true;
     }
     this.tune[key] = value;
+    if (key === 'wheel') rerender = true; // its colour choices change with it
     this.#applyCar();
     this.onChange();
     if (rerender) this.render();
@@ -986,7 +987,7 @@ export class Shop {
     }
     if (this.tab === 'wheels') {
       return [
-        this.#section('Rims', this.#cards(WHEELS, 'wheel'), this.#chips('Colour', 'wheelColor', Object.entries(WHEEL_COLORS).map(([k, v]) => [k, v[0]]))),
+        this.#section('Rims', this.#cards(WHEELS, 'wheel'), ...(Object.keys(style.colors || {}).length > 1 ? [this.#chips('Colour', 'wheelColor', Object.keys(style.colors).map((k) => [k, WHEEL_COLORS[k][0]]), wheelColorOf(t.wheel in WHEELS ? t.wheel : 'bbs', t.wheelColor))] : [])),
         this.#section(
           'Size & fitment',
           this.#chips('Rim size', 'rim', RIM_SIZES.map((r) => [r, `${r}"`])),

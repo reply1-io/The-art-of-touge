@@ -12,7 +12,6 @@ export const PRICES = {
   tire: { drift: 360, stock: 0, street: 640, semi: 1100 },
   diff: { open: 150, lsd: 0, welded: 250 },
   wheel: { bbs: 0, bottlecap: 400, watanabe: 1600, te37: 2200, rpf1: 1500 },
-  wheelColor: { original: 0, silver: 150, black: 150, gunmetal: 150, white: 150, gold: 150, bronze: 150, red: 150 },
   rim: { 14: 0, 15: 350, 16: 600, 17: 850, 18: 1100, 19: 1400, 20: 1800 },
   stretch: { false: 0, true: 120 },
   exhaust: { stock: 0, street: 650, race: 1100 },
