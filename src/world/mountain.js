@@ -627,7 +627,8 @@ export class Mountain {
   // People at the roadside, each one mesh (shared shapes, colours baked in) so they can turn to
   // watch you go by. Grouped by stretch of road so the distance culling hides them in batches.
   #buildCrowds(world) {
-    const crowd = crowdsFor(this.road, this.terrain, { seed: this.road.count });
+    // Quiet roads: hardly anyone about, the odd car pulled over, a couple of people at a lot.
+    const crowd = crowdsFor(this.road, this.terrain, { seed: this.road.count, busy: 0.2 });
     addCrowdColliders(world, crowd);
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     const shapes = new Map();
@@ -2578,7 +2579,7 @@ export class Mountain {
       const p = road.pointAt(at, side * (road.w.RAIL + 2.2));
       const y = Math.max(t.heightAt(p[0], p[2]), road.y[at] - 0.3);
       g.position.set(p[0], y, p[2]);
-      g.rotation.y = road.heading[at] + (side > 0 ? Math.PI / 2 : -Math.PI / 2);
+      g.rotation.y = road.heading[at] + (side > 0 ? -Math.PI / 2 : Math.PI / 2); // front to the road
       const pad = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.25, 2.2), concrete);
       pad.position.y = 0.08;
       g.add(pad);
@@ -2587,8 +2588,8 @@ export class Mountain {
         const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1.85, 0.75), machineMat);
         m.position.set(0, 1.12, 0.2);
         const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, blending: THREE.AdditiveBlending, depthWrite: false }));
-        halo.scale.set(5.5, 5.5, 1);
-        halo.position.set(0, 1.3, 0.7);
+        halo.scale.set(3.2, 3.2, 1);
+        halo.position.set(0, 1.2, 0.75);
         const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.2, 0.7, 8), lam(0x2e6a3a));
         bin.position.set(0.8, 0.55, 0.3);
         g.add(m, halo, bin);
@@ -2611,7 +2612,7 @@ export class Mountain {
         pole.position.set(1.7, 1.2, 0.8);
         const disc = new THREE.Mesh(new THREE.CircleGeometry(0.3, 16), signMat);
         disc.position.set(1.7, 2.3, 0.82);
-        disc.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+        disc.rotation.y = 0;
         g.add(back, roof, bench, pole, disc);
       }
       this.#addChunk(g, p[0], p[2], 8);

@@ -48,6 +48,7 @@ export function crowdsFor(road, terrain, { seed = 7, busy = 1 } = {}) {
     if (zn.kind === 'lot') n = zn.lot?.culdesac ? 4 + pick(4) : 8 + pick(7);
     else if (zn.kind === 'pulloff') n = rand() < 0.85 * busy ? 2 + pick(4) : 0;
     else if (zn.kind === 'show') n = 4 + pick(4);
+    if (zn.kind !== 'pulloff') n = Math.round(n * Math.min(1, busy));
     // A car or two parked along a pulloff (their owners are the ones filming), so the people
     // stand out at the back edge of it.
     const parked = zn.kind === 'pulloff' && n > 0 ? 1 + (rand() < 0.4 ? 1 : 0) : 0;
