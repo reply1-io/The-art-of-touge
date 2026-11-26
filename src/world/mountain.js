@@ -1534,6 +1534,15 @@ export class Mountain {
         i = best + 10;
       }
     }
+    // Roads without a lamp at every corner still get one about every 300 m, at the tightest corner
+    // of each stretch, on its outside.
+    if (!this.track.cornerLights) {
+      for (let i0 = 60; i0 + 150 < road.count - 20; i0 += 150) {
+        let best = i0 + 75;
+        for (let j = i0; j < i0 + 150; j++) if (Math.abs(road.kappa[j]) > Math.abs(road.kappa[best])) best = j;
+        spots.push([best, road.kappa[best] > 0 ? -1 : 1]);
+      }
+    }
     for (const i of [road.startIndex, road.startIndex + 40, road.finishIndex - 30, road.finishIndex, road.count - 15]) spots.push([i, 1]);
     this.lights = spots;
     const poleMat = new THREE.MeshLambertMaterial({ color: 0x55585e });

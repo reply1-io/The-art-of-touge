@@ -91,7 +91,8 @@ scene.add(hemi);
 // Real low beams: a wide, flat spread with a sharp cut-off along the top, brightest just under the
 // cut-off so it reaches down the road, with the step up on the left (kerb) side, as aimed for
 // driving on the left in Japan. Physical fall-off (decay 2): bright close in, dim far away.
-const headlight = new THREE.SpotLight(0xfff2d8, 1100, 160, 0.72, 0.12, 2);
+// Reaches far down the road (gentle fall-off), with a wide soft edge that fades out gradually.
+const headlight = new THREE.SpotLight(0xfff2d8, 260, 260, 0.62, 0.95, 1.25);
 headlight.map = lowBeamTexture();
 scene.add(headlight, headlight.target);
 
