@@ -10,6 +10,7 @@
 //   engine.setThrottle(car.throttle);  // 0..1; 0 above idle = overrun (fuel cut)
 //   engine.setTurbo(true);             // 48 mm turbo: whistle, spool, flutter on lift-off
 //   engine.setExhaust('street');       // 'stock' | 'street' | 'race'
+//   engine.setIntake('itb');           // individual throttle bodies
 //   engine.stop();
 //
 // Where it runs: an AudioWorklet built from the DSP code in memory (no extra file
@@ -19,10 +20,10 @@
 // Browser rule: create/resume the AudioContext inside the click/tap handler,
 // before any await, or phones keep it silent.
 
-import { M20Dsp, Biquad, Delay, randn, crankRpm, exhaustName, CRANK_SECONDS, IDLE_RPM, ENGINES, EXHAUSTS, TURBOS, TAU } from './m20-dsp.js';
+import { M20Dsp, Biquad, Delay, randn, crankRpm, exhaustName, CRANK_SECONDS, IDLE_RPM, ENGINES, EXHAUSTS, TURBOS, ITB, ITB_UNEVEN, TAU } from './m20-dsp.js';
 export { crankRpm, CRANK_SECONDS, IDLE_RPM, ENGINES, EXHAUSTS };
 
-function workletSource(dspSource) {
+export function workletSource(dspSource) {
   // Best: the original m20-dsp.js text (bundlers rename things when minifying, which breaks
   // rebuilding it from function text). Otherwise rebuild it from the live classes.
   const dsp = dspSource
@@ -32,6 +33,8 @@ function workletSource(dspSource) {
         `const ENGINES = ${JSON.stringify(ENGINES)};`,
         `const EXHAUSTS = ${JSON.stringify(EXHAUSTS)};`,
         `const TURBOS = ${JSON.stringify(TURBOS)};`,
+        `const ITB = ${JSON.stringify(ITB)};`,
+        `const ITB_UNEVEN = ${JSON.stringify(ITB_UNEVEN)};`,
         `const IDLE_RPM = ${IDLE_RPM};`,
         `const CRANK_SECONDS = ${CRANK_SECONDS};`,
         randn, crankRpm, exhaustName, Biquad, Delay, M20Dsp,
@@ -112,6 +115,8 @@ export class M20EngineSound {
   setThrottle(t) { this._send({ set: { throttle: Math.min(1, Math.max(0, t)) } }); }
   /** 'stock' | 'street' | 'race'. Street and race are rowdier and lope at idle. */
   setExhaust(x) { this._send({ set: { exhaust: exhaustName(x) } }); }
+  /** 'stock' | 'itb'. ITBs: individual throttle bodies, the stacks' howl and induction air. */
+  setIntake(x) { this._send({ set: { intake: x === 'itb' ? 'itb' : 'stock' } }); }
 
   /**
    * Turbo: whistle, air rush and compressor flutter on lift-off (no blow-off valve).
