@@ -483,7 +483,9 @@ function step(dt) {
   sim.thr = sim.cut > 0 ? 0 : sim.blip > 0 ? Math.max(0.75, sim.thrIn) : sim.shift > 0 ? 0 : sim.thrIn;
 
   if (mode === 'free' || sim.gear === 0) {
-    let a = sim.thr * (torque(sim.rpm) * (1 + boostGain() * boostNow()) / CARS[eng].peakNm) * CARS[eng].freeRev - (250 + (sim.rpm - IDLE) * (CARS[eng].decay ?? 0.75));
+    // the fixed part of the drag fades out near idle, so the revs settle onto idle without undershooting
+    const over = sim.rpm - IDLE;
+    let a = sim.thr * (torque(sim.rpm) * (1 + boostGain() * boostNow()) / CARS[eng].peakNm) * CARS[eng].freeRev - (250 * Math.min(1, Math.max(0, over / 300)) + over * (CARS[eng].decay ?? 0.75));
     if (sim.rpm < IDLE) a += (IDLE - sim.rpm) * 6;
     sim.rpm += a * dt;
     return;

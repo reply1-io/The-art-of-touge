@@ -179,18 +179,26 @@ export const ENGINES = {
     sizzle: 1.0, idleNoise: 1.8, tick: 1.5, raspFloor: 0.6, subMin: 40, // a buzzy, tappy idle; the 25 Hz fundamental is felt more than heard
     muff: [380, 500, 0.07, 1000, 400], muffRpm: 0.15, muffRpm2: 0,
     body: [64, 5], drone: [440, 8], mid: [460, 3], // a low boom, and the pipe's main ring at 400-500 Hz
-    eq: [[105, 0.8, 4], [720, 1.1, -6], [1700, 0.7, -6], [3800, 0.7, -5]], // more 70-150 Hz body; darker above
+    eq: [[105, 0.8, 4], [720, 1.1, -6], [1700, 0.7, -6], [3800, 0.7, -5], [250, 0.9, -3]], // + 150-400 Hz down 3 dB // more 70-150 Hz body; darker above
     overrunFire: true,                         // off the throttle it falls back to an idle-like level, never a gap
     idleHitScale: 0.35,                        // a loud exhaust hardens its idle less (its idle is already full)
     // filters that follow the revs: [multiple of the firing note, dB, Q]. Its exhaust carries the
     // odd multiples (1x, 3x) and little of 2x
-    orderEq: [[2, -10, 2.2, 1500, 3000]],      // (fades in between those rpm: at idle 2x stays on top)
+    // 2x cut through the mid revs (at idle 2x is left alone; near redline part of it comes back
+    // as the bark)
+    orderEq: [[2, -3, 2.2, 1500, 3000], [2, -7, 2.2, 1500, 3000, 4500, 6000],
+      // below 2,500 rpm (coasting down, idle) 2x is held down so the firing note leads all the way
+      // and glides straight onto the idle note (no hand-over to 2x and back just above idle)
+      [2, -7, 2.0, 2500, 1500, 1250, 1080]], // (and eased off again at idle itself, which is as it was)
+    coastEven: 0.25,                           // coasting, the two pairs pulse alike (no half-pitch lurch)
+    // the high-rpm bark: 400-600 Hz up, faded in with the revs ([Hz, Q, dB, from rpm, full rpm])
+    rpmEq: [[500, 1.1, 2, 3500, 6000], [230, 1.0, -5, 3500, 6000]],
     rasp: [1600, 0.2, 0.6], rumble: [300, 0.06, 0.7], intake: [500, 0.1, 0.07], intakeRoar: 0.8,
     level: 1.1,
     // i-VTEC crossover: on above `on` rpm with the throttle past minThr, off below `off` or on a
     // lift (so it doesn't flicker); glides in over `glide` s. Then: intake noise and roar, rasp
     // and level up, and sharper pulses (width, crank degrees)
-    vtec: { on: 5800, off: 5500, minThr: 0.6, glide: 0.04, intake: 3, roar: 2.2, rasp: 1.6, width: 6, level: 1.35 },
+    vtec: { on: 5000, off: 4700, minThr: 0.6, glide: 0.03, intake: 8, roar: 6, rasp: 3.2, width: 10, level: 1.9 }, // hits hard
   },
 
 };
@@ -360,8 +368,9 @@ export class M20Dsp {
     this.thrS = 0; this.rpmS = 800;
     this.muffLp = new Biquad(); this.muffLp2 = new Biquad();
     this.body = new Biquad(); this.drone = new Biquad(); this.mid = new Biquad();
-    this.orderEq = [new Biquad(), new Biquad(), new Biquad()];
-    this.eq = [new Biquad(), new Biquad(), new Biquad(), new Biquad()]; this.eqFor = '';
+    this.orderEq = [new Biquad(), new Biquad(), new Biquad(), new Biquad()];
+    this.eq = [new Biquad(), new Biquad(), new Biquad(), new Biquad(), new Biquad()]; this.eqFor = '';
+    this.rpmEq = [new Biquad(), new Biquad()];
     this.dcHp = new Biquad().set('hp', 28, 0.7, 0, fs);
     this.raspBp = new Biquad(); this.raspHp = new Biquad().set('hp', 900, 0.7, 0, fs);
     this.rumbleBp = new Biquad(); this.rumbleLp = new Biquad().set('lp', 1200, 0.5, 0, fs);
@@ -530,10 +539,14 @@ export class M20Dsp {
       this.drone.set('pk', E.drone[0] * X.droneHz, 1.6, E.drone[1] + X.droneDb, fs);
       if (E.mid) this.mid.set('pk', E.mid[0], 1.4, E.mid[1], fs);
       if (E.eq && this.eqFor !== this.engine) { this.eqFor = this.engine; E.eq.forEach(([hz, q, db], k) => this.eq[k].set('pk', hz, q, db, fs)); }
+      if (E.rpmEq) E.rpmEq.forEach(([hz, q, db, r0, r1], k) => {
+        this.rpmEq[k].set('pk', hz, q, db * Math.min(1, Math.max(0, (this.rpmS - r0) / (r1 - r0))), fs);
+      });
       if (E.orderEq) { // follow the firing note (crank rpm / 60 x firings per turn)
         const ff = Math.max(10, this.rpmS) / 60 * E.firing.length * 360 / (E.cycleDeg || 720);
-        E.orderEq.forEach(([h, db, q, r0, r1], k) => {
-          const fade = r1 ? Math.min(1, Math.max(0, (this.rpmS - r0) / (r1 - r0))) : 1;
+        E.orderEq.forEach(([h, db, q, r0, r1, r2, r3], k) => {
+          const rs = this.rpmS, ramp = (a, b) => Math.min(1, Math.max(0, (rs - a) / (b - a)));
+          const fade = (r1 ? ramp(r0, r1) : 1) * (r3 ? 1 - ramp(r2, r3) : 1); // in over r0-r1, out over r2-r3
           this.orderEq[k].set('pk', Math.min(fs * 0.45, h * ff), q, db * fade, fs);
         });
       }
@@ -648,7 +661,8 @@ export class M20Dsp {
         let x = xc - this.tjit[k];
         if (x < 0) x += cyc;
         const p = this.pulse(x, width, sharp, tail);
-        const amp = E.cylGain[k] * this.jit[k] * (load + pump + this.pop[k] * 0.9);
+        const cg = overrun && E.coastEven != null ? 1 + (E.cylGain[k] - 1) * E.coastEven : E.cylGain[k];
+        const amp = cg * this.jit[k] * (load + pump + this.pop[k] * 0.9);
         const v = p * amp;
         if (E.bank[k] === 0) a += v; else b += v;
         env += v;
@@ -832,6 +846,7 @@ export class M20Dsp {
       }
       // an engine's own tone EQ, on everything it makes (exhaust, rasp, intake, tick)
       if (E.eq) for (let k = 0; k < E.eq.length; k++) y = this.eq[k].run(y);
+      if (E.rpmEq) for (let k = 0; k < E.rpmEq.length; k++) y = this.rpmEq[k].run(y);
       y = this.dcHp.run(y);
       // outdoor room: a ground reflection (~3 ms) and nearby surfaces (7, 13 ms), plus a short,
       // soft diffuse tail; quiet, but it takes away the dry, in-the-box sound
