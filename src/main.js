@@ -1843,6 +1843,8 @@ function frame(now) {
   {
     // (The picture is shifted up 20% for the touch controls, so the lens centre sits higher too.)
     Object.assign(vhs.lens, { fish: drivingLens(rig.userFov ?? 60).fish, hood: 0, circle: 0, cy: 0.7 });
+    // In the car: an action camera's wide, bowed lens.
+    vhs.barrel = running && rig.mode === 'cockpit' ? 0.5 : 0;
   }
   vhs.render(scene, camera, now / 1000);
   // Lens flare when facing the sun, unless the mountain is in the way.
