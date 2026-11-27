@@ -1,0 +1,182 @@
+<meta charset="utf-8">
+<title>ITB Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* One test cell: the intake trumpets heard on their own, no exhaust. Pick six or four, then rev it. */
+:root {
+  --bg: #e9edf1; --sheet: #f8fafb; --ink: #17212c; --muted: #5b6876; --rule: #cfd7df;
+  --cell: #111820; --cell-ink: #e8eef3; --cell-dim: #7d8b98; --signal: #f0b100; --warn: #d6352b;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0c1117; --sheet: #141b23; --ink: #e5ebf0; --muted: #94a2b0; --rule: #26313c; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #0c1117; --sheet: #141b23; --ink: #e5ebf0; --muted: #94a2b0; --rule: #26313c; color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 40px; }
+.wrap { max-width: 640px; margin: 0 auto; display: grid; gap: 16px; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(30px, 6vw, 42px); line-height: 1; margin: 0; }
+.lede { margin: 6px 0 0; color: var(--muted); text-wrap: pretty; }
+.lbl { font-family: var(--font-data); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--cell-dim); }
+
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; background: var(--sheet); }
+.seg button { border: 0; border-radius: 0; background: transparent; color: var(--ink); padding: 14px 10px; font: 600 17px var(--font-display); text-transform: none; letter-spacing: 0; display: grid; gap: 2px; }
+.seg button small { font: 400 12px var(--font-data); color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.seg button[aria-pressed="true"] small { color: var(--bg); opacity: 0.75; }
+.seg button + button { border-left: 1px solid var(--rule); }
+
+.cell { background: var(--cell); color: var(--cell-ink); border-radius: 12px; padding: 16px; display: grid; gap: 14px; }
+.readout { display: flex; align-items: end; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.rpm { font: 600 clamp(40px, 9vw, 56px)/1 var(--font-data); font-variant-numeric: tabular-nums; color: var(--signal); }
+.rpm small { font-size: 14px; color: var(--cell-dim); margin-left: 6px; }
+.bar { height: 8px; border-radius: 4px; background: #24303b; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--signal); }
+.bar i.limit { background: var(--warn); }
+.btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+button { font: 600 15px var(--font-display); letter-spacing: 0.04em; text-transform: uppercase; border-radius: 8px; border: 1px solid #33414e;
+  background: #1b2530; color: var(--cell-ink); padding: 12px; cursor: pointer; }
+button.go { background: var(--signal); color: #1a1400; border-color: var(--signal); }
+button.gas { grid-column: 1 / -1; padding: 26px 12px; font-size: 20px; touch-action: none; user-select: none; -webkit-user-select: none; }
+button.gas.down { background: #2c3a47; border-color: var(--signal); color: var(--signal); }
+button:disabled { opacity: 0.45; cursor: default; }
+button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.status { font-family: var(--font-data); font-size: 12px; color: var(--cell-dim); min-height: 1.4em; }
+
+.notes { background: var(--sheet); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 18px; }
+.notes h2 { font-family: var(--font-display); font-weight: 600; font-size: 19px; margin: 0 0 6px; }
+.notes p { margin: 0 0 8px; text-wrap: pretty; }
+dl { margin: 8px 0 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+dt, dd { padding: 7px 0; border-top: 1px solid var(--rule); margin: 0; font-size: 14px; }
+dd { font-family: var(--font-data); text-align: right; padding-left: 12px; font-variant-numeric: tabular-nums; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>ITB Lab</h1>
+    <p class="lede">Individual throttle bodies on their own: just the trumpets, no exhaust, no starter, no valve tick. Pick six or four cylinders and rev it.</p>
+  </header>
+
+  <div class="seg" role="group" aria-label="Cylinders">
+    <button type="button" data-eng="m20" aria-pressed="true">Inline-six<small>current ITB sound</small></button>
+    <button type="button" data-eng="itb4" aria-pressed="false">Inline-four<small>new</small></button>
+  </div>
+
+  <section class="cell" aria-label="Test cell">
+    <div class="readout">
+      <div><span class="lbl">Engine speed</span><div class="rpm"><span id="rpm">0</span><small>rpm</small></div></div>
+      <div style="text-align:right"><span class="lbl">Trumpet note</span><div class="rpm" style="font-size:24px"><span id="note">0</span><small>Hz</small></div></div>
+    </div>
+    <div class="bar" aria-hidden="true"><i id="bar"></i></div>
+    <div class="btns">
+      <button class="go" id="start" type="button">Start</button>
+      <button id="stop" type="button" disabled>Switch off</button>
+      <button id="blip" type="button" disabled>Blip</button>
+      <button id="pull" type="button" disabled>Pull to redline</button>
+      <button class="gas" id="gas" type="button" disabled>Hold for gas</button>
+    </div>
+    <div class="status" id="status">Press Start, then hold the gas (or the space bar / up arrow).</div>
+  </section>
+
+  <section class="notes">
+    <h2 id="engName"></h2>
+    <p id="engNote"></p>
+    <dl id="facts"></dl>
+  </section>
+</div>
+
+<script type="module">
+import { M20EngineSound, ENGINES } from '../../src/audio/M20EngineSound.js';
+
+const INFO = {
+  m20: { name: 'Inline-six on ITBs', cyl: 6,
+    note: 'Six gulps of air per engine cycle, each overlapping the next: a smooth, deep note with a lumpy growl from no two trumpets breathing quite alike, through a carbon airbox that rings hollow. This is the ITB sound already in the game.' },
+  itb4: { name: 'Inline-four on ITBs', cyl: 4,
+    note: 'Four gulps per cycle, 180° apart, so each one is separate from the next: shorter and harder-edged, so it sounds raspier even though its note sits lower than the six\'s at the same revs (rpm / 30 against rpm / 20); more rush of air, and pairs 1+4 and 2+3 breathing slightly differently (a once-a-turn beat). Open trumpets, a small box.' },
+};
+const $ = (id) => document.getElementById(id);
+const fmt = (v) => Math.round(v).toLocaleString();
+let eng = 'm20', ctx = null, engine = null, running = false, rpm = 0, held = false, cut = 0, thrIn = 0, last = performance.now();
+let script = null; // automated blip / pull: { t, until, then }
+
+function showInfo() {
+  const E = ENGINES[eng], I = INFO[eng];
+  $('engName').textContent = I.name; $('engNote').textContent = I.note;
+  const f = (r) => (r / 60) * (I.cyl / 2);
+  $('facts').innerHTML = [
+    ['Idle', `${fmt(E.idleRpm)} rpm`], ['Redline', `${fmt(E.redline)} rpm`],
+    ['Trumpet note at idle', `${f(E.idleRpm).toFixed(1)} Hz`], ['at redline', `${fmt(f(E.redline))} Hz`],
+    ['Gulps per cycle', `${I.cyl} (every ${720 / I.cyl}°)`],
+  ].map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('');
+}
+function pick(name) {
+  eng = name;
+  for (const b of document.querySelectorAll('.seg button')) b.setAttribute('aria-pressed', String(b.dataset.eng === name));
+  showInfo();
+  if (engine) { engine.setEngine(name); engine.setIntake('itb'); engine.setState({ solo: 'itb', inGear: false }); }
+  if (running) rpm = Math.max(rpm, ENGINES[name].idleRpm * 0.9);
+}
+for (const b of document.querySelectorAll('.seg button')) b.addEventListener('click', () => pick(b.dataset.eng));
+
+$('start').addEventListener('click', async () => {
+  if (!ctx) { ctx = new (window.AudioContext || window.webkitAudioContext)(); try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {} }
+  ctx.resume();
+  $('start').disabled = true; $('status').textContent = 'Starting…';
+  if (!engine) {
+    engine = await M20EngineSound.create(ctx, { engine: eng });
+    const g = ctx.createGain(); g.gain.value = 0.9; engine.connect(g); g.connect(ctx.destination);
+  }
+  pick(eng);
+  rpm = ENGINES[eng].idleRpm; engine.start(); running = true;
+  for (const id of ['stop', 'gas', 'blip', 'pull']) $(id).disabled = false;
+  $('status').textContent = `Running, ITBs only (audio: ${engine.backend === 'worklet' ? 'AudioWorklet' : 'main thread'}).`;
+});
+$('stop').addEventListener('click', () => {
+  engine.stop(); running = false; script = null;
+  $('start').disabled = false; for (const id of ['stop', 'gas', 'blip', 'pull']) $(id).disabled = true;
+  $('status').textContent = 'Switched off.';
+});
+$('blip').addEventListener('click', () => { script = { kind: 'blip', t: 0 }; });
+$('pull').addEventListener('click', () => { script = { kind: 'pull', t: 0 }; });
+const press = (on) => { held = on && running; $('gas').classList.toggle('down', held); if (on) script = null; };
+$('gas').addEventListener('pointerdown', (e) => { e.preventDefault(); try { $('gas').setPointerCapture(e.pointerId); } catch {} press(true); });
+for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) $('gas').addEventListener(ev, () => press(false));
+const KEYS = ['Space', 'ArrowUp', 'KeyW'];
+addEventListener('keydown', (e) => { if (KEYS.includes(e.code) && e.target.tagName !== 'BUTTON') { e.preventDefault(); press(true); } });
+addEventListener('keyup', (e) => { if (KEYS.includes(e.code)) press(false); });
+
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const E = ENGINES[eng], idle = E.idleRpm, red = E.redline;
+  if (running) {
+    // pedal: held, or a scripted blip (0.25 s stab) / pull (to the limiter, held 1 s, then lift)
+    let want = held ? 1 : 0;
+    if (script) {
+      script.t += dt;
+      if (script.kind === 'blip') { want = script.t < 0.25 ? 1 : 0; if (script.t > 2) script = null; }
+      else { if (rpm >= red) script.hit = script.hit ?? script.t; want = script.hit != null && script.t > script.hit + 1 ? 0 : 1; if (script.hit != null && script.t > script.hit + 4) script = null; }
+    }
+    thrIn += (want - thrIn) * Math.min(1, dt * 14);
+    if (rpm >= red) cut = Math.max(cut, 0.02);
+    const cutting = cut >= dt * 0.5; cut = Math.max(0, cut - dt);
+    const thr = cutting ? 0 : thrIn;
+    // free-revving, no load: a four spins up quicker than a six
+    const spin = INFO[eng].cyl === 4 ? 10500 : 8500, over = rpm - idle;
+    let a = thr * spin * (0.75 + 0.25 * Math.min(1, rpm / 4500)) - (250 * Math.min(1, Math.max(0, over / 300)) + over * 1.3 * (1 - 0.6 * thr));
+    if (rpm < idle) a += (idle - rpm) * 6;
+    rpm = Math.max(0, rpm + a * dt);
+    engine.setRpm(rpm); engine.setThrottle(thr); engine.setState({ cut: cutting ? 1 : 0 });
+    $('bar').className = cutting ? 'limit' : '';
+  } else rpm = Math.max(0, rpm - 3000 * dt);
+  $('rpm').textContent = fmt(Math.round(rpm / 10) * 10);
+  $('note').textContent = fmt((rpm / 60) * (INFO[eng].cyl / 2));
+  $('bar').style.width = `${Math.min(100, (rpm / (red * 1.05)) * 100)}%`;
+  requestAnimationFrame(frame);
+}
+showInfo(); requestAnimationFrame(frame);
+</script>

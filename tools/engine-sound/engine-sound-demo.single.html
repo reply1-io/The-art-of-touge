@@ -489,6 +489,17 @@ const K24_VERSIONS = {
 };
 for (const [k, v] of Object.entries(K24_VERSIONS)) ENGINES[k] = { ...ENGINES.k24, ...v };
 
+// ---- ITBs heard on their own (set({ intake: 'itb', solo: 'itb' })): the six is the M20 with the
+// standard ITB voice; the four is a high-revving inline-four on open trumpets. It fires every 180
+// degrees, so each trumpet's gulp ends as the next begins: short, separate gulps with hard edges,
+// a raspier honk (its note is lower than the six's at the same revs, but richer in overtones), more rush of air, and pairs 1+4 and 2+3
+// breathing a little differently (a once-a-turn beat, not the six's growl)
+ENGINES.itb4 = { ...ENGINES.k24, label: 'Inline-four on ITBs', idleRpm: 950, redline: 8200, vtec: null, zing: null,
+  itb: { width: 0.8, skew: 2.6, uneven: 0.8, spread: 6, jitter: 0.07, octave: 0.25, level: 0.5,
+    roar: 1.8, roarBand: [500, 3200], duck: 3.6, box: 0.0024, boxRing: 0.25, boxDamp: 2600, boom: [130, 1.0, 5],
+    lowCut: 70, drone: [[520, 1.4, -3], [850, 1.4, -3]], rasp: [[1800, 1.0, 5], [3600, 0.8, 4]],
+    hiss: 0, bark: [900, 0.03, 3.5], barkGain: 6, idleFloor: 0.3 } };
+
 const IDLE_RPM = ENGINES.m20.idleRpm;
 
 // Exhaust presets, applied on top of the engine profile. open: muffler cutoff multiplier;
@@ -690,13 +701,16 @@ class M20Dsp {
     this.pop = new Float32Array(n);
     this.lastX = new Float32Array(n).fill(1);
     this.itbJ = new Float32Array(n).fill(1);
+    this.itbSet = ''; this.eqFor = '';  // per-engine filter caches (a new custom profile keeps the name)
     this.coef = 0;                      // refresh filters on the next block
   }
 
   /** Values from the game: { rpm, throttle (0..1), exhaust ('stock' | 'street' | 'race'), idleRpm, engine },
    *  and in 'direct' mode also { ignition (0/1), starter (0/1) }. */
   set(v) {
-    if (v.engine && v.engine !== this.engine) this.useEngine(v.engine);
+    // a whole engine profile built elsewhere (the engine builder): installed as 'custom'
+    if (v.profile) { ENGINES.custom = v.profile; this.useEngine('custom'); const { profile, ...rest } = v; v = rest; }
+    else if (v.engine && v.engine !== this.engine) this.useEngine(v.engine);
     Object.assign(this.target, v);
   }
 
@@ -932,7 +946,7 @@ class M20Dsp {
 
       let a = 0, b = 0, env = 0, inEnv = 0, hit = 0, itbB = 0;
       this.itbOn += (itbT - this.itbOn) * 0.0005;
-      const itbAct = this.itbOn > 0.001, I = this.I, sp = cyc / ncyl;
+      const itbAct = this.itbOn > 0.001, I = this.I, sp = cyc / ncyl, solo = this.target.solo === 'itb' && itbAct;
       // with a louder exhaust the trumpets get angrier too: 0 stock, 0.5 street, 1 race
       const aggro = Math.min(1, Math.max(0, (X.level - 1) / 0.5));
       for (let k = 0; k < ncyl; k++) {
@@ -1074,7 +1088,9 @@ class M20Dsp {
         const dB = itbB - this.itbPrev; this.itbPrev = itbB;
         // ~1 at 6,000 rpm; grows gently with the revs (it would double with them otherwise)
         const note = dB * (I.width * sp) / (36000 / fs) * Math.pow(6000 / Math.max(600, rpm), 0.75);
-        const thrI = Math.sqrt(thr);                                 // they take over early in the pedal travel
+        // they take over early in the pedal travel. Heard on their own (set({ solo: 'itb' })), the
+        // nearly shut plates at idle still pass a soft chuff from every trumpet
+        const thrI = solo ? Math.max(Math.sqrt(thr), I.idleFloor ?? 0.3) : Math.sqrt(thr);
         const roar = this.itbRoarLp.run(this.itbRoarHp.run(randn() * itbB)) * I.roar * (1 + 0.8 * aggro) * Math.min(1.2, 0.4 + rpm / 7500);
         // through the airbox: its wall-to-wall ring (a feedback comb, a little damped each bounce)
         // and the snout's boom
@@ -1176,6 +1192,8 @@ class M20Dsp {
       y = y * (1 - 0.15 * rm) + wet * 0.5 * rm + dif * 0.22 * (E.diffuse ?? rm);
       // the trumpets go in after the room: they are right in front of you, and a near-pure note
       // through the ground reflection would swell and vanish as the revs sweep past its notches
+      // the trumpets on their own (set({ solo: 'itb' })): no exhaust, starter, tick or turbo
+      if (solo) y = 0;
       if (itbAct) {
         y += this.itbOut;
         // the whole car with ITBs on the throttle: low cut here, the rest after the output stage
@@ -1194,6 +1212,7 @@ class M20Dsp {
         const hissLvl = I.hissFloor * Math.min(1, rpm / 400) + (1 - I.hissFloor) * thr; // fades out only when the engine stops
         y += H[2].run(H[1].run(H[0].run(randn()))) * I.hiss * this.itbOn * hissLvl / E.level;
       }
+      if (solo) y *= 0.6; // on their own: headroom, so the trumpets' peaks stay out of the limiter
       let o = Math.tanh(y * 0.38 * E.level * X.level * (E.vtec ? 1 + (E.vtec.level - 1) * this.vtecS : 1)) * 1.35 * (E.post || 1); // gentle: mostly linear, only peaks round off
       // soft knee above 0.9 so loud engines never clip the output
       if (o > 0.9) o = 0.9 + 0.1 * Math.tanh((o - 0.9) / 0.1);
@@ -1358,6 +1377,13 @@ class M20EngineSound {
     if (!ENGINES[name]) throw new Error(`unknown engine ${name}`);
     this.engine = name;
     this._send({ set: { engine: name, idleRpm: ENGINES[name].idleRpm } });
+  }
+
+  /** A whole engine profile (as built by enginePhysics.buildProfile): installed and used at once. */
+  setProfile(profile) {
+    this.engine = 'custom';
+    ENGINES.custom = profile;
+    this._send({ set: { profile, idleRpm: profile.idleRpm } });
   }
 
   start() {
