@@ -10,7 +10,10 @@ function interpolate(table, x) {
       return y0 + ((y1 - y0) * (x - x0)) / (x1 - x0);
     }
   }
-  return table[table.length - 1][1];
+  // Past the end, keep falling at the last slope (a raised rev limit reaches beyond the table).
+  const [x0, y0] = table[table.length - 2];
+  const [x1, y1] = table[table.length - 1];
+  return Math.max(y1 * 0.35, y1 + (Math.min(0, y1 - y0) * (x - x1)) / (x1 - x0));
 }
 
 // Returns [{ rpm, nm, hp }] from 1,000 rpm to the limiter, plus the peaks. engine: which engine
@@ -20,7 +23,7 @@ export function dynoRun(tune, engine = CAR.engine) {
   const pts = [];
   let peakHp = { hp: 0, rpm: 0 };
   let peakNm = { nm: 0, rpm: 0 };
-  const top = Math.max(7000, Math.floor((engine.limiterRpm ?? 7000) / 100) * 100);
+  const top = Math.max(7000, Math.floor(((engine.limiterRpm ?? 7000) + p.revExtra) / 100) * 100);
   for (let rpm = 1000; rpm <= top; rpm += 100) {
     let nm = interpolate(engine.torqueCurve, rpm) * (tune.torque ?? 1);
     if (p.intake) nm += p.intake(rpm) * (tune.torque ?? 1);

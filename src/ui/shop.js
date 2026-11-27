@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import {
   CAR, BASE_CAR, CARS, ENGINE_SWAPS, carSave, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup,
-  RIM_WIDTH_IN, INTAKES, TURBOS, BRAKES, HANDBRAKES, ANGLE_KITS, PAINTS, WHEEL_COLORS, wheelColorOf, INTERNALS,
+  RIM_WIDTH_IN, INTAKES, TURBOS, BRAKES, HANDBRAKES, ANGLE_KITS, PAINTS, WHEEL_COLORS, wheelColorOf, INTERNALS, ECUS, REV_LIMIT_MAX,
 } from '../config.js';
 import { dynoRun } from '../physics/dyno.js';
 import { money } from '../game/wallet.js';
@@ -38,7 +38,7 @@ function hexToHsl(hex) {
   return [h / 6, s, l];
 }
 
-const SHOP_KEYS = ['seats', 'offsetFront', 'offsetRear', 'plateStyle', 'plateText', 'stretch', 'intake', 'internals', 'turbo', 'clutch', 'gearbox', 'finalDrive', 'coilovers', 'brakes', 'handbrake', 'angleKit', 'weight', 'paint', 'numbers', 'number', 'numberW', 'numberH', 'exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'wheelColor', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
+const SHOP_KEYS = ['seats', 'offsetFront', 'offsetRear', 'plateStyle', 'plateText', 'stretch', 'intake', 'internals', 'turbo', 'ecu', 'revLimit', 'popAmount', 'popSpeed', 'flames', 'clutch', 'gearbox', 'finalDrive', 'coilovers', 'brakes', 'handbrake', 'angleKit', 'weight', 'paint', 'numbers', 'number', 'numberW', 'numberH', 'exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'wheelColor', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
 
 // Category icons for the rail down the left (24x24, drawn in strokes).
 const ICONS = {
@@ -47,6 +47,7 @@ const ICONS = {
   wheels: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/><path d="M12 3v7M12 14v7M3 12h7M14 12h7"/>',
   chassis: '<path d="M12 2v3l5 2-10 3 10 3-10 3 10 3-5 2v3"/>',
   brakes: '<circle cx="11" cy="13" r="8"/><circle cx="11" cy="13" r="3"/><path d="M15 4h5v8h-3"/>',
+  ecu: '<rect x="6" y="6" width="12" height="12"/><rect x="10" y="10" width="4" height="4"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
   engine: '<path d="M4 9h3V6h8v3h3l2 3v5h-2v2H7l-3-3z"/><path d="M10 6V3h4"/>',
   dyno: '<path d="M3 3v18h18"/><path d="M5 17c4-1 5-9 9-10 3-1 4 3 6 2"/>',
   builds: '<path d="M4 4h13l3 3v13H4z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/>',
@@ -59,6 +60,7 @@ const TABS = [
   ['chassis', 'Suspension'],
   ['brakes', 'Brakes'],
   ['engine', 'Engine'],
+  ['ecu', 'ECU'],
   ['dyno', 'Dyno'],
   ['builds', 'Builds'],
 ];
@@ -1079,6 +1081,28 @@ export class Shop {
         this.#section('Internals', this.#cards(INTERNALS, 'internals')),
         this.#section('Turbo', this.#turbos()),
         this.#section('Exhaust', this.#cards(EXHAUSTS, 'exhaust')),
+      ];
+    }
+    if (this.tab === 'ecu') {
+      const base = CAR.engine.limiterRpm;
+      const POP_PACE = ['', 'Slow burble', 'Slow burble', 'Lazy', 'Lazy', 'Steady', 'Steady', 'Quick', 'Quick', 'Rapid fire', 'Machine gun'];
+      return [
+        this.#section('ECU', this.#cards(ECUS, 'ecu')),
+        ...(t.ecu === 'tuned'
+          ? [
+              this.#section(
+                'Rev limiter',
+                this.#slider('revLimit', 'Rev limit', 0, REV_LIMIT_MAX, 50, (v) => `${(base + v).toLocaleString('en-US')} rpm${v ? ` · +${v.toLocaleString('en-US')}` : ''}`),
+                this.#hint('Revving past where the engine makes its power holds a gear longer, but the power falls away up there.'),
+              ),
+              this.#section(
+                'Pops & bangs',
+                this.#slider('popAmount', 'Pops per lift-off', 0, 12, 1, (v) => (v === 0 ? 'None' : `${v}`)),
+                this.#slider('popSpeed', 'Pop speed', 1, 10, 1, (v) => POP_PACE[v]),
+                this.#chips('Flames', 'flames', [[false, 'Off'], [true, 'On']]),
+              ),
+            ]
+          : [this.#hint('Fit a tuned ECU to raise the rev limit and set the pops and flames.')]),
       ];
     }
     if (this.tab === 'brakes') {

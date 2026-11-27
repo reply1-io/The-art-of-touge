@@ -17,6 +17,7 @@ export const PRICES = {
   exhaust: { stock: 0, street: 650, race: 1100 },
   intake: { stock: 0, pod: 120, itb: 2800 },
   internals: { stock: 0, forged: 2500 },
+  ecu: { stock: 0, tuned: 1800 },
   turbo: { none: 0, small: 3500, big: 5500 },
   clutch: { stock: 0, sport: 450, race: 900 },
   gearbox: { stock: 0, close: 1600 },

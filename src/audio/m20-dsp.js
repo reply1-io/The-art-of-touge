@@ -373,7 +373,9 @@ export class M20Dsp {
     // lift-off tracking for afterfire pops
     if (c.throttle < 0.06) {
       if (this.offT === 0 && this.popArmed && this.rpmS > 3500) {
-        this.popBudget = Math.floor(Math.random() * this.X.pops * (this.E.popMul || 1)); // stock 0-1, street 0-2, race 0-4 (more on a rotary)
+        this.popBudget = this.target.popCount != null
+          ? this.target.popCount // tuned ECU: exactly this many
+          : Math.floor(Math.random() * this.X.pops * (this.E.popMul || 1)); // stock 0-1, street 0-2, race 0-4 (more on a rotary)
       }
       this.popArmed = false;
       this.offT += n / this.fs;
@@ -527,8 +529,11 @@ export class M20Dsp {
           }
           // afterfire: only well into a real lift-off (not limiter or shift cuts), a few at most
           this.pop[k] = 0;
-          if (this.popBudget > 0 && overrun && ign > 0.5 && rpm > 2400 &&
-              this.offT > 0.35 && this.offT < 1.8 && Math.random() < 0.035) {
+          // (a tuned ECU sets the pace: popRate 1 slow .. 10 machine-gun, and keeps going longer)
+          const ecu = this.target.popCount != null;
+          if (this.popBudget > 0 && overrun && ign > 0.5 && rpm > (ecu ? 1800 : 2400) &&
+              this.offT > (ecu ? 0.2 : 0.35) && this.offT < (ecu ? 4 : 1.8) &&
+              Math.random() < (ecu ? 0.012 * (this.target.popRate || 5) : 0.035)) {
             this.pop[k] = 0.5 + 0.7 * Math.random();
             this.popEnv = this.pop[k];
             this.popBudget--;

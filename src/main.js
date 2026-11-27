@@ -2,7 +2,7 @@
 import './styles.css';
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { CAR, partsSetup, wheelSetup } from './config.js';
+import { CAR, partsSetup, wheelSetup, revExtra } from './config.js';
 import { Vehicle } from './physics/vehicle.js';
 import { Engine } from './physics/engine.js';
 import { SoftBarrier } from './physics/barrier.js';
@@ -1057,6 +1057,46 @@ function goHome() {
 
 // ---------- Revving the car in the workshop ----------
 // The car's engine on its own (out of gear), driven by the rev button and heard through the same
+// Tuned ECU pops for the sound ({ count, speed }), or null on the stock map.
+function ecuPops(t) {
+  return t.ecu === 'tuned' ? { count: Math.max(0, Math.round(t.popAmount ?? 4)), speed: Math.max(1, Math.min(10, t.popSpeed ?? 5)) } : null;
+}
+// Flames from the tailpipe. Stock map: the race exhaust spits a little off the limiter, on shifts
+// and on lift-off. Tuned ECU: only if flames are switched on, one with each pop after a lift-off,
+// coming as fast as the pops do.
+const roadFlames = { queue: [] };
+const shopFlames = { queue: [] };
+function exhaustFlames(model, ev, dt, st) {
+  const t = tune;
+  if (t.ecu === 'tuned') {
+    if (ev.lift && t.flames) {
+      const p = ecuPops(t);
+      const gap = 0.9 / p.speed; // seconds between pops, roughly as the sound spaces them
+      st.queue = [];
+      let at = 0.25;
+      for (let i = 0; i < p.count; i++) {
+        st.queue.push(at);
+        at += gap * (0.6 + 0.8 * Math.random());
+      }
+    }
+    if (!t.flames) st.queue = [];
+    for (let i = st.queue.length - 1; i >= 0; i--) {
+      st.queue[i] -= dt;
+      if (st.queue[i] <= 0) {
+        model.flame(0.55 + 0.45 * Math.random());
+        st.queue.splice(i, 1);
+      }
+    }
+    if (ev.limiter && t.flames) model.flame(0.6);
+    return;
+  }
+  st.queue = [];
+  if (t.exhaust !== 'race') return;
+  if (ev.lift) model.flame(1);
+  if (ev.shift) model.flame(0.8);
+  if (ev.limiter) model.flame(0.6);
+}
+
 // engine sound as on the road, with whatever intake, turbo and exhaust are fitted.
 let revCar = null;
 const revExhaust = new ExhaustEvents();
@@ -1084,15 +1124,13 @@ function shopEngine(dt) {
     e.integrate(e.torque(thr), h);
     e.checkStall(false);
   }
+  revCar.engine.revExtra = revExtra(tune);
   const ev = revExhaust.update(revCar, dt, tune.exhaust);
   audio.setExhaust(tune.exhaust || 'stock');
   audio.setParts(tune.intake || 'stock', tune.turbo || 'none');
+  audio.setEcuPops(ecuPops(tune));
   audio.update(revCar, dt, ev);
-  // Race exhaust: flames off the limiter and when you lift.
-  if (tune.exhaust === 'race') {
-    if (ev.lift) shop.car.flame(1);
-    if (ev.limiter) shop.car.flame(0.6);
-  }
+  exhaustFlames(shop.car, ev, dt, shopFlames);
 }
 shop.onClose = () => {
   // Leaving the workshop: the engine you were revving falls quiet.
@@ -1768,13 +1806,9 @@ function frame(now) {
     audio.setExhaust(tune.exhaust || 'stock');
     audio.setParts(tune.intake || 'stock', tune.turbo || 'none');
     audio.setBigBrakes(tune.brakes === 'bbk');
+    audio.setEcuPops(ecuPops(tune));
     audio.update(vehicle, dt, ev);
-    // Race exhaust: little flames off the limiter, on shifts and on lift-off.
-    if (tune.exhaust === 'race') {
-      if (ev.lift) carModel.flame(1);
-      if (ev.shift) carModel.flame(0.8);
-      if (ev.limiter) carModel.flame(0.6);
-    }
+    exhaustFlames(carModel, ev, dt, roadFlames);
   }
   carModel.updateFx(dt);
   online.update(dt, vehicle, controls, timePreset.lights);
@@ -1869,7 +1903,7 @@ function frame(now) {
     running
       ? {
           rpm: vehicle.rpm,
-          redline: CAR.engine.redline,
+          redline: CAR.engine.redline + revExtra(tune),
           speedMph: vehicle.forwardSpeed * 2.23694,
           gear: tr.label,
           showGear: tr.mode === 'auto',

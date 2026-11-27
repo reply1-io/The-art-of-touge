@@ -269,6 +269,11 @@ export const DIFFS = {
 // Live-tunable values (tuning shop and dev panel). Defaults chosen for a planted but slidable street car.
 export const TUNABLE_DEFAULTS = {
   internals: 'stock', // 'forged' is needed before a turbo can be fitted
+  ecu: 'stock', // 'tuned' unlocks the settings below
+  revLimit: 0, // rpm added to the rev limiter (tuned ECU, up to REV_LIMIT_MAX)
+  popAmount: 4, // pops after each lift-off (tuned ECU; 0 = none)
+  popSpeed: 5, // 1 slow burble .. 10 machine-gun
+  flames: false, // flames with the pops (tuned ECU)
   tire: 'street',
   diff: 'lsd',
   rideHeight: 0, // mm from stock (negative = lowered)
@@ -328,6 +333,17 @@ export const INTAKES = {
   itb: { name: 'ITBs', blurb: 'Individual throttle bodies in a carbon airbox: +20 Nm and +15 hp, razor response, and a deep, hollow trumpet howl that takes over on the throttle. Louder and angrier with a race exhaust.' },
 };
 // Engine internals. The stock bottom end can't take boost: forged internals come before a turbo.
+// ECU: a tuned map unlocks a higher rev limit and lift-off pops you set yourself.
+export const ECUS = {
+  stock: { name: 'Stock ECU', blurb: 'The factory map. Rev limit as it left the factory, the odd pop on lift-off.' },
+  tuned: { name: 'Tuned ECU', blurb: 'A custom map: raise the rev limiter up to 1,750 rpm, and set the pops and bangs on lift-off, flames too.' },
+};
+export const REV_LIMIT_MAX = 1750; // most the tuned ECU can raise the limiter by (rpm)
+// How much a tuned ECU raises the rev limit (0 on the stock map).
+export function revExtra(t) {
+  return t?.ecu === 'tuned' ? Math.max(0, Math.min(REV_LIMIT_MAX, t.revLimit || 0)) : 0;
+}
+
 export const INTERNALS = {
   stock: { name: 'Stock internals', blurb: 'Cast pistons and factory rods. Fine as it comes, but boost would break it.' },
   forged: { name: 'Forged internals', blurb: 'Forged pistons, H-beam rods, lower compression and head studs. Built to take boost: you need these before you can fit a turbo.' },
@@ -421,6 +437,7 @@ export function partsSetup(t) {
     finalDrive: FINAL_DRIVES.includes(t.finalDrive) ? t.finalDrive : CAR.finalDrive,
     turbo,
     intake,
+    revExtra: revExtra(t),
   };
 }
 
