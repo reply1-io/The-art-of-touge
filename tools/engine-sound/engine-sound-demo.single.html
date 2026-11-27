@@ -380,7 +380,7 @@ const ENGINES = {
     idleRpm: 765, redline: 7100, crankFlare: 1600, starterRatio: 12, // a real K24 idles ~765 (firing 25.5 Hz = rpm / 30)
     dual: false,
     header: [0.0014, 0.0017], pipe: [3.0, 3.0], pipeRefl: 0.45,
-    width: [34, 4], pump: 0.12, jitter: 0.08, idleJitter: 0.06, lope: [0.006, 0.003],
+    width: [26, 6], pump: 0.12, jitter: 0.045, idleJitter: 0.06, lope: [0.006, 0.003], // sharp, clean, even pulses
     chop: [1.1, 0.9, 1.2, 0.5, 1.05, 1, 1.15, 0.8],
     sizzle: 1.0, idleNoise: 8, tick: 1.2, raspFloor: 1, subMin: 40, // a textured idle, like the real car // a buzzy, tappy idle; the 25 Hz fundamental is felt more than heard
     muff: [380, 500, 0.07, 1000, 400], muffRpm: 0.15, muffRpm2: 0,
@@ -395,12 +395,12 @@ const ENGINES = {
     stateEq: {
       // solved against band shares measured on the owner's real K24 (idle, and on the gas at 5,000-6,800)
       idle: [[40, 1.0, -6.7], [102, 3.0, 12.5], [76, 4.0, -6], [250, 1.0, 8.1], [650, 0.9, 0.5], [1500, 0.9, 2.4], [3800, 0.9, -1.2], [9000, 0.6, -2.7]],
-      rev: [[40, 0.9, 10], [100, 1.4, -2.1], [250, 1.0, 3.3], [650, 1.1, 0.9], [1500, 0.9, 8.1], [3800, 0.9, 10.3], [9000, 0.6, -15.0]],
+      rev: [[40, 0.9, 10], [100, 1.4, -4], [330, 1.0, 3.3], [650, 1.1, 0.9], [1500, 0.9, 11], [3800, 0.9, 12], [9000, 0.6, -13]], // more rasp, higher growl
       revDb: 2.5, idleDb: -2.6, // revs ~4 dB louder relative to idle than before (idle down a little, revs up a little)
     },
     overrunFire: true,                         // off the throttle it falls back to an idle-like level, never a gap
     fastCut: true,
-    room: 0.3,                                 // fewer early reflections: their fixed comb rang in the background ('digital')                             // a quick Honda limiter: each cut stops combustion at once
+    room: 0.3, diffuse: 0.6,                   // fewer early reflections, a little less tail (clarity): their fixed comb rang in the background ('digital')                             // a quick Honda limiter: each cut stops combustion at once
     idleHitScale: 0.35,                        // a loud exhaust hardens its idle less (its idle is already full)
     // filters that follow the revs: [multiple of the firing note, dB, Q]. Its exhaust carries the
     // odd multiples (1x, 3x) and little of 2x
@@ -418,11 +418,11 @@ const ENGINES = {
       // ([.., 'coast', r4, r5]: also eased off right at idle, which keeps its own voice)
       [1, -20, 1.2, 0, 0, 1900, 2400, 'coast', 900, 765], [2, -15, 1.8, 0, 0, 1900, 2400, 'coast', 900, 765],
       [3, -12, 2.0, 0, 0, 1900, 2400, 'coast', 900, 765], [4, 15, 2.2, 0, 0, 1900, 2400, 'coast', 900, 765],
-      [3, 5, 1.8, 1500, 3000, 0, 0, 'load']],    // 3x up off idle, on the gas // (and eased off again at idle itself, which is as it was)
+      [3, 6, 1.8, 1500, 3000, 0, 0, 'load'], [1, -5, 1.4, 1500, 3000, 0, 0, 'load']], // 3x up, the firing note down on the gas: higher // (and eased off again at idle itself, which is as it was)
     coastEven: 0.25,                           // coasting, the two pairs pulse alike (no half-pitch lurch)
     // the high-rpm bark: 400-600 Hz up, faded in with the revs ([Hz, Q, dB, from rpm, full rpm])
     rpmEq: [[580, 1.1, 2, 3500, 6000], [230, 1.0, -5, 3500, 6000]],
-    rasp: [1100, 0.05, 10], rumble: [300, 0.06, 0.7], intake: [800, 0.1, 0.9], // rasp centred 1-2.5 kHz (the real car's) intakeRoar: 0.8,
+    rasp: [1300, 0.05, 15], rumble: [300, 0.06, 0.5], intake: [800, 0.1, 0.9], intakeRoar: 0.8, // rasp centred 1-2.5 kHz
     level: 1.1,
     // i-VTEC crossover: on above `on` rpm with the throttle past minThr, off below `off` or on a
     // lift (so it doesn't flicker); glides in over `glide` s. Then: intake noise and roar, rasp
@@ -430,7 +430,7 @@ const ENGINES = {
     vtec: { on: 5000, off: 4700, minThr: 0.6, glide: 0.03, intake: 4, roar: 3, rasp: 3.2, width: 8, level: 1.4, kick: 0.15 },
     // the high cam's own voice: an intake howl on the upper firing harmonics, only on VTEC (with a
     // short surge as the cam switches over), so the crossover changes the sound, not just its volume
-    zing: { harmonics: [[3, 1], [4, 0.7], [6, 0.45]], level: 0.3, from: 4800, to: 5200, vtec: true },
+    zing: { harmonics: [[3, 1], [4, 0.75], [6, 0.5], [8, 0.3]], level: 0.3, from: 2500, to: 5500, vtec: true, base: 0.55 }, // zing whenever it revs; VTEC adds the rest
   },
 
 };
@@ -1089,7 +1089,7 @@ class M20Dsp {
         const Z = E.zing;
         const u = Math.min(1, Math.max(0, (rpm - Z.from) / (Z.to - Z.from)));
         let target = ign * Z.level * (0.04 + 0.96 * u * u * (3 - 2 * u)) * (0.45 + 0.55 * thr) * (0.85 + 0.15 * X.open);
-        if (Z.vtec) target *= this.vtecS + 0.8 * this.vtecKick; // a VTEC howl: only on the high cam
+        if (Z.vtec) target *= (Z.base || 0) + (1 - (Z.base || 0)) * this.vtecS + 0.8 * this.vtecKick; // a VTEC howl (base: share heard without VTEC)
         this.zingAmp += (target - this.zingAmp) * 0.002;
         // small random phase wobble: a howl from moving metal and air, not an organ note
         this.zj = this.zj * 0.9995 + randn() * 0.012;
