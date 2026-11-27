@@ -475,13 +475,16 @@ export class M20Dsp {
     this.pop = new Float32Array(n);
     this.lastX = new Float32Array(n).fill(1);
     this.itbJ = new Float32Array(n).fill(1);
+    this.itbSet = ''; this.eqFor = '';  // per-engine filter caches (a new custom profile keeps the name)
     this.coef = 0;                      // refresh filters on the next block
   }
 
   /** Values from the game: { rpm, throttle (0..1), exhaust ('stock' | 'street' | 'race'), idleRpm, engine },
    *  and in 'direct' mode also { ignition (0/1), starter (0/1) }. */
   set(v) {
-    if (v.engine && v.engine !== this.engine) this.useEngine(v.engine);
+    // a whole engine profile built elsewhere (the engine builder): installed as 'custom'
+    if (v.profile) { ENGINES.custom = v.profile; this.useEngine('custom'); const { profile, ...rest } = v; v = rest; }
+    else if (v.engine && v.engine !== this.engine) this.useEngine(v.engine);
     Object.assign(this.target, v);
   }
 
