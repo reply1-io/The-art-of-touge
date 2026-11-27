@@ -599,7 +599,7 @@ const ITB = {
   solo: {
     onLowDb: -7,                  // 70-150 Hz on the throttle (-5 measured; the peak's skirts share it)
     offLowDb: -13, split: 180,     // below 150 Hz off the throttle (split a little above, so 70-150 drops fully)
-    breath: 0.55, breathBand: [380, 1600], breathRpm: 1.25, breathLow: [650, 1.2, 1.1], // and a hollow 400-1000 Hz core: Hz, Q, gain; // louder the faster it spins: more air drawn past the plates // the breathy hiss off the throttle (400 Hz-6 kHz)
+    breath: 0.55, breathBand: [380, 1600], breathRpm: 1.25, breathCap: 1.4, breathLow: [650, 1.2, 1.1], // and a hollow 400-1000 Hz core: Hz, Q, gain; // louder the faster it spins: more air drawn past the plates // the breathy hiss off the throttle (400 Hz-6 kHz)
     airOn: 0.4, airOff: 0.2, airBand: [6000, 14000], // air on top, on and off the throttle
   },
 };
@@ -1092,7 +1092,8 @@ class M20Dsp {
         const note = dB * (I.width * sp) / (36000 / fs) * Math.pow(6000 / Math.max(600, rpm), 0.75);
         // they take over early in the pedal travel. Heard on their own (set({ solo: 'itb' })), the
         // nearly shut plates at idle still pass a soft chuff from every trumpet
-        const thrI = solo ? Math.max(Math.sqrt(thr), I.idleFloor ?? 0.3) : Math.sqrt(thr);
+        // (shut plates at high revs pass less: on a lift-off the note fades as well as dropping in pitch)
+        const thrI = solo ? Math.max(Math.sqrt(thr), (I.idleFloor ?? 0.3) * Math.min(1, Math.pow(1.5 * (this.c.idleRpm || 900) / Math.max(1, rpm), I.liftFade ?? 0.6))) : Math.sqrt(thr);
         const roar = this.itbRoarLp.run(this.itbRoarHp.run(randn() * itbB)) * I.roar * (1 + 0.8 * aggro) * Math.min(1.2, 0.4 + rpm / 7500);
         // through the airbox: its wall-to-wall ring (a feedback comb, a little damped each bounce)
         // and the snout's boom
@@ -1220,11 +1221,14 @@ class M20Dsp {
           y = hi + lo * (on + off * Math.pow(10, S.offLowDb / 20));
           y += (F.pk.run(y) - y) * on;
           // off the throttle: air hissing past the barely open plates, swelling with each intake stroke
-          const breathe = (0.5 + 0.5 * Math.min(1, itbB / 1.2)) * Math.min(4, Math.pow(Math.max(1, rpm / (this.c.idleRpm || 900)), S.breathRpm));
+          // (on a lift-off from high revs it stays gentle: capped, and the per-stroke pulsing smooths
+          // out as the strokes come faster, or it turns into a loud, grainy rasp)
+          const rr = Math.max(1, rpm / (this.c.idleRpm || 900)), dep = 0.5 * Math.min(1, 2 / rr);
+          const breathe = (1 - dep + dep * Math.min(1, itbB / 1.2)) * Math.min(S.breathCap, Math.pow(rr, S.breathRpm));
           const nz = randn();
           y += (F.br[1].run(F.br[0].run(nz)) * S.breath + F.brLo.run(nz) * S.breathLow[2]) * off * breathe * run / E.level;
           // and air on top, on and off the throttle
-          y += F.air[2].run(F.air[1].run(F.air[0].run(randn()))) * (S.airOn * on + S.airOff * off) * (I.soloAir ?? 1) * run / E.level;
+          y += F.air[2].run(F.air[1].run(F.air[0].run(randn()))) * (S.airOn * on + S.airOff * off / rr) * (I.soloAir ?? 1) * run / E.level; // off the throttle the air fades as the revs rise
           const T = I.soloTrim;
           if (T) {
             y += this.soloBody.run(nz) * T.body * off * breathe * run / E.level; // breathy body, not hum
