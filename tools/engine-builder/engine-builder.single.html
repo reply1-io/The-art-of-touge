@@ -249,7 +249,7 @@ const ENGINES = {
     // ITBs heard on their own, trimmed off the throttle to a mic over a real M20's trumpets (on the
     // throttle it is left as it was): per band [below 70, 70-400, 400-1000, 1000-2500, above 2500 Hz]
     // in dB; offPost: the sub cut again after the output stage; body: breathy noise through 70-400 Hz
-    itb: { soloTrim: { off: [-5, 4.5, -6.5, 0, 0], offPost: -5, body: 1.1 } },
+    itb: { soloTrim: { off: [-5, 4.5, -6.5, 0, 0], offPost: -5, body: 0.55 } },
   },
   jz2: {
     // Toyota 2JZ-GTE run N/A: 3.0 L square (86 x 86 mm) straight-six, same 1-5-3-6-2-4 order
@@ -599,8 +599,8 @@ const ITB = {
   solo: {
     onLowDb: -7,                  // 70-150 Hz on the throttle (-5 measured; the peak's skirts share it)
     offLowDb: -13, split: 180,     // below 150 Hz off the throttle (split a little above, so 70-150 drops fully)
-    breath: 0.55, breathBand: [380, 1600], breathRpm: 1.25, breathCap: 1.4, breathLow: [650, 1.2, 1.1], // and a hollow 400-1000 Hz core: Hz, Q, gain; // louder the faster it spins: more air drawn past the plates // the breathy hiss off the throttle (400 Hz-6 kHz)
-    airOn: 0.4, airOff: 0.2, airBand: [6000, 14000], // air on top, on and off the throttle
+    breath: 0.28, breathBand: [380, 1600], breathRpm: 1.25, breathCap: 1.4, breathLow: [650, 1.2, 0.55], // and a hollow 400-1000 Hz core: Hz, Q, gain; // louder the faster it spins: more air drawn past the plates // the breathy hiss off the throttle (400 Hz-6 kHz)
+    airOn: 0.4, airOff: 0.1, airBand: [6000, 14000], // air on top, on and off the throttle
   },
 };
 // how each trumpet differs from the average (firing order), scaled by `uneven`
