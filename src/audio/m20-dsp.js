@@ -188,9 +188,9 @@ export const ENGINES = {
     // revs ([Hz, Q, dB] peaking filters; revDb: revs this much louder relative to idle)
     stateEq: {
       idle: [[42, 1.3, -5.3], [306, 3, -17], [280, 0.9, -1.5], [650, 0.8, -2.4]],      // clean thrum near 100 Hz, no 310 Hz whine
-      rev: [[100, 1.6, -9.8], [230, 2, 1.5], [320, 1.4, 12], [480, 1.4, -4], [700, 1.2, -6.5],
+      rev: [[100, 1.6, -9.8], [290, 2, 1.5], [400, 1.4, 12], [560, 1.6, -3], [760, 1.2, -6.5],
         [1600, 1, 14], [3800, 1, 12.5], [9000, 0.5, -12]],                           // growl and rasp, less fizz (solved to the targets)
-      revDb: -2.5,
+      revDb: -4.5,
     },
     overrunFire: true,                         // off the throttle it falls back to an idle-like level, never a gap
     fastCut: true,
@@ -207,7 +207,7 @@ export const ENGINES = {
       [1, -15, 1.4, 0, 0, 1250, 1080, 'coast'], [2, 11, 1.8, 0, 0, 1250, 1080, 'coast'],
       // ...and a little more where 2x crosses the pipe's notch near 171 Hz (2,500-2,750 rpm)
       [1, -6, 1.6, 2250, 2450, 2800, 3000, 'coast'], [2, 7, 2.2, 2250, 2450, 2800, 3000, 'coast'],
-      [3, 8, 1.8, 1500, 3000]],                  // 3x up off idle: a higher-pitched voice // (and eased off again at idle itself, which is as it was)
+      [3, 10, 1.8, 1500, 3000], [1, -5, 1.4, 1500, 3000, 0, 0, 'load']], // 3x up, the firing note down off idle: a higher-pitched voice // (and eased off again at idle itself, which is as it was)
     coastEven: 0.25,                           // coasting, the two pairs pulse alike (no half-pitch lurch)
     // the high-rpm bark: 400-600 Hz up, faded in with the revs ([Hz, Q, dB, from rpm, full rpm])
     rpmEq: [[580, 1.1, 2, 3500, 6000], [230, 1.0, -5, 3500, 6000]],
