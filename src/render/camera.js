@@ -128,7 +128,7 @@ export class CameraRig {
       cam.position.copy(p);
       // The head tilts a little with the lean.
       cam.up.set(0, 1, 0).applyQuaternion(q);
-      cam.lookAt(p.clone().add(new THREE.Vector3(0.3, -1.1, 10).applyQuaternion(q)));
+      cam.lookAt(p.clone().add(new THREE.Vector3(0, -1.9, 10).applyQuaternion(q)));
       this.ready = false;
       return;
     }

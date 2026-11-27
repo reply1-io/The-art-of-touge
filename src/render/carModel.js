@@ -140,58 +140,6 @@ function bodyPolys() {
   return { paint, trim, cabinTop };
 }
 
-// The tinted strip across the top of a windscreen: the windscreen panels (glass facing up and
-// forwards), redrawn just inside the glass with a green-blue tint that fades out a fifth of the way
-// down.
-function sunStrip(glassPolys) {
-  const screen = glassPolys.filter((p) => p.out && p.out[1] > 0.5 && p.out[2] > 0.3);
-  if (!screen.length) return null;
-  let yMin = Infinity;
-  let yMax = -Infinity;
-  for (const p of screen) for (const v of p.pts) {
-    yMin = Math.min(yMin, v[1]);
-    yMax = Math.max(yMax, v[1]);
-  }
-  const pos = [];
-  const uv = [];
-  const n = (p) => {
-    const o = p.out;
-    const l = Math.hypot(o[0], o[1], o[2]) || 1;
-    return [o[0] / l, o[1] / l, o[2] / l];
-  };
-  for (const p of screen) {
-    const o = n(p);
-    const pts = p.pts.map((v) => [v[0] - o[0] * 0.012, v[1] - o[1] * 0.012, v[2] - o[2] * 0.012]);
-    for (let i = 1; i < pts.length - 1; i++) {
-      for (const v of [pts[0], pts[i], pts[i + 1]]) {
-        pos.push(v[0], v[1], v[2]);
-        uv.push(0.5, (yMax - v[1]) / (yMax - yMin)); // 0 at the top of the glass
-      }
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  const c = document.createElement('canvas');
-  c.width = 4;
-  c.height = 64;
-  const x = c.getContext('2d');
-  const grad = x.createLinearGradient(0, 0, 0, 64);
-  grad.addColorStop(0, 'rgba(38, 150, 128, 0.82)');
-  grad.addColorStop(0.17, 'rgba(46, 165, 140, 0.7)');
-  grad.addColorStop(0.24, 'rgba(60, 175, 150, 0.12)');
-  grad.addColorStop(0.3, 'rgba(60, 175, 150, 0)');
-  grad.addColorStop(1, 'rgba(60, 175, 150, 0)');
-  x.fillStyle = grad;
-  x.fillRect(0, 0, 4, 64);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.flipY = false; // v = 0 is the canvas top: the dark end of the tint
-  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: tex, color: 0x4d6c64, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: true }));
-  m.renderOrder = 2;
-  return m;
-}
-
 // Back faces of a body material draw as dark interior trim.
 function darkInside(m) {
   const prev = m.onBeforeCompile;
@@ -796,9 +744,6 @@ export class CarModel {
     body.add(plate);
     this.glass = new THREE.Mesh(polyGeometry(cabin.glass), glassMat);
     body.add(this.glass);
-    // The tinted sun strip across the top of the windscreen, fading out downwards.
-    const strip = sunStrip(cabin.glass);
-    if (strip) body.add(strip);
     this.shellMats = [this.paintMat, flat];
     // From inside, the backs of the body panels are the cabin's dark trim (pillars, door tops,
     // roof frame), not paint.

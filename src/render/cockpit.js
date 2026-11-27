@@ -14,7 +14,7 @@ export const EYE = new THREE.Vector3(DRIVER_X, 1.15, -0.5); // sitting low
 // right of the driver's head, looking down over the wheel and out through the windscreen (like
 // an onboard video): wheel and hands at the bottom, the A-pillar and door mirror at the left,
 // the rear-view mirror at the top right.
-export const CAM = new THREE.Vector3(DRIVER_X - 0.15, 1.22, -0.44);
+export const CAM = new THREE.Vector3(DRIVER_X, 1.27, -0.32); // straight behind the wheel
 const SHOULDERS = [new THREE.Vector3(DRIVER_X + 0.22, 0.98, -0.5), new THREE.Vector3(DRIVER_X - 0.22, 0.98, -0.5)];
 const UPPER = 0.32;
 const FORE = 0.36;
