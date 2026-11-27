@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import {
   CAR, BASE_CAR, CARS, ENGINE_SWAPS, carSave, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup,
-  SEATS, RIM_WIDTH_IN, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, WHEEL_COLORS, wheelColorOf, INTERNALS,
+  RIM_WIDTH_IN, INTAKES, TURBOS, BRAKES, HANDBRAKES, ANGLE_KITS, PAINTS, WHEEL_COLORS, wheelColorOf, INTERNALS,
 } from '../config.js';
 import { dynoRun } from '../physics/dyno.js';
 import { money } from '../game/wallet.js';
@@ -44,12 +44,10 @@ const SHOP_KEYS = ['seats', 'offsetFront', 'offsetRear', 'plateStyle', 'plateTex
 const ICONS = {
   car: '<path d="M2 16v-3l3-5h10l4 5h3v3"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/>',
   body: '<rect x="7" y="9" width="8" height="12"/><path d="M9 9V6h4v3M13 4h3M18 5l2-1M18 8h3"/>',
-  interior: '<path d="M7 3h5l-1 10h6l1 7M9 13l-2 7"/>',
   wheels: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/><path d="M12 3v7M12 14v7M3 12h7M14 12h7"/>',
   chassis: '<path d="M12 2v3l5 2-10 3 10 3-10 3 10 3-5 2v3"/>',
   brakes: '<circle cx="11" cy="13" r="8"/><circle cx="11" cy="13" r="3"/><path d="M15 4h5v8h-3"/>',
   engine: '<path d="M4 9h3V6h8v3h3l2 3v5h-2v2H7l-3-3z"/><path d="M10 6V3h4"/>',
-  drive: '<circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3"/>',
   dyno: '<path d="M3 3v18h18"/><path d="M5 17c4-1 5-9 9-10 3-1 4 3 6 2"/>',
   builds: '<path d="M4 4h13l3 3v13H4z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/>',
 };
@@ -57,12 +55,10 @@ const ICONS = {
 const TABS = [
   ['car', 'Car'],
   ['body', 'Exterior'],
-  ['interior', 'Interior'],
   ['wheels', 'Wheels'],
   ['chassis', 'Suspension'],
   ['brakes', 'Brakes'],
   ['engine', 'Engine'],
-  ['drive', 'Drivetrain'],
   ['dyno', 'Dyno'],
   ['builds', 'Builds'],
 ];
@@ -1018,6 +1014,7 @@ export class Shop {
   }
 
   #tabContent() {
+    if (!TABS.some(([id]) => id === this.tab)) this.tab = 'car';
     const t = this.tune;
     const label = { soft: 'Soft', stock: 'Stock', sport: 'Sport', race: 'Race', off: 'None' };
     if (this.tab === 'body') {
@@ -1053,9 +1050,6 @@ export class Shop {
       }
       return [this.#section('Your cars', row, this.#hint('Switching car reloads the game. Each car keeps its own parts, paint and builds.'))];
     }
-    if (this.tab === 'interior') {
-      return [this.#section('Seats', this.#cards(SEATS, 'seats')), this.#section('Weight reduction', this.#cards(WEIGHTS, 'weight'))];
-    }
     if (this.tab === 'wheels') {
       return [
         this.#section('Rims', this.#cards(WHEELS, 'wheel'), ...this.#wheelColorChips()),
@@ -1085,18 +1079,6 @@ export class Shop {
         this.#section('Internals', this.#cards(INTERNALS, 'internals')),
         this.#section('Turbo', this.#turbos()),
         this.#section('Exhaust', this.#cards(EXHAUSTS, 'exhaust')),
-      ];
-    }
-    if (this.tab === 'drive') {
-      return [
-        this.#section('Clutch', this.#cards(CLUTCHES, 'clutch')),
-        this.#section(
-          'Gearbox',
-          this.#cards(GEARBOXES, 'gearbox'),
-          this.#chips('Final drive', 'finalDrive', FINAL_DRIVES.map((f) => [f, f.toFixed(2)])),
-          this.#hint('A higher final drive number is shorter: quicker out of corners, lower top speed.'),
-        ),
-        this.#section('Differential', this.#cards(DIFFS, 'diff')),
       ];
     }
     if (this.tab === 'brakes') {
