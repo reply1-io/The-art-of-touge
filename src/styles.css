@@ -2032,75 +2032,27 @@ body.replay-ui-off #toast {
   display: none !important;
 }
 
-/* ---------- Tuning shop, 2000s street-racing look ----------
-   Slanted glossy tabs, chrome-and-amber trim, a part list (not tiles) with the description only on
-   the fitted part, and segmented stat meters over the car. Condensed black italic type: Helvetica
-   Neue Condensed Black on Apple devices, the nearest narrow bold italic elsewhere. */
+/* ---------- Tuning shop layout, in the game's own pixel style ----------
+   Two rows of tabs, a part list (not tiles) with the description only on the fitted part, and
+   block meters over the car. Same VT323 type, flat amber and square edges as the menus. */
 #shop {
-  --rx: 'HelveticaNeue-CondensedBlack', 'Helvetica Neue Condensed Black', 'Roboto Condensed', 'Arial Narrow', 'Liberation Sans Narrow', 'Helvetica Neue', Arial, sans-serif;
-  --gloss: linear-gradient(180deg, #ffe27a 0%, #ffb000 48%, #ff8a00 52%, #ffa300 100%);
-  --steel: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.03) 55%, rgba(0, 0, 0, 0.2));
+  --rx: 'VT323', ui-monospace, monospace;
+  --gloss: var(--accent);
+  --steel: linear-gradient(transparent, transparent);
 }
 
 #shop .shop-panel {
-  position: relative;
-  width: min(54vw, 500px);
-  padding: 8px calc(12px + var(--sr)) 0 22px;
-  border-left: 0;
-  background:
-    repeating-linear-gradient(-60deg, rgba(255, 255, 255, 0.025) 0 2px, transparent 2px 9px),
-    linear-gradient(160deg, rgba(14, 22, 44, 0.96), rgba(4, 6, 14, 0.97) 60%);
-  clip-path: polygon(16px 0, 100% 0, 100% 100%, 0 100%, 0 26px);
-  box-shadow: inset 3px 0 0 #ffb000, inset 7px 0 0 rgba(255, 176, 0, 0.25);
+  width: min(56vw, 520px);
 }
 
 #shop .shop-head {
   gap: 8px;
-  padding-bottom: 6px;
-  border-bottom: 2px solid transparent;
-  border-image: linear-gradient(90deg, #ffb000, rgba(255, 255, 255, 0.5) 40%, transparent) 1;
-}
-
-#shop .shop-head h2 {
-  font: italic 900 clamp(22px, 6.4vh, 32px) var(--rx);
-  letter-spacing: 0.02em;
-  color: #fff;
-  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.6);
-  white-space: nowrap;
-}
-
-#shop .shop-head h2 span {
-  background: var(--gloss);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-#shop .shop-money {
-  font: italic 800 clamp(16px, 4.6vh, 22px) var(--rx);
-  color: #8dffa0;
-  padding: 2px 12px;
-  transform: skewX(-14deg);
-  background: rgba(0, 0, 0, 0.45);
-  box-shadow: inset 0 0 0 1px rgba(141, 255, 160, 0.4);
-  text-shadow: 0 0 8px rgba(141, 255, 160, 0.5);
-}
-
-#shop .shop-head .big {
-  padding: 5px 18px;
-  font: italic 900 clamp(16px, 4.6vh, 22px) var(--rx);
-  letter-spacing: 0.06em;
-  color: #111;
-  background: var(--gloss);
-  border: 0;
-  transform: skewX(-14deg);
-  box-shadow: 0 2px 0 #8a4a00, inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 /* Tabs: two rows of slanted plates, all in view. */
 #shop .shop-tabs {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   gap: 4px 5px;
   margin: 8px 0 2px;
   padding: 0 4px;
@@ -2109,15 +2061,15 @@ body.replay-ui-off #toast {
 }
 
 #shop .shop-tabs button {
-  padding: 4px 2px;
+  flex: 1 1 auto;
+  padding: 3px 6px;
   margin: 0;
-  font: italic 800 clamp(11px, 3vh, 14px) var(--rx);
+  font: 400 17px var(--rx);
   letter-spacing: 0.04em;
   color: #c3cde0;
-  background: var(--steel), rgba(20, 30, 54, 0.9);
+  background: var(--steel), rgba(255, 255, 255, 0.05);
   border: 0;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
-  transform: skewX(-14deg);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.16);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2126,7 +2078,7 @@ body.replay-ui-off #toast {
 #shop .shop-tabs button.sel {
   color: #111;
   background: var(--gloss);
-  box-shadow: 0 0 10px rgba(255, 176, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow: none;
 }
 
 #shop .shop-body {
@@ -2145,17 +2097,16 @@ body.replay-ui-off #toast {
   align-items: center;
   gap: 8px;
   margin: 0 0 6px;
-  font: italic 800 13px var(--rx);
+  font: 400 18px var(--rx);
   letter-spacing: 0.18em;
   color: #fff;
 }
 
 #shop .shop-section h3::before {
   content: '';
-  width: 14px;
-  height: 12px;
-  background: var(--gloss);
-  transform: skewX(-24deg);
+  width: 10px;
+  height: 10px;
+  background: var(--accent);
 }
 
 #shop .shop-section h3::after {
@@ -2179,16 +2130,16 @@ body.replay-ui-off #toast {
   gap: 0 10px;
   padding: 6px 12px 6px 22px;
   position: relative;
-  background: var(--steel), rgba(16, 24, 44, 0.85);
+  background: var(--steel), rgba(255, 255, 255, 0.05);
   border: 0;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.22);
   font: 12px/1.35 system-ui, sans-serif;
   transition: background 0.1s;
 }
 
 #shop .shop-card strong {
   grid-column: 1;
-  font: italic 800 16px var(--rx);
+  font: 400 22px var(--rx);
   letter-spacing: 0.03em;
   color: #e9eef8;
   text-transform: uppercase;
@@ -2197,7 +2148,7 @@ body.replay-ui-off #toast {
 #shop .shop-card em {
   grid-column: 2;
   grid-row: 1;
-  font: italic 800 14px var(--rx);
+  font: 400 20px var(--rx);
   letter-spacing: 0.04em;
 }
 
@@ -2221,13 +2172,12 @@ body.replay-ui-off #toast {
 }
 
 #shop .shop-card.sel {
-  background: linear-gradient(90deg, rgba(255, 176, 0, 0.42), rgba(255, 120, 0, 0.12) 70%, rgba(255, 120, 0, 0.04)), rgba(16, 24, 44, 0.9);
-  box-shadow: inset 0 0 0 1px rgba(255, 190, 60, 0.7), inset 3px 0 0 #ffb000;
+  background: rgba(255, 176, 0, 0.16);
+  box-shadow: inset 0 0 0 3px var(--accent);
 }
 
 #shop .shop-card.sel strong {
   color: #fff;
-  text-shadow: 0 0 8px rgba(255, 176, 0, 0.6);
 }
 
 #shop .shop-card.sel span {
@@ -2256,7 +2206,7 @@ body.replay-ui-off #toast {
 #shop .shop-chips {
   gap: 4px;
   margin: 8px 0;
-  font: italic 800 13px var(--rx);
+  font: 400 18px var(--rx);
   letter-spacing: 0.1em;
   color: #9fb0cf;
   text-transform: uppercase;
@@ -2269,27 +2219,26 @@ body.replay-ui-off #toast {
 
 #shop .shop-chips button {
   padding: 5px 2px;
-  font: italic 800 14px var(--rx);
+  font: 400 20px var(--rx);
   letter-spacing: 0.03em;
   color: #dfe6f3;
-  background: var(--steel), rgba(16, 24, 44, 0.9);
+  background: var(--steel), rgba(255, 255, 255, 0.05);
   border: 0;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
-  transform: skewX(-12deg);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.16);
 }
 
 #shop .shop-chips button.sel {
   color: #111;
   background: var(--gloss);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow: none;
 }
 
 #shop .shop-chips button small {
-  font: italic 700 11px var(--rx);
+  font: 400 15px var(--rx);
 }
 
 #shop .shop-slider {
-  font: italic 800 13px var(--rx);
+  font: 400 18px var(--rx);
   letter-spacing: 0.1em;
   color: #9fb0cf;
   text-transform: uppercase;
@@ -2308,48 +2257,38 @@ body.replay-ui-off #toast {
 
 #shop .shop-flash {
   margin: 8px 0 0;
-  font: italic 800 14px var(--rx);
+  font: 400 20px var(--rx);
   letter-spacing: 0.04em;
-  transform: skewX(-8deg);
 }
 
 #shop .shop-body > .big.ghost {
-  font: italic 800 15px var(--rx);
+  font: 400 21px var(--rx);
   letter-spacing: 0.1em;
   color: #9fb0cf;
   background: transparent;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
-  transform: skewX(-10deg);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.2);
 }
 
 /* Over the car: the name badge and the stat meters. */
 #shop .shop-car b {
-  font: italic 900 clamp(22px, 6vh, 30px) var(--rx);
+  font: 400 clamp(22px, 6vh, 30px) var(--rx);
   letter-spacing: 0.02em;
   color: #fff;
-  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.7), 0 0 14px rgba(255, 176, 0, 0.35);
-}
-
-#shop .shop-car span {
-  font: italic 700 11px var(--rx);
-  letter-spacing: 0.14em;
-  color: rgba(255, 255, 255, 0.55);
 }
 
 #shop .shop-readout {
-  min-width: 230px;
+  min-width: 260px;
   padding: 0 12px 7px;
-  background: linear-gradient(180deg, rgba(10, 16, 32, 0.88), rgba(4, 6, 14, 0.88));
-  border-left: 0;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14), inset 3px 0 0 #ffb000;
-  font: italic 700 12px var(--rx);
+  background: rgba(5, 7, 12, 0.72);
+  border-left: 3px solid var(--accent);
+  font: 400 15px var(--rx);
   letter-spacing: 0.06em;
 }
 
 #shop .spec-head {
   margin: 0 -12px 5px;
   padding: 2px 12px;
-  font: italic 900 12px var(--rx);
+  font: 400 15px var(--rx);
   letter-spacing: 0.3em;
   color: #111;
   background: var(--gloss);
@@ -2357,7 +2296,8 @@ body.replay-ui-off #toast {
 
 #shop .spec-row {
   display: grid;
-  grid-template-columns: 52px 1fr 52px;
+  grid-template-columns: 58px 1fr 62px;
+  white-space: nowrap;
   align-items: center;
   gap: 6px;
   margin: 2px 0;
@@ -2368,7 +2308,7 @@ body.replay-ui-off #toast {
 }
 
 #shop .spec-row em {
-  font-style: italic;
+  font-style: normal;
   text-align: right;
   color: #ffb000;
 }
@@ -2382,67 +2322,63 @@ body.replay-ui-off #toast {
 #shop .spec-row i u {
   flex: 1;
   height: 8px;
-  transform: skewX(-20deg);
   background: rgba(255, 255, 255, 0.1);
 }
 
 #shop .spec-row i b {
-  background: linear-gradient(180deg, #ffe27a, #ff9a00);
-  box-shadow: 0 0 4px rgba(255, 160, 0, 0.6);
+  background: var(--accent);
 }
 
 #shop .spec-line {
   margin-top: 3px;
   color: #c3cde0;
-  font-weight: 600;
+  font-weight: 400;
 }
 
 /* The rest of the shop in the same style: big buttons, engine swaps, dyno numbers, saved builds. */
 #shop .shop-body .big:not(.ghost),
 #shop .swap-card .big {
-  font: italic 900 17px var(--rx);
+  font: 400 24px var(--rx);
   letter-spacing: 0.12em;
   color: #111;
   background: var(--gloss);
   border: 0;
-  transform: skewX(-10deg);
-  box-shadow: 0 2px 0 #8a4a00, inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow: none;
 }
 
 #shop .swap-now,
 #shop .swap-card,
 #shop .build-slot {
   font-family: var(--rx);
-  font-style: italic;
-  background: var(--steel), rgba(16, 24, 44, 0.85);
+  background: var(--steel), rgba(255, 255, 255, 0.05);
   border: 0;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.12);
 }
 
 #shop .swap-card.sel {
-  box-shadow: inset 0 0 0 1px rgba(255, 190, 60, 0.7), inset 3px 0 0 #ffb000;
+  box-shadow: inset 0 0 0 3px var(--accent);
 }
 
 #shop .swap-now span,
 #shop .swap-now small,
 #shop .swap-specs dt,
 #shop .swap-donor {
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 400;
   letter-spacing: 0.08em;
 }
 
 #shop .swap-now b,
 #shop .swap-head strong {
-  font-size: 18px;
-  font-weight: 800;
+  font-size: 24px;
+  font-weight: 400;
   text-transform: uppercase;
 }
 
 #shop .swap-head em,
 #shop .swap-specs dd {
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 400;
 }
 
 #shop .swap-card p {
@@ -2450,48 +2386,46 @@ body.replay-ui-off #toast {
 }
 
 #shop .swap-back {
-  font: italic 800 14px var(--rx);
+  font: 400 20px var(--rx);
   letter-spacing: 0.06em;
 }
 
 #shop .dyno-stats {
-  font: italic 700 14px var(--rx);
+  font: 400 20px var(--rx);
   letter-spacing: 0.04em;
 }
 
 #shop .dyno-stats b {
-  font-weight: 800;
+  font-weight: 400;
 }
 
 #shop .shop-dyno {
   border: 0;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.16);
 }
 
 #shop .build-slot input {
-  font: italic 800 16px var(--rx);
+  font: 400 22px var(--rx);
   letter-spacing: 0.04em;
   background: rgba(0, 0, 0, 0.4);
   border: 0;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.18);
 }
 
 #shop .build-btns button {
   min-width: 78px;
-  font: italic 900 14px var(--rx);
+  font: 400 20px var(--rx);
   letter-spacing: 0.1em;
   background: var(--gloss);
-  transform: skewX(-12deg);
 }
 
 #shop .build-btns button + button {
   color: #dfe6f3;
-  background: var(--steel), rgba(16, 24, 44, 0.9);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+  background: var(--steel), rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.22);
 }
 
 #shop .shop-paint button {
-  transform: skewX(-10deg);
   border-width: 2px;
 }
 
