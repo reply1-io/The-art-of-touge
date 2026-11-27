@@ -190,16 +190,20 @@ export const ENGINES = {
     orderEq: [[2, -3, 2.2, 1500, 3000], [2, -7, 2.2, 1500, 3000, 4500, 6000],
       // below 2,500 rpm (coasting down, idle) 2x is held down so the firing note leads all the way
       // and glides straight onto the idle note (no hand-over to 2x and back just above idle)
-      [2, -7, 2.0, 2500, 1500, 1250, 1080]], // (and eased off again at idle itself, which is as it was)
+      [2, -7, 2.0, 2500, 1500, 1250, 1080],
+      [3, 5, 1.8, 1500, 3000]],                  // 3x up off idle: a higher-pitched voice // (and eased off again at idle itself, which is as it was)
     coastEven: 0.25,                           // coasting, the two pairs pulse alike (no half-pitch lurch)
     // the high-rpm bark: 400-600 Hz up, faded in with the revs ([Hz, Q, dB, from rpm, full rpm])
-    rpmEq: [[500, 1.1, 2, 3500, 6000], [230, 1.0, -5, 3500, 6000]],
-    rasp: [1600, 0.2, 0.6], rumble: [300, 0.06, 0.7], intake: [500, 0.1, 0.07], intakeRoar: 0.8,
+    rpmEq: [[580, 1.1, 2, 3500, 6000], [230, 1.0, -5, 3500, 6000]],
+    rasp: [2000, 0.15, 1.3], rumble: [300, 0.06, 0.7], intake: [500, 0.1, 0.07], intakeRoar: 0.8,
     level: 1.1,
     // i-VTEC crossover: on above `on` rpm with the throttle past minThr, off below `off` or on a
     // lift (so it doesn't flicker); glides in over `glide` s. Then: intake noise and roar, rasp
     // and level up, and sharper pulses (width, crank degrees)
-    vtec: { on: 5000, off: 4700, minThr: 0.6, glide: 0.03, intake: 8, roar: 6, rasp: 3.2, width: 10, level: 1.9 }, // hits hard
+    vtec: { on: 5000, off: 4700, minThr: 0.6, glide: 0.03, intake: 4, roar: 3, rasp: 3.2, width: 8, level: 1.4, kick: 0.15 },
+    // the high cam's own voice: an intake howl on the upper firing harmonics, only on VTEC (with a
+    // short surge as the cam switches over), so the crossover changes the sound, not just its volume
+    zing: { harmonics: [[3, 1], [4, 0.7], [6, 0.45]], level: 0.3, from: 4800, to: 5200, vtec: true },
   },
 
 };
@@ -338,7 +342,7 @@ export class M20Dsp {
     this.ap = [113, 337, 541, 773].map((n) => ({ d: new Delay(n + 1), n }));
     this.roomLp = new Biquad().set('lp', 2800, 0.7, 0, fs); this.roomHp = new Biquad().set('hp', 120, 0.7, 0, fs);
     this.envF = 0;
-    this.vtecOn = false; this.vtecS = 0; // i-VTEC high cam (engines that have it)
+    this.vtecOn = false; this.vtecS = 0; this.vtecWas = false; this.vtecKick = 0; // i-VTEC high cam (engines that have it)
     this.roarLp = new Biquad().set('lp', 3400, 0.6, 0, fs);   // exhaust flow roar (before the muffler)
     this.intakeRoar = new Biquad(); this.zj = 0;
     this.itbOn = 0; this.itbSet = ''; this.itbPrev = 0;
@@ -617,6 +621,9 @@ export class M20Dsp {
       if (V) {
         if (!this.vtecOn && rpm > V.on && thr > V.minThr && ign > 0.5) this.vtecOn = true;
         else if (this.vtecOn && (rpm < V.off || thr < 0.2 || ign < 0.5)) this.vtecOn = false;
+        if (this.vtecOn && !this.vtecWas) this.vtecKick = 1;   // the switch-over surge
+        this.vtecWas = this.vtecOn;
+        this.vtecKick *= 1 - 1 / ((V.kick || 0.15) * fs);
         this.vtecS += ((this.vtecOn ? 1 : 0) - this.vtecS) / (V.glide * fs);
       } else this.vtecS = 0;
       const vt = this.vtecS;
@@ -729,7 +736,7 @@ export class M20Dsp {
 
       // rasp: turbulence that rides on each pulse, grows with rpm and load
       // at idle the loud pipes' rasp stays low (it reads as hiss); it opens up with load
-      const raspAmt = (0.05 * (1 - 0.7 * lope) * E.idleNoise + 0.22 * thr) * Math.min(1.3, Math.max(E.raspFloor || 0, rpm / 4500)) * X.rasp * E.rasp[2] * (1 - 0.4 * this.T.on) * (V ? 1 + (V.rasp - 1) * vt : 1);
+      const raspAmt = (0.05 * (1 - 0.7 * lope) * E.idleNoise + 0.22 * thr) * Math.min(1.3, Math.max(E.raspFloor || 0, rpm / 4500)) * X.rasp * E.rasp[2] * (1 - 0.4 * this.T.on) * (V ? 1 + (V.rasp - 1) * vt + 1.5 * this.vtecKick : 1);
       // the crack on top of an afterfire: short (popEnv^3 decays fast), band-limited by the
       // rasp filter, and quieter through the stock muffler
       const crack = this.popEnv > 0.02 ? randn() * this.popEnv ** 3 * X.crack : 0;
@@ -834,7 +841,8 @@ export class M20Dsp {
       if (E.zing) {
         const Z = E.zing;
         const u = Math.min(1, Math.max(0, (rpm - Z.from) / (Z.to - Z.from)));
-        const target = ign * Z.level * (0.04 + 0.96 * u * u * (3 - 2 * u)) * (0.45 + 0.55 * thr) * (0.85 + 0.15 * X.open);
+        let target = ign * Z.level * (0.04 + 0.96 * u * u * (3 - 2 * u)) * (0.45 + 0.55 * thr) * (0.85 + 0.15 * X.open);
+        if (Z.vtec) target *= this.vtecS + 0.8 * this.vtecKick; // a VTEC howl: only on the high cam
         this.zingAmp += (target - this.zingAmp) * 0.002;
         // small random phase wobble: a howl from moving metal and air, not an organ note
         this.zj = this.zj * 0.9995 + randn() * 0.012;
