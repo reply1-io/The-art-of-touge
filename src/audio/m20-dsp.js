@@ -193,6 +193,7 @@ export const ENGINES = {
       revDb: -0.7,
     },
     overrunFire: true,                         // off the throttle it falls back to an idle-like level, never a gap
+    fastCut: true,                             // a quick Honda limiter: each cut stops combustion at once
     idleHitScale: 0.35,                        // a loud exhaust hardens its idle less (its idle is already full)
     // filters that follow the revs: [multiple of the firing note, dB, Q]. Its exhaust carries the
     // odd multiples (1x, 3x) and little of 2x
@@ -390,7 +391,7 @@ export class M20Dsp {
     this.orderEq = Array.from({ length: 8 }, () => new Biquad());
     this.eq = Array.from({ length: 10 }, () => new Biquad()); this.eqFor = '';
     this.rpmEq = [new Biquad(), new Biquad()];
-    this.stIdle = Array.from({ length: 6 }, () => new Biquad()); this.stRev = Array.from({ length: 10 }, () => new Biquad()); this.revW = 0; this.revL = 0;
+    this.stIdle = Array.from({ length: 6 }, () => new Biquad()); this.stRev = Array.from({ length: 10 }, () => new Biquad()); this.revW = 0; this.revL = 0; this.cutS = 0;
     this.dcHp = new Biquad().set('hp', 28, 0.7, 0, fs);
     this.raspBp = new Biquad(); this.raspHp = new Biquad().set('hp', 900, 0.7, 0, fs);
     this.rumbleBp = new Biquad(); this.rumbleLp = new Biquad().set('lp', 1200, 0.5, 0, fs);
@@ -636,15 +637,19 @@ export class M20Dsp {
       // combustion strength
       const overrun = thr < 0.06 && rpm > idle * 1.35; // fuel cut
       // engines with overrunFire keep firing at idle strength off the throttle (no fuel-cut silence)
-      const fuel = overrun && !E.overrunFire ? 0 : 1;
+      // a limiter cut (set({ cut: 1 })) on engines with fastCut stops combustion at once (a quick limiter
+      // can't wait for the throttle smoothing, and overrunFire would otherwise keep it firing)
+      this.cutS += ((this.target.cut && E.fastCut ? 1 : 0) - this.cutS) * 0.05;
+      const fuel = (overrun && !E.overrunFire ? 0 : 1) * (1 - this.cutS);
       // idle firings hit harder with a free-flowing exhaust (louder, punchier idle)
       const load = ign * fuel * (0.32 * (1 + (X.idleHit - 1) * (E.idleHitScale || 1) * (1 - thr)) + 0.68 * thr);
       const pump = E.pump;                     // air being pushed out with no combustion
       // i-VTEC: the high-lift cam comes in above the crossover under load, out on a lift
       const V = E.vtec;
       if (V) {
-        if (!this.vtecOn && rpm > V.on && thr > V.minThr && ign > 0.5) this.vtecOn = true;
-        else if (this.vtecOn && (rpm < V.off || thr < 0.2 || ign < 0.5)) this.vtecOn = false;
+        // only under load: free-revving in neutral (set({ inGear: false })) stays on the low cam
+        if (!this.vtecOn && rpm > V.on && thr > V.minThr && ign > 0.5 && this.target.inGear !== false) this.vtecOn = true;
+        else if (this.vtecOn && (rpm < V.off || thr < 0.2 || ign < 0.5 || this.target.inGear === false)) this.vtecOn = false;
         if (this.vtecOn && !this.vtecWas) this.vtecKick = 1;   // the switch-over surge
         this.vtecWas = this.vtecOn;
         this.vtecKick *= 1 - 1 / ((V.kick || 0.15) * fs);
