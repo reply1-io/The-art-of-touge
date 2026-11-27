@@ -399,11 +399,6 @@ export const ITB = {
   // the intake bark: a resonance around 700-900 Hz (higher with the revs) that barks on each
   // blip and lets go: it follows the throttle opening, 30 ms attack, 60 ms release
   bark: [700, 0.03, 3.5], barkGain: 6, barkAttack: 0.03, barkRelease: 0.06,
-  // the gulp: when the throttles snap open, every trumpet sucks in one big breath at once. Heard
-  // as a smooth, deep swell of pressure (no hiss): the air in the trumpets and box rings once at
-  // its resonance, and the pitch sinks as the inrush settles. Sized by how far the pedal went in;
-  // gulpHz: [settled, at the start] Hz, gulpH2: its second harmonic (so small speakers hear it)
-  gulp: 8, gulpHz: [55, 150], gulpH2: 0.35, gulpDecay: 0.4,
 };
 // how each trumpet differs from the average (firing order), scaled by `uneven`
 export const ITB_UNEVEN = [0.26, 0.05, -0.23, -0.22, 0.25, -0.1, 0.15, -0.16];
@@ -432,7 +427,6 @@ export class M20Dsp {
     this.itbEq = [new Biquad(), new Biquad(), new Biquad(), new Biquad(), new Biquad(), new Biquad()]; // low cut x2, drone, rasp x2, drone
     this.itbHiss = [new Biquad(), new Biquad(), new Biquad()]; this.itbPost = [new Biquad(), new Biquad()]; this.itbBark = new Biquad();
     this.itbThrSlow = 0; this.itbEqW = 0; this.itbBarkEnv = 0; this.itbBarkSrc = 0;
-    this.gulpE = 0; this.gulpA = 0; this.gulpThr = 0; this.gulpPh = 0;
     this.itbBox = new Delay(2048); this.itbBoxLp = 0; this.itbBoxA = 0; this.itbBoom = new Biquad();
     // turbo state: boost and shaft speed 0..1, lift-off envelopes and oscillator phases
     this.T = { on: 0, boost: 0, shaft: 0, armed: false, flut: 0, flutRate: 0, flutPh: 0,
@@ -998,17 +992,6 @@ export class M20Dsp {
         const open = Math.min(1, Math.max(0, thr - this.itbThrSlow - 0.15) * 3);
         this.itbBarkEnv += (open - this.itbBarkEnv) * (open > this.itbBarkEnv ? this.itbBarkAtk : this.itbBarkRel);
         y += this.itbBark.run(this.itbBarkSrc) * this.itbBarkEnv * I.barkGain / E.level;
-        // the gulp: every bit the pedal goes in adds to the breath; it swells, then lets go
-        const rise = thr - this.gulpThr; this.gulpThr = thr;
-        if (rise > 0) this.gulpE = Math.min(1.5, this.gulpE + rise);
-        this.gulpE *= 1 - 1 / (I.gulpDecay * fs);
-        this.gulpA += (this.gulpE - this.gulpA) * (1 / (0.025 * fs)); // a soft 25 ms swell: no click
-        if (this.gulpA > 1e-4 && I.gulp) { // one smooth swell, its pitch sinking as it settles
-          const u = Math.min(1, this.gulpA);
-          this.gulpPh += (I.gulpHz[0] + (I.gulpHz[1] - I.gulpHz[0]) * u * u) / fs; this.gulpPh -= Math.floor(this.gulpPh);
-          const w = Math.sin(TAU * this.gulpPh) + I.gulpH2 * Math.sin(2 * TAU * this.gulpPh);
-          y += w * this.gulpA * this.gulpA * I.gulp * this.itbOn * ign / E.level;
-        } else this.gulpPh = 0;
         // air sucking through the trumpets: follows the throttle, not the revs
         const H = this.itbHiss;
         const hissLvl = I.hissFloor * Math.min(1, rpm / 400) + (1 - I.hissFloor) * thr; // fades out only when the engine stops
