@@ -1207,7 +1207,7 @@ $('b-cars').onclick = () => {
   [...$('modal-box').querySelectorAll('.car span')].forEach((s, i) => (s.textContent = `${list[i].name} · ${list[i].parts.length} shapes`));
   $('m-new').onclick = () => {
     modal(`<div class="row"><strong style="flex:1">START A NEW CAR FROM</strong></div>
-      <div class="row"><button type="button" data-start="plain">PLAIN BODY</button><button type="button" data-start="e30">THE E30</button><button type="button" data-start="rx7">THE RX-7</button></div>`);
+      <div class="row"><button type="button" data-start="plain">PLAIN BODY</button><button type="button" data-start="e30">THE E30</button></div>`);
     for (const s of $('modal-box').querySelectorAll('[data-start]'))
       s.onclick = () => {
         remember();

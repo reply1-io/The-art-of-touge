@@ -11,10 +11,11 @@ export const JUNCTION = 8;
 // Every road is a skinny Japanese touge road: two tight lanes, the gutter right at the edge.
 export const HALF = 2.6; // half the road, out to the white edge lines
 export const PAVED = 2.75; // edge of the asphalt
-export const SHOULDER = 3.9; // end of the gravel shoulder
-export const VERGE = 8.4; // end of the verge strip that blends into the terrain
+// No shoulder: past the gutter there is only a hand's width of dirt, then the bushes and trees.
+export const SHOULDER = 3.45; // end of the dirt edge
+export const VERGE = 4.3; // where the ground under the undergrowth starts
 export const RAIL = 3.45; // guardrail line
-export const WALL = 9.6; // invisible wall line
+export const WALL = 4.9; // invisible wall line: in the undergrowth, just past the edge
 // Drainage gutter: a shallow concrete dish with sloped sides, so a tyre rolls in and out of it.
 export const GUTTER_IN = 2.92;
 export const GUTTER_OUT = 3.3;
@@ -88,7 +89,7 @@ export class Road {
   constructor(points, targetLength = 5000, opts = {}) {
     // profile(f): the road's height (m) at fraction f (0..1) of the way along it, for roads built
     // to a real climb. bankAt(f): how much of the usual banking the road has there (0 = flat).
-    const { world: inMetres = false, gradeBase = 0.058, twistGain = 1.1, width = 'wide', gradeAt = null, heightAt = null, loop = false, ends = null, profile = null, bankAt = null } = opts;
+    const { world: inMetres = false, gradeBase = 0.058, twistGain = 1.1, width = 'wide', gradeAt = null, heightAt = null, loop = false, ends = null, profile = null, bankAt = null, superAt = null } = opts;
     this.w = WIDTHS[width] || WIDTHS.wide;
     // ---- Plan view: spline, scale to length, resample at STEP ----
     const dense = inMetres ? points : catmullRom(points);
@@ -224,7 +225,17 @@ export class Road {
     this.loop = loop;
 
     // ---- Banking: corners lean hard into the turn, hairpins most of all (up to about 12 degrees) ----
-    const bankRaw = this.kappa.map((k, i) => clamp(-k * 3.4 * (bankAt ? bankAt(i / (n - 1)) : 1), -0.21, 0.21));
+    // superAt(f): a real road's superelevation, the most its corners are banked there (a slope:
+    // 0.06 = 6%). Built as the highway engineers do: full banking on any corner tighter than about
+    // 150 m, less on gentle bends, none on the straights, eased off on the tightest switchbacks.
+    const superelev = (k, f) => {
+      const r = 1 / Math.max(Math.abs(k), 1e-6);
+      const share = Math.min(1, 150 / r) * (r < 22 ? 0.45 + 0.55 * clamp((r - 12) / 10, 0, 1) : 1);
+      return -Math.sign(k) * Math.atan(superAt(f) * share);
+    };
+    const bankRaw = this.kappa.map((k, i) =>
+      superAt ? superelev(k, i / (n - 1)) : clamp(-k * 3.4 * (bankAt ? bankAt(i / (n - 1)) : 1), -0.21, 0.21),
+    );
     this.bank = sm(bankRaw, 13, 2);
 
     // ---- Drainage gutters on the inside of a few medium corners ----
@@ -400,7 +411,7 @@ export function crossSection(road, i) {
   const gr = road.gutterRight[i];
   const { HALF: H, PAVED: P, GUTTER_IN: GI, GUTTER_OUT: GO, SHOULDER: SH } = road.w;
   return [
-    [VERGE, -0.6, 'verge'],
+    [VERGE, -0.3, 'verge'],
     // The shoulder carries on the road's banking up to the rail, with no step down.
     [SH, 0, 'shoulder'],
     [GO, 0, gl > 0 ? 'gutter' : 'shoulder'],
@@ -417,7 +428,7 @@ export function crossSection(road, i) {
     [-(GO - 0.14), -gr, gr > 0 ? 'gutter' : 'shoulder'],
     [-GO, 0, gr > 0 ? 'gutter' : 'shoulder'],
     [-SH, 0, 'shoulder'],
-    [-VERGE, -0.6, 'verge'],
+    [-VERGE, -0.3, 'verge'],
   ];
 }
 

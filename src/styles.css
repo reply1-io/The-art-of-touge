@@ -1,3 +1,13 @@
+/* VT323 (SIL Open Font License, see src/fonts/VT323-OFL.txt), shipped with the game so every
+   device shows the same pixel type instead of falling back to its own monospace. */
+@font-face {
+  font-family: 'VT323';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('./fonts/vt323-latin-400-normal.woff2') format('woff2'), url('./fonts/vt323-latin-400-normal.woff') format('woff');
+}
+
 :root {
   --ink: #eef1f6;
   --dim: #9aa6bd;
@@ -2030,4 +2040,313 @@ body.replay-ui-off #toast {
 #minimap,
 #vhs {
   display: none !important;
+}
+
+/* ---------- Tuning shop, laid out like Midnight Racing: Tokyo's ----------
+   The car in the middle of a late-night garage, a column of category icons on the left with Exit at
+   the bottom, and the chosen category's parts on the right. Changed values get a little undo arrow.
+   Same pixel type and square edges as the rest of the game, with the amber turned down. */
+#shop {
+  --accent: #c88a34;
+}
+
+#shop .shop-panel {
+  width: min(42vw, 380px);
+  padding: 12px calc(12px + var(--sr)) 0 14px;
+  background: rgba(10, 9, 8, 0.8);
+  border-left: 2px solid rgba(200, 138, 52, 0.55);
+}
+
+#shop .shop-head {
+  align-items: baseline;
+  padding-bottom: 6px;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+#shop .shop-head h2 {
+  font-size: clamp(22px, 6vh, 30px);
+  text-transform: uppercase;
+}
+
+#shop .shop-money {
+  font-size: 22px;
+  color: #8fc99a;
+  text-shadow: none;
+}
+
+/* Car name and the one-line spec, quiet, top and bottom centre of the view. */
+#shop .shop-car {
+  left: calc(64px + 14px + var(--sl));
+  top: 12px;
+  gap: 0;
+}
+
+#shop .shop-car span {
+  font-size: 14px;
+  letter-spacing: 0.3em;
+  color: var(--accent);
+}
+
+#shop .shop-car b {
+  font-size: clamp(20px, 5.4vh, 28px);
+  color: #e8e2d6;
+}
+
+#shop .shop-readout {
+  left: calc(64px + 14px + var(--sl));
+  right: 96px;
+  bottom: calc(14px + var(--sb));
+  padding: 0;
+  background: none;
+  border: 0;
+  font-size: 17px;
+  color: rgba(232, 226, 214, 0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The icon rail. */
+.shop-rail {
+  position: absolute;
+  left: var(--sl);
+  top: 0;
+  bottom: 0;
+  width: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 8px calc(10px + var(--sb));
+  background: rgba(8, 7, 6, 0.72);
+  border-right: 2px solid rgba(255, 255, 255, 0.08);
+  overflow-y: auto;
+  scrollbar-width: none;
+  cursor: default;
+}
+
+.shop-rail button {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 40px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 2px solid transparent;
+  border-radius: 0;
+  color: rgba(232, 226, 214, 0.55);
+}
+
+.shop-rail button svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.shop-rail button.sel {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(200, 138, 52, 0.12);
+}
+
+.shop-rail .shop-exit {
+  margin-top: auto;
+  height: 34px;
+  font: 400 20px 'VT323', ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  color: #111;
+  background: var(--accent);
+}
+
+/* Parts: one row each, the description only on the fitted part. */
+#shop .shop-body {
+  padding: 0 2px calc(16px + var(--sb));
+}
+
+#shop .shop-section {
+  margin-top: 14px;
+}
+
+#shop .shop-section h3 {
+  font-size: 18px;
+  color: rgba(232, 226, 214, 0.5);
+}
+
+#shop .shop-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#shop .shop-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 0 10px;
+  padding: 5px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+#shop .shop-card strong {
+  font-size: 21px;
+  color: #e8e2d6;
+}
+
+#shop .shop-card em {
+  grid-row: 1;
+  grid-column: 2;
+  font-size: 18px;
+}
+
+#shop .shop-card span {
+  display: none;
+  grid-column: 1 / span 2;
+  color: rgba(232, 226, 214, 0.65);
+}
+
+#shop .shop-card.sel {
+  background: rgba(200, 138, 52, 0.1);
+  border-color: var(--accent);
+}
+
+#shop .shop-card.sel strong {
+  color: var(--accent);
+}
+
+#shop .shop-card.sel span {
+  display: block;
+}
+
+#shop .shop-card.locked {
+  opacity: 0.45;
+}
+
+#shop .shop-card em.lock {
+  font-size: 14px;
+  color: #d0705e;
+}
+
+#shop .shop-chips button,
+#shop .shop-paint button {
+  border-width: 2px;
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+#shop .shop-chips button.sel {
+  border-color: var(--accent);
+}
+
+#shop .shop-slider {
+  position: relative;
+  padding-bottom: 14px;
+}
+
+#shop .shop-slider .val {
+  color: var(--accent);
+}
+
+#shop .shop-slider input {
+  accent-color: var(--accent);
+}
+
+/* The little circular undo arrow under a changed value. */
+#shop .shop-undo {
+  position: absolute;
+  right: 0;
+  bottom: -6px;
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  display: none;
+  background: none;
+  border: 0;
+  color: var(--accent);
+}
+
+#shop .shop-undo.on {
+  display: block;
+}
+
+#shop .shop-undo svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+}
+
+#shop .shop-body > .big.ghost {
+  font-size: 20px;
+  opacity: 0.7;
+}
+
+#shop .shop-rev {
+  border-color: var(--accent);
+  color: var(--accent);
+  text-shadow: none;
+}
+
+#shop .shop-rev svg {
+  stroke: var(--accent);
+}
+
+#shop .shop-rev.on {
+  background: var(--accent);
+  color: #111;
+}
+
+#shop .shop-chips button.sel {
+  color: #111;
+  background: var(--accent);
+}
+
+@media (max-height: 460px) {
+  .shop-rail {
+    gap: 2px;
+    padding: 6px 8px calc(6px + var(--sb));
+  }
+  .shop-rail button {
+    height: 30px;
+  }
+  .shop-rail button svg {
+    width: 20px;
+    height: 20px;
+  }
+  .shop-rail .shop-exit {
+    height: 28px;
+    font-size: 18px;
+  }
+}
+
+/* Camera adjustment in the settings. */
+.cam-adjust .cam-slider {
+  display: block;
+  margin-top: 8px;
+}
+
+.cam-adjust .cam-slider .label b {
+  float: right;
+  font-weight: 400;
+  color: var(--accent);
+}
+
+.cam-adjust input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.cam-adjust .cam-reset {
+  margin-top: 8px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 16px;
+  color: var(--muted, #aaa);
+  background: none;
+  border: 2px solid rgba(255, 255, 255, 0.2);
 }

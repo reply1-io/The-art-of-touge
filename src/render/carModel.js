@@ -8,7 +8,7 @@ import { RX7_SHAPE } from './shapes/rx7.js';
 import { customShape, registerStockShapes } from './shapes/custom.js';
 import { loadDesigns } from '../builder/customStore.js';
 import { paintTexture, addPaintLayer } from './shapes/paintLayer.js';
-import { PLATES, WHEELS, EXHAUSTS, HEADLIGHTS, TAILLIGHTS, wheelSetup, TUNABLE_DEFAULTS } from '../config.js';
+import { PLATES, WHEELS, wheelColorOf, EXHAUSTS, HEADLIGHTS, TAILLIGHTS, wheelSetup, TUNABLE_DEFAULTS } from '../config.js';
 
 const GROUND = -0.62; // ground level in body space at static ride height
 
@@ -138,6 +138,19 @@ function bodyPolys() {
     for (const side of [1, -1]) trim.push({ pts: pts.map((p) => [side * 0.6, p[1], p[2]]), color: UNDER, out: [side, 0, 0] });
   }
   return { paint, trim, cabinTop };
+}
+
+// Back faces of a body material draw as dark interior trim.
+function darkInside(m) {
+  const prev = m.onBeforeCompile;
+  m.onBeforeCompile = (sh, r) => {
+    prev?.call(m, sh, r);
+    sh.fragmentShader = sh.fragmentShader.replace(
+      '#include <color_fragment>',
+      '#include <color_fragment>\n  if (!gl_FrontFacing) diffuseColor.rgb = vec3(0.05, 0.05, 0.055);',
+    );
+  };
+  m.customProgramCacheKey = () => 'darkInside';
 }
 
 // ---------- Greenhouse: upright E30 glasshouse with thin pillars ----------
@@ -310,9 +323,22 @@ function detailPolys() {
 // lip, a shaded dish (darker towards the middle, so the face reads as concave), its spokes, and a
 // hub with four lug nuts on the E30's 4x100 circle.
 const faceCache = new Map();
-export function rimTexture(styleId) {
-  if (faceCache.has(styleId)) return faceCache.get(styleId);
+export function rimTexture(styleId, color) {
   const st = WHEELS[styleId] || WHEELS.bbs;
+  const col = wheelColorOf(styleId in WHEELS ? styleId : 'bbs', color);
+  const ck = `${styleId}|${col}`;
+  if (faceCache.has(ck)) return faceCache.get(ck);
+  const pic = st.colors?.[col];
+  if (pic) {
+    const t = new THREE.TextureLoader().load(`${import.meta.env?.BASE_URL ?? './'}${pic}`);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.magFilter = THREE.NearestFilter;
+    t.minFilter = THREE.NearestFilter;
+    t.generateMipmaps = false;
+    faceCache.set(ck, t);
+    return t;
+  }
+  if (faceCache.has(styleId)) return faceCache.get(styleId);
   // A style with its own picture (a low-res photo of the real wheel): show it crisp and pixelated.
   if (st.image) {
     const t = new THREE.TextureLoader().load(`${import.meta.env?.BASE_URL ?? './'}${st.image}`);
@@ -540,7 +566,7 @@ export function rimTexture(styleId) {
 
 // One wheel: tyre tread, sidewalls between the rim and the tread, the rim face and the inner side.
 // Built facing +x (outward for a left wheel).
-function makeWheel(ws, styleId, tyreMat, wallMat) {
+function makeWheel(ws, styleId, tyreMat, wallMat, color) {
   const group = new THREE.Group();
   const R = ws.radius;
   const r = ws.rimRadius + 0.012;
@@ -558,7 +584,7 @@ function makeWheel(ws, styleId, tyreMat, wallMat) {
   }
   const face = new THREE.CircleGeometry(r, 20);
   face.rotateY(Math.PI / 2);
-  const rim = new THREE.Mesh(face, new THREE.MeshLambertMaterial({ map: rimTexture(styleId) }));
+  const rim = new THREE.Mesh(face, new THREE.MeshLambertMaterial({ map: rimTexture(styleId, color) }));
   rim.position.x = ws.stretched ? rimHalf + 0.004 : half - 0.02; // inside the sidewall, or proud when stretched
   group.add(rim);
   const back = new THREE.Mesh(new THREE.CircleGeometry(R, 20).rotateY(-Math.PI / 2), tyreMat);
@@ -719,6 +745,9 @@ export class CarModel {
     this.glass = new THREE.Mesh(polyGeometry(cabin.glass), glassMat);
     body.add(this.glass);
     this.shellMats = [this.paintMat, flat];
+    // From inside, the backs of the body panels are the cabin's dark trim (pillars, door tops,
+    // roof frame), not paint.
+    for (const m of this.shellMats) darkInside(m);
     this.cockpit = new Cockpit();
     body.add(this.cockpit.root);
     body.add(new THREE.Mesh(polyGeometry(detail.tail), this.tailMat));
@@ -873,14 +902,14 @@ export class CarModel {
     this.#applyLooks(tune);
     if (this.exhaustType !== (tune.exhaust || 'stock')) this.#buildPipe(tune.exhaust || 'stock');
     const ws = wheelSetup(tune);
-    const key = `${tune.wheel}|${ws.rim}|${ws.profile}|${ws.stretched}`;
+    const key = `${tune.wheel}|${wheelColorOf(tune.wheel, tune.wheelColor)}|${ws.rim}|${ws.profile}|${ws.stretched}`;
     for (const w of this.wheels) {
       if (this.wheelKey !== key) {
         if (w.spin) {
           w.camber.remove(w.spin);
           w.spin.traverse((o) => o.geometry?.dispose());
         }
-        w.spin = makeWheel(ws, tune.wheel, this.tyreMat, this.wallMat);
+        w.spin = makeWheel(ws, tune.wheel, this.tyreMat, this.wallMat, tune.wheelColor);
         if (w.side < 0) w.spin.scale.x = -1; // right-hand wheels: rim faces outward
         w.camber.add(w.spin);
       }
@@ -960,12 +989,11 @@ export class CarModel {
     this.cockpit.setSeats(t.seats === 'bucket' ? 'bucket' : 'stock');
     this.paintMat.color.set(t.paint || '#efeee6');
     this.lidMat.color.set(t.paint || '#efeee6');
-    this.headColor = t.headlights || 'white';
+    this.headColor = 'white'; // (lamp colours are not customisable)
     const head = (HEADLIGHTS[this.headColor] || HEADLIGHTS.white)[1];
     this.headMat.color.setHex(head).lerp(new THREE.Color(0xe8ecf0), 0.35);
     this.lensMat.color.setHex(head).lerp(new THREE.Color(0xffffff), 0.6);
-    this.tailMat.color.setHex((TAILLIGHTS[t.taillights] || TAILLIGHTS.red)[1]);
-    this.tailLensMat?.color.setHex(t.taillights === 'smoked' ? 0x5a4a4c : 0xffffff);
+    this.tailMat.color.setHex(TAILLIGHTS.red[1]);
     if (!this.plateDrawn) {
       this.plateDrawn = true;
       this.#drawPlate();

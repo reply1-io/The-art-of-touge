@@ -24,14 +24,14 @@ test('Real roads: two roads, both ways, every one in the road list', () => {
   for (const id of ['tunitas-down', 'tunitas-up', 'us276-up', 'us276-down']) assert.ok(ids.includes(id), id);
 });
 
-test('Real roads: never cross themselves, no climb steeper than 8%', () => {
+test('Real roads: never cross themselves, no climb steeper than 12%', () => {
   for (const [id, t] of REAL) {
     const road = t.road();
     assert.ok(road.length > 5000, `${id}: ${road.length} m`);
     let closest = Infinity;
     for (let i = 0; i < road.count; i += 3) for (let j = i + 60; j < road.count; j += 3) closest = Math.min(closest, Math.hypot(road.x[i] - road.x[j], road.z[i] - road.z[j]));
     assert.ok(closest > 26, `${id}: legs ${closest.toFixed(1)} m apart`);
-    for (const g of road.grade) assert.ok(Math.abs(g) < 0.08, `${id}: grade ${g}`);
+    for (const g of road.grade) assert.ok(Math.abs(g) < 0.12, `${id}: grade ${g}`);
   }
 });
 
@@ -51,28 +51,31 @@ test('Real roads: the same road both ways', () => {
   }
 });
 
-test('Real roads: hairpins flat, only some sweepers banked', () => {
+test('Real roads: banked like the real roads (superelevated corners, flat straights)', () => {
+  const most = { dragon: 0.07, 'tunitas-down': 0.015, 'tunitas-up': 0.015, 'us276-up': 0.06, 'us276-down': 0.06 };
   for (const [id, t] of REAL) {
     const road = t.road();
-    let flatHairpin = 0;
-    let hairpin = 0;
     let banked = 0;
     for (let i = 10; i < road.count - 10; i++) {
-      const k = Math.abs(road.kappa[i]);
-      if (k > 1 / 20) {
-        hairpin++;
-        if (Math.abs(road.bank[i]) < 0.07) flatHairpin++;
-      }
-      if (Math.abs(road.bank[i]) > 0.06) banked++;
+      const e = Math.tan(Math.abs(road.bank[i]));
+      assert.ok(e <= most[id] + 0.002, `${id}: ${(e * 100).toFixed(1)}% banking`);
+      if (e > most[id] * 0.6) banked++;
     }
-    if (hairpin) assert.ok(flatHairpin / hairpin > 0.9, `${id}: ${flatHairpin}/${hairpin} hairpin samples flat`);
-    // Some banking, but nowhere near every corner.
-    if (id !== 'tunitas-down' && id !== 'tunitas-up') assert.ok(banked > 20, `${id}: banked ${banked}`);
-    assert.ok(banked / road.count < 0.35, `${id}: banked ${banked}/${road.count}`);
+    // The corners are banked, but not the whole road.
+    assert.ok(banked > 20 && banked / road.count < 0.9, `${id}: banked ${banked}/${road.count}`);
   }
-  // Tunitas Creek is flat all the way.
-  const tun = TRACKS['tunitas-down'].road();
-  for (const b of tun.bank) assert.ok(Math.abs(b) < 0.05, `Tunitas bank ${b}`);
+});
+
+test('Real roads: heights match the real roads', () => {
+  const span = (id) => {
+    const r = TRACKS[id].road();
+    return Math.max(...r.y) - Math.min(...r.y);
+  };
+  // Deals Gap 606 m down to about 280 m; Skyline 625 m to Highway 1 at 38 m; the Parkway at
+  // 1,380 m down to the forest entrance at 651 m.
+  assert.ok(Math.abs(span('dragon') - 326) < 15, `dragon ${span('dragon')}`);
+  assert.ok(Math.abs(span('tunitas-down') - 587) < 15, `tunitas ${span('tunitas-down')}`);
+  assert.ok(Math.abs(span('us276-down') - 729) < 15, `us276 ${span('us276-down')}`);
 });
 
 test('Real roads: the agreed stops are there', () => {

@@ -2,14 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ENGINE_SWAPS } from '../src/config.js';
 
-test('engine swaps: every swap lists its specs and the car it comes from; the rotary, the 1JZ and the LS3 can be fitted', () => {
+test('engine swaps: every swap lists its specs and the car it comes from; the 1JZ can be fitted; no rotary or LS3', () => {
   for (const [id, sw] of Object.entries(ENGINE_SWAPS)) {
     for (const k of ['name', 'donor', 'layout', 'displacement', 'aspiration', 'hp', 'hpRpm', 'nm', 'nmRpm', 'redline', 'kg', 'blurb']) assert.ok(sw[k], `${id} has ${k}`);
     if (sw.ready) assert.ok(sw.engine?.torqueCurve?.length, `${id} has an engine model`);
   }
-  assert.ok(ENGINE_SWAPS.rotary.ready);
+  assert.ok(!ENGINE_SWAPS.rotary && !ENGINE_SWAPS.ls3);
   assert.ok(ENGINE_SWAPS['1jz'].ready);
-  assert.ok(ENGINE_SWAPS.ls3.ready);
   // Every fitted swap's torque curve matches its card: peak power within 5% of what the card says.
   for (const [id, r] of Object.entries(ENGINE_SWAPS)) {
     if (!r.ready) continue;
@@ -24,5 +23,5 @@ test('engine swaps: every swap lists its specs and the car it comes from; the ro
     }
     assert.ok(Math.abs(best - r.hp) / r.hp < 0.05, `${id}: peak ${best.toFixed(0)} hp vs ${r.hp}`);
   }
-  for (const id of ['1jz', '4age', 'ls3', 'k24', 'm50', 'sr20']) assert.ok(ENGINE_SWAPS[id], `${id} listed`);
+  for (const id of ['1jz', '4age', 'k24', 'm50', 'sr20']) assert.ok(ENGINE_SWAPS[id], `${id} listed`);
 });

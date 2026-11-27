@@ -2,7 +2,7 @@
 import './styles.css';
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { CAR, partsSetup, wheelSetup } from './config.js';
+import { CAR, partsSetup, wheelSetup, revExtra } from './config.js';
 import { Vehicle } from './physics/vehicle.js';
 import { Engine } from './physics/engine.js';
 import { SoftBarrier } from './physics/barrier.js';
@@ -40,7 +40,7 @@ import { MiniMap } from './ui/miniMap.js';
 import { Rain } from './render/rain.js';
 import { Recorder, Director, FreeCam, HZ, lensFor, drivingLens } from './game/replay.js';
 import { medalTimes, medalFor } from './game/medals.js';
-import { loadSettings, saveSettings, loadTuning, saveTuning } from './settings.js';
+import { loadSettings, saveSettings, loadTuning, saveTuning, CAM_DEFAULTS } from './settings.js';
 
 const DT = 1 / 60; // fixed physics step
 const MAX_STEPS = 5;
@@ -91,7 +91,8 @@ scene.add(hemi);
 // Real low beams: a wide, flat spread with a sharp cut-off along the top, brightest just under the
 // cut-off so it reaches down the road, with the step up on the left (kerb) side, as aimed for
 // driving on the left in Japan. Physical fall-off (decay 2): bright close in, dim far away.
-const headlight = new THREE.SpotLight(0xfff2d8, 1100, 160, 0.72, 0.12, 2);
+// Reaches far down the road (gentle fall-off), with a wide soft edge that fades out gradually.
+const headlight = new THREE.SpotLight(0xfff2d8, 260, 260, 0.62, 0.95, 1.25);
 headlight.map = lowBeamTexture();
 scene.add(headlight, headlight.target);
 
@@ -271,6 +272,7 @@ function toast(text, seconds = 1.4) {
 }
 
 function renderChoices() {
+  renderCamAdjust();
   for (const box of document.querySelectorAll('.choices[data-setting]')) {
     const key = box.dataset.setting;
     const options =
@@ -338,9 +340,8 @@ function applySettings() {
   applyTime();
   updateTitleSub();
   rig.mode = settings.camera;
-  rig.userFov = Math.max(50, Math.min(150, settings.fov ?? 60));
-  for (const el of document.querySelectorAll('.drive-fov input')) el.value = String(rig.userFov);
-  for (const el of document.querySelectorAll('.drive-fov b')) el.textContent = `${rig.userFov}\u00b0`;
+  rig.adjust = settings.cams?.[rig.mode] || rig.adjust;
+  rig.userFov = rig.mode === 'chase' ? 60 : Math.max(50, Math.min(150, rig.adjust.fov ?? 60)); // (the chase camera's size keeps to 60; its own FOV is in adjust)
   audio.setMuted(!settings.sound);
   // The camcorder look: heavy while driving (a filmed run), off for a clean picture.
   vhs.strength = settings.vhs ? 0.85 : 0;
@@ -649,13 +650,74 @@ function showResults(r) {
   setTimeout(() => $('results').classList.remove('hidden'), 1200);
 }
 $('btn-home').addEventListener('click', goHome);
-// Field of view while driving: the chase camera moves in or out to match.
-for (const el of document.querySelectorAll('.drive-fov input')) {
-  el.addEventListener('input', () => {
-    settings.fov = Number(el.value);
-    saveSettings(settings);
-    applySettings();
-  });
+// Camera adjustment in the settings: pick a camera (it becomes the one you drive with), then set
+// its field of view, tilt, centre and how close it sits. Each camera keeps its own.
+const CAM_SLIDERS = [
+  ['fov', 'Field of view', 40, 150, 1, (v) => `${v}\u00b0`],
+  ['tilt', 'Tilt', -20, 20, 1, (v) => (v === 0 ? 'Level' : `${v > 0 ? 'Up' : 'Down'} ${Math.abs(v)}\u00b0`)],
+  ['x', 'Centre', -100, 100, 5, (v) => (v === 0 ? 'Middle' : `${v > 0 ? 'Right' : 'Left'} ${Math.abs(v)}`)],
+  ['closer', 'Closer', -100, 100, 5, (v) => (v === 0 ? 'As set' : v > 0 ? `Closer ${v}` : `Further ${-v}`)],
+];
+const CAM_NAMES = [['chase', 'Chase'], ['cockpit', 'In car'], ['bumper', 'Bumper']];
+function renderCamAdjust() {
+  for (const box of document.querySelectorAll('.cam-adjust')) {
+    box.innerHTML = '';
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = 'Camera';
+    const pick = document.createElement('div');
+    pick.className = 'choices';
+    for (const [id, name] of CAM_NAMES) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = name;
+      if (settings.camera === id) b.classList.add('sel');
+      b.addEventListener('click', () => {
+        settings.camera = id;
+        saveSettings(settings);
+        applySettings();
+        renderChoices();
+      });
+      pick.append(b);
+    }
+    box.append(label, pick);
+    const cur = settings.cams[settings.camera] || settings.cams.chase;
+    for (const [key, name, min, max, step, show] of CAM_SLIDERS) {
+      const row = document.createElement('label');
+      row.className = 'cam-slider';
+      const t = document.createElement('span');
+      t.className = 'label';
+      t.textContent = name;
+      const val = document.createElement('b');
+      val.textContent = show(cur[key]);
+      t.append(val);
+      const input = document.createElement('input');
+      input.type = 'range';
+      input.min = String(min);
+      input.max = String(max);
+      input.step = String(step);
+      input.value = String(cur[key]);
+      input.addEventListener('input', () => {
+        cur[key] = Number(input.value);
+        val.textContent = show(cur[key]);
+        saveSettings(settings);
+        applySettings();
+      });
+      row.append(t, input);
+      box.append(row);
+    }
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.className = 'cam-reset';
+    reset.textContent = 'RESET THIS CAMERA';
+    reset.addEventListener('click', () => {
+      settings.cams[settings.camera] = { ...CAM_DEFAULTS[settings.camera] };
+      saveSettings(settings);
+      applySettings();
+      renderCamAdjust();
+    });
+    box.append(reset);
+  }
 }
 $('btn-recover').addEventListener('click', () => {
   recoverCar();
@@ -673,7 +735,7 @@ const shop = new Shop($('shop'), tune, () => {
   saveTuning(tune);
   carModel?.applySetup(tune);
   online?.sendLook(tune);
-  headlight.color.setHex((HEADLIGHTS[tune.headlights] || HEADLIGHTS.white)[1]);
+  headlight.color.setHex(HEADLIGHTS.white[1]);
 }, wallet);
 wallet.onChange = () => {
   for (const el of document.querySelectorAll('.title-money')) el.textContent = money(wallet.balance);
@@ -1056,6 +1118,46 @@ function goHome() {
 
 // ---------- Revving the car in the workshop ----------
 // The car's engine on its own (out of gear), driven by the rev button and heard through the same
+// Tuned ECU pops for the sound ({ count, speed }), or null on the stock map.
+function ecuPops(t) {
+  return t.ecu === 'tuned' ? { count: Math.max(0, Math.round(t.popAmount ?? 4)), speed: Math.max(1, Math.min(10, t.popSpeed ?? 5)) } : null;
+}
+// Flames from the tailpipe. Stock map: the race exhaust spits a little off the limiter, on shifts
+// and on lift-off. Tuned ECU: only if flames are switched on, one with each pop after a lift-off,
+// coming as fast as the pops do.
+const roadFlames = { queue: [] };
+const shopFlames = { queue: [] };
+function exhaustFlames(model, ev, dt, st) {
+  const t = tune;
+  if (t.ecu === 'tuned') {
+    if (ev.lift && t.flames) {
+      const p = ecuPops(t);
+      const gap = 0.9 / p.speed; // seconds between pops, roughly as the sound spaces them
+      st.queue = [];
+      let at = 0.25;
+      for (let i = 0; i < p.count; i++) {
+        st.queue.push(at);
+        at += gap * (0.6 + 0.8 * Math.random());
+      }
+    }
+    if (!t.flames) st.queue = [];
+    for (let i = st.queue.length - 1; i >= 0; i--) {
+      st.queue[i] -= dt;
+      if (st.queue[i] <= 0) {
+        model.flame(0.55 + 0.45 * Math.random());
+        st.queue.splice(i, 1);
+      }
+    }
+    if (ev.limiter && t.flames) model.flame(0.6);
+    return;
+  }
+  st.queue = [];
+  if (t.exhaust !== 'race') return;
+  if (ev.lift) model.flame(1);
+  if (ev.shift) model.flame(0.8);
+  if (ev.limiter) model.flame(0.6);
+}
+
 // engine sound as on the road, with whatever intake, turbo and exhaust are fitted.
 let revCar = null;
 const revExhaust = new ExhaustEvents();
@@ -1083,15 +1185,13 @@ function shopEngine(dt) {
     e.integrate(e.torque(thr), h);
     e.checkStall(false);
   }
+  revCar.engine.revExtra = revExtra(tune);
   const ev = revExhaust.update(revCar, dt, tune.exhaust);
   audio.setExhaust(tune.exhaust || 'stock');
   audio.setParts(tune.intake || 'stock', tune.turbo || 'none');
+  audio.setEcuPops(ecuPops(tune));
   audio.update(revCar, dt, ev);
-  // Race exhaust: flames off the limiter and when you lift.
-  if (tune.exhaust === 'race') {
-    if (ev.lift) shop.car.flame(1);
-    if (ev.limiter) shop.car.flame(0.6);
-  }
+  exhaustFlames(shop.car, ev, dt, shopFlames);
 }
 shop.onClose = () => {
   // Leaving the workshop: the engine you were revving falls quiet.
@@ -1767,13 +1867,9 @@ function frame(now) {
     audio.setExhaust(tune.exhaust || 'stock');
     audio.setParts(tune.intake || 'stock', tune.turbo || 'none');
     audio.setBigBrakes(tune.brakes === 'bbk');
+    audio.setEcuPops(ecuPops(tune));
     audio.update(vehicle, dt, ev);
-    // Race exhaust: little flames off the limiter, on shifts and on lift-off.
-    if (tune.exhaust === 'race') {
-      if (ev.lift) carModel.flame(1);
-      if (ev.shift) carModel.flame(0.8);
-      if (ev.limiter) carModel.flame(0.6);
-    }
+    exhaustFlames(carModel, ev, dt, roadFlames);
   }
   carModel.updateFx(dt);
   online.update(dt, vehicle, controls, timePreset.lights);
@@ -1842,6 +1938,8 @@ function frame(now) {
   {
     // (The picture is shifted up 20% for the touch controls, so the lens centre sits higher too.)
     Object.assign(vhs.lens, { fish: drivingLens(rig.userFov ?? 60).fish, hood: 0, circle: 0, cy: 0.7 });
+    // In the car: an action camera's wide, bowed lens.
+    vhs.barrel = running && rig.mode === 'cockpit' ? 0.5 : 0;
   }
   vhs.render(scene, camera, now / 1000);
   // Lens flare when facing the sun, unless the mountain is in the way.
@@ -1866,7 +1964,7 @@ function frame(now) {
     running
       ? {
           rpm: vehicle.rpm,
-          redline: CAR.engine.redline,
+          redline: CAR.engine.redline + revExtra(tune),
           speedMph: vehicle.forwardSpeed * 2.23694,
           gear: tr.label,
           showGear: tr.mode === 'auto',
@@ -1910,7 +2008,7 @@ async function boot() {
   });
   carModel = new CarModel(CAR);
   carModel.applySetup(tune);
-  headlight.color.setHex((HEADLIGHTS[tune.headlights] || HEADLIGHTS.white)[1]);
+  headlight.color.setHex(HEADLIGHTS.white[1]);
   scene.add(carModel.root);
   sparks = new Sparks(scene);
   glints = new Glints(carModel.root);

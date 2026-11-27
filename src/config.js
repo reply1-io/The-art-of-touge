@@ -73,76 +73,7 @@ const E30 = {
   sound: 'm20',
 };
 
-// Mazda RX-7 (FC3S, 1990 non-turbo): 13B two-rotor, about 160 hp at 7,000 rpm and a 7,500 rpm
-// redline, near 50:50 balance with the engine behind the front axle, a light, quick-revving
-// rotor pack and little engine braking.
-const RX7 = {
-  id: 'rx7',
-  shape: 'rx7',
-  name: 'Mazda RX-7 FC',
-  blurb: '13B rotary, 160 hp, 7,500 rpm. Balanced and light on its feet; loves to rev, little engine braking.',
-  mass: 1250,
-  halfExtents: { x: 0.83, y: 0.3, z: 2.14 },
-  centerOfMass: { x: 0, y: -0.2, z: 0.0 },
-  inertia: { x: 1500, y: 1800, z: 440 },
-  dragArea: 0.53, // Cd 0.31 x 1.7 m2
-  rollingResistance: 0.013,
-
-  wheelbase: 2.43,
-  trackFront: 1.45,
-  trackRear: 1.44,
-  frontAxleZ: 1.2,
-  rearAxleZ: -1.23,
-  wheelMountY: -0.1,
-  wheelRadius: 0.305,
-  wheelWidth: 0.195,
-  wheelInertia: 1.0,
-  suspensionRest: 0.3,
-  suspensionTravel: 0.18,
-  maxSteer: (36 * Math.PI) / 180,
-
-  engine: {
-    idleRpm: 790, // settles about 40 rpm lower: a 750 rpm idle
-    idleMaxThrottle: 0.25,
-    redline: 7500,
-    limiterRpm: 7600,
-    limiterResumeRpm: 7300,
-    stallRpm: 450,
-    inertia: 0.13, // rotors and a light flywheel: revs climb and fall quickly
-    torqueCurve: [
-      [0, 90],
-      [800, 120],
-      [1500, 140],
-      [2500, 160],
-      [3500, 176],
-      [4500, 190],
-      [5500, 186],
-      [6500, 175],
-      [7000, 165],
-      [7500, 150],
-      [8000, 125],
-    ],
-    frictionTorque: 14,
-    frictionPerRpm: 0.005, // a rotary has little engine braking
-  },
-
-  gears: [3.475, 2.002, 1.366, 1.0, 0.711],
-  reverse: 3.493,
-  finalDrive: 4.1,
-  drivelineEfficiency: 0.9,
-  clutchTorque: 300,
-
-  brakeTorqueFront: 1700,
-  brakeTorqueRear: 800,
-  handbrakeTorque: 1800,
-
-  paint: 0xc8241d,
-  engineName: '13B',
-  engineKg: 125,
-  sound: 'rotary13b',
-};
-
-export const CARS = { e30: E30, rx7: RX7 };
+export const CARS = { e30: E30 };
 
 // Cars you made in the Car Builder (kept in this browser): each drives like the car it is built on.
 for (const d of loadDesigns()) {
@@ -157,24 +88,6 @@ for (const d of loadDesigns()) {
 // the engine model the physics runs. `ready: false` swaps are listed but not fittable yet.
 // kg: the engine's dressed weight, so the car gets lighter or heavier than with its own engine.
 export const ENGINE_SWAPS = {
-  rotary: {
-    ready: true,
-    name: '13B Rotary',
-    code: '13B',
-    donor: 'Mazda RX-7 FC3S',
-    layout: 'Two-rotor Wankel',
-    displacement: '1.3 L',
-    aspiration: 'Naturally aspirated',
-    hp: 162,
-    hpRpm: 7000,
-    nm: 190,
-    nmRpm: 4500,
-    redline: 7500,
-    kg: 125,
-    blurb: 'The FC\'s two-rotor: smooth, light and happy to rev, with the rotary brap. Lighter than a six, so the nose turns in sharper.',
-    sound: 'rotary13b',
-    engine: RX7.engine,
-  },
   '1jz': {
     ready: true,
     name: '1JZ-GTE VVT-i',
@@ -232,35 +145,6 @@ export const ENGINE_SWAPS = {
     redline: 7600,
     kg: 115,
     blurb: 'The Hachi-Roku\'s twin-cam four. Not much torque, but it loves to rev and weighs next to nothing.',
-  },
-  ls3: {
-    ready: true,
-    name: 'LS3',
-    code: 'LS3',
-    donor: 'Chevrolet Corvette C6',
-    layout: 'V8, pushrod 16v',
-    displacement: '6.2 L',
-    aspiration: 'Naturally aspirated',
-    hp: 430,
-    hpRpm: 5900,
-    nm: 575,
-    nmRpm: 4600,
-    redline: 6600,
-    kg: 185,
-    blurb: 'All-aluminium American V8. Torque everywhere and a lazy, thunderous rumble.',
-    sound: 'ls3', // cross-plane V8 burble; street and race exhausts add the lope
-    engine: {
-      idleRpm: 900,
-      idleMaxThrottle: 0.25,
-      redline: 6600,
-      limiterRpm: 6700,
-      limiterResumeRpm: 6450,
-      stallRpm: 450,
-      inertia: 0.28,
-      torqueCurve: [[0, 260], [800, 390], [1500, 480], [2500, 540], [3500, 565], [4600, 575], [5200, 555], [5900, 519], [6400, 482], [6700, 455], [7200, 380]],
-      frictionTorque: 28,
-      frictionPerRpm: 0.009,
-    },
   },
   k24: {
     ready: false,
@@ -384,6 +268,12 @@ export const DIFFS = {
 
 // Live-tunable values (tuning shop and dev panel). Defaults chosen for a planted but slidable street car.
 export const TUNABLE_DEFAULTS = {
+  internals: 'stock', // 'forged' is needed before a turbo can be fitted
+  ecu: 'stock', // 'tuned' unlocks the settings below
+  revLimit: 0, // rpm added to the rev limiter (tuned ECU, up to REV_LIMIT_MAX)
+  popAmount: 4, // pops after each lift-off (tuned ECU; 0 = none)
+  popSpeed: 5, // 1 slow burble .. 10 machine-gun
+  flames: false, // flames with the pops (tuned ECU)
   tire: 'street',
   diff: 'lsd',
   rideHeight: 0, // mm from stock (negative = lowered)
@@ -400,6 +290,7 @@ export const TUNABLE_DEFAULTS = {
   lsdLock: 0.3, // limited-slip locking ratio (E30 factory LSD is about 25%)
   lsdPreload: 40, // N m
   wheel: 'bbs', // rim style (looks only)
+  wheelColor: 'silver', // rim colour (see wheelColorOf: falls back to the wheel's own colour)
   rim: 14, // rim diameter, inches
   profile: 65, // tyre sidewall height as % of width
   camberFront: 1.0, // degrees of negative camber
@@ -440,6 +331,22 @@ export const INTAKES = {
   stock: { name: 'Stock airbox', blurb: 'Quiet factory airbox and paper filter.' },
   pod: { name: 'Pod filter', blurb: 'Open cone filter. A few extra Nm up top and an audible gulp of air.' },
   itb: { name: 'ITBs', blurb: 'Individual throttle bodies in a carbon airbox: +20 Nm and +15 hp, razor response, and a deep, hollow trumpet howl that takes over on the throttle. Louder and angrier with a race exhaust.' },
+};
+// Engine internals. The stock bottom end can't take boost: forged internals come before a turbo.
+// ECU: a tuned map unlocks a higher rev limit and lift-off pops you set yourself.
+export const ECUS = {
+  stock: { name: 'Stock ECU', blurb: 'The factory map. Rev limit as it left the factory, the odd pop on lift-off.' },
+  tuned: { name: 'Tuned ECU', blurb: 'A custom map: raise the rev limiter up to 1,750 rpm, and set the pops and bangs on lift-off, flames too.' },
+};
+export const REV_LIMIT_MAX = 1750; // most the tuned ECU can raise the limiter by (rpm)
+// How much a tuned ECU raises the rev limit (0 on the stock map).
+export function revExtra(t) {
+  return t?.ecu === 'tuned' ? Math.max(0, Math.min(REV_LIMIT_MAX, t.revLimit || 0)) : 0;
+}
+
+export const INTERNALS = {
+  stock: { name: 'Stock internals', blurb: 'Cast pistons and factory rods. Fine as it comes, but boost would break it.' },
+  forged: { name: 'Forged internals', blurb: 'Forged pistons, H-beam rods, lower compression and head studs. Built to take boost: you need these before you can fit a turbo.' },
 };
 export const TURBOS = {
   none: { name: 'None', blurb: 'Naturally aspirated. Smooth, linear and predictable.' },
@@ -530,6 +437,7 @@ export function partsSetup(t) {
     finalDrive: FINAL_DRIVES.includes(t.finalDrive) ? t.finalDrive : CAR.finalDrive,
     turbo,
     intake,
+    revExtra: revExtra(t),
   };
 }
 
@@ -542,15 +450,27 @@ export const EXHAUSTS = {
 
 // Wheels (tuning shop). Looks only: size, sidewall and camber are separate settings.
 export const WHEELS = {
-  bbs: { name: 'Style 5 Basket Weave', blurb: 'The factory BBS-made cross-spoke: a silver basket weave round a roundel cap.', face: '#c7c9cf', lip: '#d8dadf', dish: '#26272b', spokes: 'mesh', image: 'wheels/style5.png' },
-  gold: { name: 'Gold Mesh', blurb: 'Gold cross-spoke with a deep polished lip. Pure 80s.', face: '#d6b04a', lip: '#e4e6ea', dish: '#3a3020', spokes: 'mesh' },
-  six: { name: 'Bronze 6-Spoke', blurb: 'Light forged six-spoke in bronze, the Japanese touge classic.', face: '#8e6a3f', lip: '#8e6a3f', dish: '#231c15', spokes: 'six' },
-  steel: { name: 'Black Steelies', blurb: 'Plain black steel wheels. Cheap, tough, honest.', face: '#1d1e21', lip: '#26272b', dish: '#141517', spokes: 'steel' },
-  bottlecap: { name: 'Factory Bottle Caps', blurb: 'The E30\'s standard 14-inch alloys: a flat silver face with a ring of slots and a metal centre cap.', face: '#c3c5ca', lip: '#c3c5ca', dish: '#2a2b2f', spokes: 'bottlecap', image: 'wheels/bottlecap.png' },
-  watanabe: { name: 'Watanabe 8-Spoke', blurb: 'Eight slender spokes in gunmetal with a red centre cap. Old-school Japanese street racing.', face: '#6f716c', lip: '#7a7c78', dish: '#1a1b1c', spokes: 'watanabe', image: 'wheels/watanabe.png' },
-  rpf1: { name: 'Enkei RPF1', blurb: 'Six pairs of twin spokes in silver. Light, cheap, and on every time-attack car.', face: '#c9cbce', lip: '#c9cbce', dish: '#1a1b1c', spokes: 'six', image: 'wheels/rpf1.png' },
-  te37: { name: 'TE37', blurb: 'Six wide, flat forged spokes in bronze. Light, stiff, legendary.', face: '#8d7a55', lip: '#8d7a55', dish: '#1e160d', spokes: 'te37', image: 'wheels/te37.png' },
+  bbs: { name: 'Style 5 Basket Weave', blurb: 'The factory BBS-made cross-spoke: a silver basket weave round a roundel cap.', face: '#c7c9cf', lip: '#d8dadf', dish: '#26272b', spokes: 'mesh', image: 'wheels/style5.png', colors: { silver: 'wheels/style5_silver.png', gold: 'wheels/style5_gold.png', bronze: 'wheels/style5_bronze.png', black: 'wheels/style5_black.png' } },
+  bottlecap: { name: 'Factory Bottle Caps', blurb: 'The E30\'s standard 14-inch alloys: a flat silver face with a ring of slots and a metal centre cap.', face: '#c3c5ca', lip: '#c3c5ca', dish: '#2a2b2f', spokes: 'bottlecap', image: 'wheels/bottlecap.png', colors: { silver: 'wheels/bottlecap.png' } },
+  watanabe: { name: 'Watanabe 8-Spoke', blurb: 'Eight slender spokes in gunmetal with a red centre cap. Old-school Japanese street racing.', face: '#6f716c', lip: '#7a7c78', dish: '#1a1b1c', spokes: 'watanabe', image: 'wheels/watanabe.png', colors: { gunmetal: 'wheels/watanabe_gunmetal.png', silver: 'wheels/watanabe_silver.png', gold: 'wheels/watanabe_gold.png', bronze: 'wheels/watanabe_bronze.png' } },
+  rpf1: { name: 'Enkei RPF1', blurb: 'Six pairs of twin spokes in silver. Light, cheap, and on every time-attack car.', face: '#c9cbce', lip: '#c9cbce', dish: '#1a1b1c', spokes: 'six', image: 'wheels/rpf1.png', colors: { silver: 'wheels/rpf1_silver.png', gunmetal: 'wheels/rpf1_gunmetal.png', gold: 'wheels/rpf1_gold.png', bronze: 'wheels/rpf1_bronze.png' } },
+  te37: { name: 'TE37', blurb: 'Six wide, flat forged spokes in bronze. Light, stiff, legendary.', face: '#8d7a55', lip: '#8d7a55', dish: '#1e160d', spokes: 'te37', image: 'wheels/te37.png', colors: { bronze: 'wheels/te37_bronze.png', gold: 'wheels/te37_gold.png', gunmetal: 'wheels/te37_gunmetal.png', silver: 'wheels/te37_silver.png' } },
 };
+
+// Rim colours. Each wheel comes in its own set (WHEELS[id].colors: colour -> picture); the first
+// listed is how it comes from the factory.
+export const WHEEL_COLORS = {
+  silver: ['Silver', '#c9ccd1'],
+  gunmetal: ['Gunmetal', '#5c5f63'],
+  black: ['Black', '#2c2d31'],
+  gold: ['Gold', '#d4a843'],
+  bronze: ['Bronze', '#8c6a3c'],
+};
+// The colour a wheel is actually wearing: the chosen one if that wheel comes in it, else its own.
+export function wheelColorOf(wheelId, color) {
+  const cols = Object.keys(WHEELS[wheelId]?.colors || {});
+  return cols.includes(color) ? color : cols[0];
+}
 
 // Wheel and tyre sizes: tyre width grows with the rim, as you would fit on the real car.
 export const RIM_SIZES = [14, 15, 16, 17, 18, 19, 20];

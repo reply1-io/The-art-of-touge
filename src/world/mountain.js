@@ -1,7 +1,7 @@
 // The mountain's visuals: road (chunked for culling), terrain tiles, guardrails, streetlights at the
 // hairpins, cedar forest, the summit lake, the town at the bottom, and start / finish lines.
 import * as THREE from 'three';
-import { cssGlow } from '../render/softTexture.js';
+import { cssGlow, softTexture } from '../render/softTexture.js';
 import { crossSection, STEP, JUNCTION } from './road.js';
 import { TRACKS } from './tracks.js';
 import { Terrain, noise2 } from './terrain.js';
@@ -1534,39 +1534,75 @@ export class Mountain {
         i = best + 10;
       }
     }
+    // Roads without a lamp at every corner still get one about every 300 m, at the tightest corner
+    // of each stretch, on its outside.
+    if (!this.track.cornerLights) {
+      for (let i0 = 60; i0 + 150 < road.count - 20; i0 += 150) {
+        let best = i0 + 75;
+        for (let j = i0; j < i0 + 150; j++) if (Math.abs(road.kappa[j]) > Math.abs(road.kappa[best])) best = j;
+        spots.push([best, road.kappa[best] > 0 ? -1 : 1]);
+      }
+    }
     for (const i of [road.startIndex, road.startIndex + 40, road.finishIndex - 30, road.finishIndex, road.count - 15]) spots.push([i, 1]);
     this.lights = spots;
-    const poleMat = new THREE.MeshLambertMaterial({ color: 0x55585e });
-    const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe2a6 });
-    const glow = new THREE.SpriteMaterial({ map: glowTexture('rgba(255,214,140,0.9)', 'rgba(255,170,60,0)'), blending: THREE.AdditiveBlending, depthWrite: false, fog: true });
+    // A cobra-head street lamp, built once and shared: a concrete footing, a tapered galvanised pole
+    // with a collar and a door plate, an arm that curves up and out over the road with a brace,
+    // and the lamp head: a rounded housing, a lit glass lens underneath and a photocell on top.
+    // Built in its own frame, the arm reaching toward +z.
+    const steelMat = new THREE.MeshLambertMaterial({ color: 0x8a8f96, emissive: 0x1a1c20 }); // a faint sheen so it reads at night
+    const darkMat = new THREE.MeshLambertMaterial({ color: 0x3c4046 });
+    const concreteMat = new THREE.MeshLambertMaterial({ color: 0x9a968c, flatShading: true });
+    const lampMat = new THREE.MeshBasicMaterial({ color: 0xfff0c8 });
+    // A small soft halo round the lens: bright in the middle, falling away quickly, no hard rim.
+    const glow = new THREE.SpriteMaterial({ map: softTexture([255, 214, 150], [[0, 0.7], [0.2, 0.25], [0.55, 0.05], [1, 0]]), blending: THREE.AdditiveBlending, depthWrite: false, fog: true });
     this.lampSpots = [];
-    const pole = new THREE.CylinderGeometry(0.09, 0.12, 7, 6);
-    pole.translate(0, 3.5, 0);
-    const arm = new THREE.BoxGeometry(0.08, 0.08, 1.8);
-    const head = new THREE.BoxGeometry(0.35, 0.12, 0.6);
+    const parts = [];
+    const add = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => parts.push({ geo, mat, x, y, z, rx, ry, rz });
+    add(new THREE.CylinderGeometry(0.32, 0.38, 0.5, 8), concreteMat, 0, 0.1, 0); // footing
+    add(new THREE.BoxGeometry(0.42, 0.06, 0.42), darkMat, 0, 0.38, 0); // base plate
+    for (const [bx, bz] of [[-0.15, -0.15], [0.15, -0.15], [-0.15, 0.15], [0.15, 0.15]]) add(new THREE.CylinderGeometry(0.025, 0.025, 0.07, 6), darkMat, bx, 0.44, bz); // anchor nuts
+    add(new THREE.CylinderGeometry(0.075, 0.13, 7.0, 10), steelMat, 0, 3.9, 0); // pole, tapering up
+    add(new THREE.CylinderGeometry(0.15, 0.15, 0.5, 10), steelMat, 0, 0.65, 0); // base collar
+    add(new THREE.BoxGeometry(0.08, 0.32, 0.03), darkMat, 0, 1.1, -0.13); // access door
+    add(new THREE.CylinderGeometry(0.1, 0.1, 0.18, 10), darkMat, 0, 7.4, 0); // top cap
+    // The arm: a tube curving from the pole top up and out.
+    const curve = new THREE.CubicBezierCurve3(new THREE.Vector3(0, 7.2, 0), new THREE.Vector3(0, 7.9, 0.2), new THREE.Vector3(0, 8.0, 1.0), new THREE.Vector3(0, 7.85, 2.1));
+    add(new THREE.TubeGeometry(curve, 12, 0.045, 6, false), steelMat, 0, 0, 0);
+    const brace = new THREE.CubicBezierCurve3(new THREE.Vector3(0, 6.6, 0.05), new THREE.Vector3(0, 7.0, 0.5), new THREE.Vector3(0, 7.5, 0.9), new THREE.Vector3(0, 7.88, 1.2));
+    add(new THREE.TubeGeometry(brace, 8, 0.022, 5, false), steelMat, 0, 0, 0);
+    // Lamp head: a flattened rounded housing, the glowing lens, a photocell.
+    const housing = new THREE.SphereGeometry(0.5, 12, 8);
+    housing.scale(0.55, 0.28, 1.1);
+    add(housing, darkMat, 0, 7.85, 2.45);
+    const lens = new THREE.SphereGeometry(0.42, 12, 6, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
+    lens.scale(0.5, 0.22, 0.95);
+    add(lens, lampMat, 0, 7.8, 2.48);
+    add(new THREE.CylinderGeometry(0.055, 0.055, 0.08, 8), new THREE.MeshLambertMaterial({ color: 0x6b6f78 }), 0, 8.0, 2.25); // photocell
+    const HEAD = [0, 7.72, 2.48]; // where the light comes from, in the lamp's frame
     for (const [i, side] of spots) {
       if (this.inZone(i, side)) continue;
       const base = road.pointAt(i, side * (road.w.RAIL + 0.8));
       const h = road.heading[i];
       const toward = [-Math.cos(h) * side, Math.sin(h) * side];
+      const yaw = Math.atan2(toward[0], toward[1]);
       const g = new THREE.Group();
-      g.position.set(base[0], base[1], base[2]);
-      g.add(new THREE.Mesh(pole, poleMat));
-      const a = new THREE.Mesh(arm, poleMat);
-      a.position.set(toward[0] * 0.9, 7, toward[1] * 0.9);
-      a.rotation.y = Math.atan2(toward[0], toward[1]);
-      const hd = new THREE.Mesh(head, lampMat);
-      hd.position.set(toward[0] * 1.7, 6.9, toward[1] * 1.7);
-      hd.rotation.y = a.rotation.y;
+      g.position.set(base[0], Math.min(base[1], this.terrain.heightAt(base[0], base[2])) - 0.15, base[2]);
+      g.rotation.y = yaw;
+      for (const pt of parts) {
+        const m = new THREE.Mesh(pt.geo, pt.mat);
+        m.position.set(pt.x, pt.y, pt.z);
+        m.rotation.set(pt.rx, pt.ry, pt.rz);
+        g.add(m);
+      }
       const s = new THREE.Sprite(glow);
-      s.scale.set(7.5, 7.5, 1);
-      s.position.copy(hd.position);
-      g.add(a, hd, s);
+      s.scale.set(1.3, 1.3, 1);
+      s.position.set(HEAD[0], HEAD[1] - 0.12, HEAD[2]);
+      g.add(s);
       this.lampGlows.push(s);
-      // Where the lamp's real light comes from and points (straight down, a little toward the
-      // road): lit by one of a few spotlights that follow the nearest lamps (see update()).
-      const at = [base[0] + toward[0] * 1.7, base[1] + 6.8, base[2] + toward[1] * 1.7];
-      this.lampSpots.push({ pos: at, aim: [at[0] + toward[0] * 1.2, at[1] - 7, at[2] + toward[1] * 1.2] });
+      // Where the lamp's real light comes from and points (straight down): lit by one of a couple
+      // of spotlights that follow the nearest lamps (see update()).
+      const at = [g.position.x + toward[0] * HEAD[2], g.position.y + HEAD[1], g.position.z + toward[1] * HEAD[2]];
+      this.lampSpots.push({ pos: at, aim: [at[0] + toward[0] * 0.4, at[1] - 8, at[2] + toward[1] * 0.4] });
       this.#addChunk(g, base[0], base[2], 20);
     }
   }
@@ -1590,7 +1626,9 @@ export class Mountain {
         const jx = x + (noise2(x * 0.7, z * 0.3) - 0.5) * 6;
         const jz = z + (noise2(x * 0.3, z * 0.7) - 0.5) * 6;
         const near0 = t.nearestRoad(jx, jz, 60);
-        if (near0.d < 9.5 || near0.d > 58) continue;
+        // Trees stand right at the road: trunks from about 5 m out (the bushes along the edge
+        // itself are placed separately, below).
+        if (near0.d < 5.2 || near0.d > 58) continue;
         // Near a link road, group with the loop at its junction.
         const near = { d: near0.d, i: t.road.mainIdx ? t.road.mainIdx[near0.i] : near0.i };
         if (this.#onLot(jx, jz, near.i, 5)) continue;
@@ -1617,6 +1655,27 @@ export class Mountain {
         else bucket(near.i).bushes.push([jx, y, jz, 1 + noise2(jz, jx) * 1.4]);
         // Undergrowth between the trees, thicker near the road edge.
         if (near.d < 22 && noise2(jx * 1.3, jz * 1.3) > 0.45) bucket(near.i).bushes.push([jx + 2.2, t.heightAt(jx + 2.2, jz - 1.5), jz - 1.5, 0.8 + noise2(jx, 3) * 1.2]);
+      }
+    }
+    // No shoulder: a solid edge of undergrowth right where the road ends, every couple of metres
+    // down both sides (thinner in open grass, none on lots, junctions, bridges or water).
+    for (let i = 2; i < road.count - 2; i++) {
+      if (this.bridges.some((b) => i > b.i0 - 6 && i < b.i1 + 6)) continue;
+      const sc = this.sceneAt(i);
+      const shrubTint = sc.sagebrush ? 1 : sc.rhodo ? 2 : sc.ferns ? 3 : sc.ground === 'tundra' ? 4 : sc.ground === 'grass' ? 5 : 0;
+      const forested = isForest(sc);
+      for (const side of [1, -1]) {
+        if (this.inZone(i, side, 2)) continue;
+        const n1 = noise2(i * 0.73 + side * 17, 4.1);
+        if (n1 > 0.25 + Math.min(1, sc.bush) * 0.75) continue;
+        const r = (sc.sagebrush ? 0.5 : sc.ground === 'grass' ? 0.55 : 0.85) + noise2(i * 1.9, side * 5) * (forested ? 0.8 : 0.5);
+        const p = road.pointAt(i, side * (road.w.SHOULDER + 0.15 + r * 0.75 + noise2(i * 2.3, side) * 0.5));
+        p[0] += (noise2(i * 3.1, side) - 0.5) * 1.2;
+        p[2] += (noise2(side, i * 3.1) - 0.5) * 1.2;
+        if (t.inLake(p[0], p[2]) || this.#onLot(p[0], p[2], i, 1)) continue;
+        if (t.nearestRoad(p[0], p[2], 8).d < road.w.SHOULDER) continue; // another leg of the road
+        const y = Math.min(t.heightAt(p[0], p[2]), road.y[i] - 0.2) - 0.25;
+        bucket(i).bushes.push([p[0], y, p[2], r, shrubTint, forested ? 0.8 : 1]);
       }
     }
     // The deep forest beyond: a ring of simpler trees out to about 160 m, bucketed by area.
@@ -1879,7 +1938,7 @@ export class Mountain {
     // Undergrowth between the trees: thick near the road edge, and deeper in it fills the gaps
     // between the trunks so the forest reads as a wall.
     const under = d < 22 ? 1 - Math.min(0.9, 0.55 * sc.bush) : forested ? 0.45 : 2;
-    if (noise2(x * 1.3, z * 1.3) > under) g.bushes.push([x + 2.2, this.terrain.heightAt(x + 2.2, z - 1.5), z - 1.5, (sc.ferns ? 0.6 : 0.8) + noise2(x, 3) * (forested && d > 22 ? 2 : 1.2), shrubTint, sh * 0.85]);
+    if (noise2(x * 1.3, z * 1.3) > under && (d > 8 || this.terrain.nearestRoad(x + 2.2, z - 1.5, 8).d > this.road.w.SHOULDER + 0.6)) g.bushes.push([x + 2.2, this.terrain.heightAt(x + 2.2, z - 1.5), z - 1.5, (sc.ferns ? 0.6 : 0.8) + noise2(x, 3) * (forested && d > 22 ? 2 : 1.2), shrubTint, sh * 0.85]);
   }
 
   // Roadside furniture: reflector posts, chevron signs on tight corners, utility poles, boulders,
@@ -2640,7 +2699,8 @@ export class Mountain {
     if (!this.lampLights) {
       this.lampLights = [];
       for (let k = 0; k < N; k++) {
-        const l = new THREE.SpotLight(0xffd29a, 0, 26, 0.95, 0.65, 1.6);
+        // A pool round the foot of the lamp that fades very gradually to nothing by about 19 m.
+        const l = new THREE.SpotLight(0xffd29a, 0, 19, 1.0, 1, 2);
         this.scene.add(l, l.target);
         this.lampLights.push(l);
       }
@@ -2659,7 +2719,7 @@ export class Mountain {
       l.target.position.set(...hit[0].aim);
       // Fade in as it becomes one of the nearest, so lamps never pop on.
       const fade = Math.min(1, Math.max(0, (240 - Math.sqrt(hit[1])) / 60));
-      l.intensity = 260 * fade;
+      l.intensity = 520 * fade;
     });
   }
 

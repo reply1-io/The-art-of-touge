@@ -6,7 +6,7 @@ import { CAR, CARS, TUNABLE_DEFAULTS } from '../config.js';
 import { HostRoom, joinLink, serverLink } from './p2p.js';
 
 // What other players need to draw your car.
-export const LOOK_KEYS = ['paint', 'wheel', 'rim', 'profile', 'stretch', 'offsetFront', 'offsetRear', 'camberFront', 'camberRear', 'headlights', 'taillights', 'exhaust', 'plateStyle', 'plateText', 'numbers', 'number', 'numberW', 'numberH', 'rideHeight', 'coilovers', 'seats'];
+export const LOOK_KEYS = ['paint', 'wheel', 'rim', 'profile', 'stretch', 'offsetFront', 'offsetRear', 'camberFront', 'camberRear', 'wheelColor', 'exhaust', 'plateStyle', 'plateText', 'numbers', 'number', 'numberW', 'numberH', 'rideHeight', 'coilovers', 'seats'];
 
 export function lookOf(tune) {
   const out = { car: CAR.id };

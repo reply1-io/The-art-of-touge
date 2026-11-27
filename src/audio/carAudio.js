@@ -14,7 +14,7 @@ import m20DspSource from './m20-dsp.js?raw';
 import { CAR } from '../config.js';
 
 // Which synth engine profile each car uses (see ENGINES in m20-dsp.js).
-const ENGINE_SOUND = { e30: 'm20', rx7: 'rotary13b' };
+const ENGINE_SOUND = { e30: 'm20' };
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
@@ -402,6 +402,11 @@ export class CarAudio {
   }
 
   // 'stock' | 'street' | 'race'
+  // Tuned ECU pops: { count, speed } or null for the stock map.
+  setEcuPops(p) {
+    this.ecuPops = p;
+  }
+
   setExhaust(type) {
     if (this.exhaust === type && this.exhaustApplied === !!this.ctx) return;
     this.exhaust = type;
@@ -735,6 +740,9 @@ export class CarAudio {
         // the game's boost only when a turbo part is fitted; otherwise the synth runs an engine's
         // own factory turbo (the 1JZ) by itself
         boost: this.turbo && this.turbo !== 'none' ? e.boost || 0 : null,
+        // a tuned ECU: how many pops after each lift-off and how fast they come
+        popCount: this.ecuPops ? this.ecuPops.count : null,
+        popRate: this.ecuPops ? this.ecuPops.speed : 5,
       });
     } else {
       if (this.prevRunning && !running) this.#sputter();
@@ -744,7 +752,7 @@ export class CarAudio {
     // With the M20 synth, afterfire pops come from the synth itself (only on a real lift-off).
     if (loud && ev && !this.m20) {
       // Street and race: crackles and pops on every lift-off and gear change, bangs off the limiter.
-      if (ev.lift) this.#crackle(6 + Math.floor(Math.random() * 5), 0.9);
+      if (ev.lift) this.#crackle(this.ecuPops ? this.ecuPops.count : 6 + Math.floor(Math.random() * 5), 0.9);
       if (ev.shift) this.#crackle(3 + Math.floor(Math.random() * 3), 0.3);
       if (ev.limiter) this.#pop(t, 0.9);
       this.prevRunning = running;

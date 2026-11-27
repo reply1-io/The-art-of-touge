@@ -1,6 +1,6 @@
 // Chase camera (smoothed, swings toward the direction of travel in a slide) and bumper camera.
 import * as THREE from 'three';
-import { EYE } from './cockpit.js';
+import { CAM } from './cockpit.js';
 import { drivingLens } from '../game/replay.js';
 import { fishZoom } from './vhs.js';
 
@@ -8,7 +8,7 @@ const GROUND = -0.62; // body space: the car model's body group sits this far be
 
 const tmp = new THREE.Vector3();
 // Field of view at a standstill for each camera.
-const BASE_FOV = { chase: 60, cockpit: 68, bumper: 70 };
+const BASE_FOV = { chase: 60, cockpit: 88, bumper: 70 };
 
 export class CameraRig {
   constructor(camera) {
@@ -28,6 +28,8 @@ export class CameraRig {
     this.userFov = 60;
     this.t = 0;
     this.react = new THREE.Vector2(); // x: pitch, y: height
+    // This camera's adjustments from the settings: { fov, tilt (deg), x (-100..100), closer (-100..100) }.
+    this.adjust = { fov: 60, tilt: 0, x: 0, closer: 0 };
   }
 
   snap() {
@@ -41,7 +43,7 @@ export class CameraRig {
     // Relative to a plain 60-degree lens at 5.8 m back: the car stays the same size on screen.
     const k = this.#sizeFor(this.userFov) * Math.tan((30 * Math.PI) / 180);
     return {
-      back: Math.max(3.4, (5.8 + fast * 0.6) * k),
+      back: Math.max(2.6, (5.8 + fast * 0.6) * k * (1 - (this.adjust.closer || 0) * 0.004)),
       up: Math.max(1.45, (2.3 - fast * 0.35) * Math.sqrt(k)),
     };
   }
@@ -58,6 +60,13 @@ export class CameraRig {
   // carObject: the rendered car (interpolated pose). velocity: world linear velocity.
   update(dt, carObject, velocity) {
     this.#place(dt, carObject, velocity);
+    // Centre and tilt from the settings: slide the camera sideways, then pitch it.
+    const a = this.adjust;
+    if (a.x) {
+      const span = this.mode === 'chase' ? 1.5 : this.mode === 'cockpit' ? 0.4 : 0.8;
+      this.camera.position.addScaledVector(new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion), (a.x / 100) * span);
+    }
+    if (a.tilt) this.camera.rotateX((a.tilt * Math.PI) / 180);
     this.#speedFeel(dt, carObject, velocity);
   }
 
@@ -66,7 +75,7 @@ export class CameraRig {
   #speedFeel(dt, carObject, velocity) {
     const cam = this.camera;
     const mph = Math.hypot(velocity.x, velocity.z) * 2.237;
-    const base = Math.min(150, drivingLens(this.userFov).fov + ((BASE_FOV[this.mode] ?? 60) - 60));
+    const base = Math.min(150, Math.max(30, this.adjust.fov ?? BASE_FOV[this.mode] ?? 60));
     const room = Math.max(0, 1 - (this.userFov - 60) / 120);
     // Only a touch wider at speed (up to +4 degrees by 110 mph), so you can still see ahead.
     const widen = Math.max(0, Math.min(1, (mph - 20) / 90)) ** 1.2 * 4 * room;
@@ -123,16 +132,20 @@ export class CameraRig {
         Math.max(-0.06, Math.min(0.06, -this.acc.z * 0.006 * k)),
       );
       this.head.lerp(target, 1 - Math.exp(-dt * 8));
-      const p = new THREE.Vector3(EYE.x + this.head.x, EYE.y + GROUND + this.head.y, EYE.z + this.head.z).applyQuaternion(q).add(carObject.position);
+      // An action camera bolted to the car: it moves with the cabin, only a little with the head.
+      // Closer: forward toward the windscreen (up to 0.2 m), or back (up to 0.4 m).
+      const c = this.adjust.closer || 0;
+      const dz = c > 0 ? c * 0.002 : c * 0.004;
+      const p = new THREE.Vector3(CAM.x + this.head.x * 0.3, CAM.y + GROUND + this.head.y * 0.3, CAM.z + dz + this.head.z * 0.3).applyQuaternion(q).add(carObject.position);
       cam.position.copy(p);
       // The head tilts a little with the lean.
-      cam.up.set(this.head.x * 1.5, 1, 0).normalize().applyQuaternion(q);
-      cam.lookAt(p.clone().add(new THREE.Vector3(0, -0.9, 10).applyQuaternion(q)));
+      cam.up.set(0, 1, 0).applyQuaternion(q);
+      cam.lookAt(p.clone().add(new THREE.Vector3(0, -2.6, 10).applyQuaternion(q)));
       this.ready = false;
       return;
     }
     if (this.mode === 'bumper') {
-      const p = new THREE.Vector3(0, -0.08, 2.15).applyQuaternion(q).add(carObject.position);
+      const p = new THREE.Vector3(0, -0.08, 2.15 + (this.adjust.closer || 0) * 0.006).applyQuaternion(q).add(carObject.position);
       cam.position.copy(p);
       cam.up.set(0, 1, 0).applyQuaternion(q);
       cam.lookAt(p.clone().add(new THREE.Vector3(0, -0.02, 10).applyQuaternion(q)));

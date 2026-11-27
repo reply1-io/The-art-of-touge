@@ -12,7 +12,10 @@ function interpolate(table, x) {
       return y0 + ((y1 - y0) * (x - x0)) / (x1 - x0);
     }
   }
-  return table[table.length - 1][1];
+  // Past the end, keep falling at the last slope (a raised rev limit reaches beyond the table).
+  const [x0, y0] = table[table.length - 2];
+  const [x1, y1] = table[table.length - 1];
+  return Math.max(y1 * 0.35, y1 + (Math.min(0, y1 - y0) * (x - x1)) / (x1 - x0));
 }
 
 export class Engine {
@@ -27,6 +30,7 @@ export class Engine {
     this.justStalled = false;
     this.turbo = null; // { gain, spool, range, lag } from the tuning shop
     this.intake = null; // rpm -> extra torque (N m)
+    this.revExtra = 0; // rpm a tuned ECU adds to the rev limiter
     this.boost = 0; // 0..1 of full boost
   }
 
@@ -67,8 +71,8 @@ export class Engine {
       this.lastTorque = -Math.sign(this.omega) * friction;
       return this.lastTorque;
     }
-    if (rpm > s.limiterRpm) this.limiterCut = true;
-    else if (rpm < s.limiterResumeRpm) this.limiterCut = false;
+    if (rpm > s.limiterRpm + this.revExtra) this.limiterCut = true;
+    else if (rpm < s.limiterResumeRpm + this.revExtra) this.limiterCut = false;
     let thr = this.limiterCut ? 0 : throttle;
     // Idle control holds the idle (900 rpm on the E30), but is capped so it cannot save the
     // engine from a heavy clutch load: drop the clutch at idle and it still stalls.

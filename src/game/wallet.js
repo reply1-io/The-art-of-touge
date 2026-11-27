@@ -8,14 +8,16 @@ export const START_MONEY = 3000;
 
 // key -> option value -> price. Anything not listed is free; the stock option is always owned.
 export const PRICES = {
-  engine: { stock: 0, rotary: 7000 },
+  engine: { stock: 0 },
   tire: { drift: 360, stock: 0, street: 640, semi: 1100 },
   diff: { open: 150, lsd: 0, welded: 250 },
-  wheel: { bbs: 0, gold: 1800, six: 1400, steel: 250, bottlecap: 400, watanabe: 1600, te37: 2200, rpf1: 1500 },
+  wheel: { bbs: 0, bottlecap: 400, watanabe: 1600, te37: 2200, rpf1: 1500 },
   rim: { 14: 0, 15: 350, 16: 600, 17: 850, 18: 1100, 19: 1400, 20: 1800 },
   stretch: { false: 0, true: 120 },
   exhaust: { stock: 0, street: 650, race: 1100 },
   intake: { stock: 0, pod: 120, itb: 2800 },
+  internals: { stock: 0, forged: 2500 },
+  ecu: { stock: 0, tuned: 1800 },
   turbo: { none: 0, small: 3500, big: 5500 },
   clutch: { stock: 0, sport: 450, race: 900 },
   gearbox: { stock: 0, close: 1600 },
@@ -30,8 +32,6 @@ export const PRICES = {
   angleKit: { stock: 0, kit: 650, full: 1300 },
   weight: { stock: 0, light: 200, stripped: 1500 },
   seats: { stock: 0, bucket: 900 },
-  headlights: { white: 0, yellow: 90, blue: 60 },
-  taillights: { red: 0, smoked: 220, clear: 260 },
   numbers: { false: 0, true: 40 },
 };
 

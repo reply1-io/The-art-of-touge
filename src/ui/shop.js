@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import {
   CAR, BASE_CAR, CARS, ENGINE_SWAPS, carSave, TIRES, DIFFS, WHEELS, EXHAUSTS, RIM_SIZES, SWAY_FRONT, SWAY_REAR, TUNABLE_DEFAULTS, wheelSetup,
-  SEATS, RIM_WIDTH_IN, INTAKES, TURBOS, CLUTCHES, GEARBOXES, FINAL_DRIVES, BRAKES, HANDBRAKES, ANGLE_KITS, WEIGHTS, PAINTS, HEADLIGHTS, TAILLIGHTS,
+  RIM_WIDTH_IN, INTAKES, TURBOS, BRAKES, HANDBRAKES, ANGLE_KITS, PAINTS, WHEEL_COLORS, wheelColorOf, INTERNALS, ECUS, REV_LIMIT_MAX,
 } from '../config.js';
 import { dynoRun } from '../physics/dyno.js';
 import { money } from '../game/wallet.js';
@@ -38,17 +38,29 @@ function hexToHsl(hex) {
   return [h / 6, s, l];
 }
 
-const SHOP_KEYS = ['seats', 'offsetFront', 'offsetRear', 'plateStyle', 'plateText', 'stretch', 'intake', 'turbo', 'clutch', 'gearbox', 'finalDrive', 'coilovers', 'brakes', 'handbrake', 'angleKit', 'weight', 'paint', 'headlights', 'taillights', 'numbers', 'number', 'numberW', 'numberH', 'exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
+const SHOP_KEYS = ['seats', 'offsetFront', 'offsetRear', 'plateStyle', 'plateText', 'stretch', 'intake', 'internals', 'turbo', 'ecu', 'revLimit', 'popAmount', 'popSpeed', 'flames', 'clutch', 'gearbox', 'finalDrive', 'coilovers', 'brakes', 'handbrake', 'angleKit', 'weight', 'paint', 'numbers', 'number', 'numberW', 'numberH', 'exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'wheelColor', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
+
+// Category icons for the rail down the left (24x24, drawn in strokes).
+const ICONS = {
+  car: '<path d="M2 16v-3l3-5h10l4 5h3v3"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/>',
+  body: '<rect x="7" y="9" width="8" height="12"/><path d="M9 9V6h4v3M13 4h3M18 5l2-1M18 8h3"/>',
+  wheels: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/><path d="M12 3v7M12 14v7M3 12h7M14 12h7"/>',
+  chassis: '<path d="M12 2v3l5 2-10 3 10 3-10 3 10 3-5 2v3"/>',
+  brakes: '<circle cx="11" cy="13" r="8"/><circle cx="11" cy="13" r="3"/><path d="M15 4h5v8h-3"/>',
+  ecu: '<rect x="6" y="6" width="12" height="12"/><rect x="10" y="10" width="4" height="4"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
+  engine: '<path d="M4 9h3V6h8v3h3l2 3v5h-2v2H7l-3-3z"/><path d="M10 6V3h4"/>',
+  dyno: '<path d="M3 3v18h18"/><path d="M5 17c4-1 5-9 9-10 3-1 4 3 6 2"/>',
+  builds: '<path d="M4 4h13l3 3v13H4z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/>',
+};
 
 const TABS = [
   ['car', 'Car'],
   ['body', 'Exterior'],
-  ['interior', 'Interior'],
   ['wheels', 'Wheels'],
   ['chassis', 'Suspension'],
   ['brakes', 'Brakes'],
   ['engine', 'Engine'],
-  ['drive', 'Drivetrain'],
+  ['ecu', 'ECU'],
   ['dyno', 'Dyno'],
   ['builds', 'Builds'],
 ];
@@ -84,8 +96,8 @@ function textTexture(lines, w, h, draw) {
 // workbench and pegboard of tools, shelves of parts, a rolling tool chest, an engine on a stand and
 // strip lights overhead. The car just sits on the floor; the camera walks round it.
 function buildGarage(scene) {
-  scene.background = new THREE.Color(0x15130f);
-  scene.fog = new THREE.Fog(0x15130f, 12, 30);
+  scene.background = new THREE.Color(0x070605);
+  scene.fog = new THREE.Fog(0x070605, 8, 22);
   const lambert = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, ...extra });
   const box = (w, h, d, mat, x, y, z, ry = 0) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -98,16 +110,15 @@ function buildGarage(scene) {
   const D = 6.2; // half depth (z)
   const H = 3.6; // ceiling height
 
-  // Light: warm fill from the strip lights, a cooler spill from the open door.
-  scene.add(new THREE.HemisphereLight(0xfff1d8, 0x2a241c, 0.9));
-  const key = new THREE.PointLight(0xfff0d0, 26, 14, 1.3);
-  key.position.set(0.5, H - 0.3, 0.6);
-  scene.add(key);
-  const fill = new THREE.PointLight(0xffe3b0, 10, 10, 1.4);
-  fill.position.set(-3.6, H - 0.4, -3);
+  // Late at night, working on your own car: the strip lights are off. A warm work lamp hangs over
+  // the car (see the drop light below), a little lamp glows on the bench, and blue night comes in
+  // under the half-open door. The corners stay dark.
+  scene.add(new THREE.HemisphereLight(0x5a6a8c, 0x14100c, 0.22));
+  const fill = new THREE.PointLight(0xffb870, 1.6, 9, 1.6); // the neon sign's glow on the left wall
+  fill.position.set(-W + 0.8, 2.6, 0.6);
   scene.add(fill);
-  const door = new THREE.DirectionalLight(0xa8c4ff, 0.7);
-  door.position.set(6, 3, 8);
+  const door = new THREE.DirectionalLight(0x4f6fa8, 0.35);
+  door.position.set(6, 1.2, 4);
   scene.add(door);
 
   // Concrete floor: speckled, with expansion joints and oil stains where cars have stood.
@@ -186,7 +197,7 @@ function buildGarage(scene) {
   const beamMat = lambert(0x5c4632);
   for (const z of [-3.6, -1.2, 1.2, 3.6]) box(W * 2, 0.18, 0.14, beamMat, 0, H - 0.09, z);
 
-  // The roller door on the right wall, half open, with daylight under it.
+  // The roller door on the right wall, half open, with the night outside under it.
   const shutterTex = textTexture(null, 64, 128, (g) => {
     g.fillStyle = '#9da3a8';
     g.fillRect(0, 0, 64, 128);
@@ -202,13 +213,13 @@ function buildGarage(scene) {
   const shutter = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.9), lambert(0xffffff, { map: shutterTex }));
   shutter.position.set(W - 0.02, H - 0.95, 0.8);
   shutter.rotation.y = -Math.PI / 2;
-  const daylight = new THREE.Mesh(new THREE.PlaneGeometry(5, H - 1.9), new THREE.MeshBasicMaterial({ color: 0xc9dcf2 }));
+  const daylight = new THREE.Mesh(new THREE.PlaneGeometry(5, H - 1.9), new THREE.MeshBasicMaterial({ color: 0x0f1a2c }));
   daylight.position.set(W - 0.03, (H - 1.9) / 2, 0.8);
   daylight.rotation.y = -Math.PI / 2;
   scene.add(shutter, daylight);
 
-  // Strip lights.
-  const tubeMat = new THREE.MeshBasicMaterial({ color: 0xfff6e0 });
+  // Strip lights (switched off).
+  const tubeMat = lambert(0x8a8c88);
   for (const [x, z] of [[0.5, 0.6], [-3.6, -3]]) {
     box(1.5, 0.08, 0.16, lambert(0x2b2b2b), x, H - 0.25, z);
     box(1.4, 0.05, 0.08, tubeMat, x, H - 0.31, z);
@@ -452,19 +463,10 @@ function buildGarage(scene) {
     g.arc(175, 152, 14, 0, Math.PI * 2);
     g.fill();
   };
-  const rotor = (g) => {
-    g.fillStyle = '#111';
-    g.beginPath();
-    g.moveTo(128, 50);
-    g.quadraticCurveTo(200, 110, 190, 160);
-    g.quadraticCurveTo(128, 175, 66, 160);
-    g.quadraticCurveTo(56, 110, 128, 50);
-    g.fill();
-  };
   const posters = [
     [posterTex('#e9e1cc', '#111', '#c8241d', 'TOUGE', 'NIGHT RUN', mountains), -6.0, -D + 0.02, 0],
     [posterTex('#141414', '#f2c51e', '#f2c51e', 'DOWNHILL', 'NO BRAKES', carShape), 4.8, -D + 0.02, 0],
-    [posterTex('#1d3a8a', '#f2f2f2', '#e6e6e6', 'ROTARY', 'BRAAAP', rotor), 6.3, -D + 0.02, 0],
+    [posterTex('#1d3a8a', '#f2f2f2', '#e6e6e6', 'STRAIGHT', 'SIX', mountains), 6.3, -D + 0.02, 0],
     [posterTex('#f2f1ea', '#1f5a32', '#2f6b4f', 'KAIDO', 'MOUNTAIN PASS', mountains), 1.8, D - 0.02, Math.PI],
     [posterTex('#c8241d', '#fff', '#111', 'DRIFT', 'SIDEWAYS CLUB', carShape), -W + 0.02, -1.9, Math.PI / 2],
     [posterTex('#2a2a2a', '#e8711c', '#e8711c', 'HACHI', '1600 TWIN CAM', carShape), -W + 0.02, -3.5, Math.PI / 2],
@@ -669,12 +671,34 @@ function buildGarage(scene) {
   mat.position.set(0, 0.006, 0.2);
   scene.add(mat);
   cyl(0.008, 1.0, lambert(0x111111), -0.6, H - 0.6, 1.4);
-  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe2a8 }));
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffd08a }));
   bulb.position.set(-0.6, H - 1.15, 1.4);
   scene.add(bulb);
-  const drop = new THREE.PointLight(0xffd59a, 3, 5, 1.6);
+  // A wire cage shade round the bulb.
+  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.22, 8, 1, true), lambert(0x2a2622, { side: THREE.DoubleSide, wireframe: true }));
+  shade.position.set(-0.6, H - 1.06, 1.4);
+  scene.add(shade);
+  const drop = new THREE.PointLight(0xffbf78, 16, 9, 1.5);
   drop.position.copy(bulb.position);
   scene.add(drop);
+
+  // On the back bench: a little lamp left on, an old radio with its dial lit, a mug.
+  const lampPos = new THREE.Vector3(-3.0, 1.35, -D + 0.55);
+  box(0.03, 0.4, 0.03, lambert(0x222222), lampPos.x, 1.15, lampPos.z);
+  const lampShade = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.14, 8, 1, true), lambert(0x2d4a3a, { side: THREE.DoubleSide }));
+  lampShade.position.copy(lampPos);
+  scene.add(lampShade);
+  const lampBulb = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 4), new THREE.MeshBasicMaterial({ color: 0xffcf8a }));
+  lampBulb.position.set(lampPos.x, lampPos.y - 0.05, lampPos.z);
+  scene.add(lampBulb);
+  const benchLamp = new THREE.PointLight(0xffaa5c, 3.2, 4, 1.6);
+  benchLamp.position.set(lampPos.x, lampPos.y - 0.1, lampPos.z + 0.1);
+  scene.add(benchLamp);
+  box(0.42, 0.22, 0.14, lambert(0x3a2a1e), -2.35, 1.07, -D + 0.32); // radio
+  const dial = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.06), new THREE.MeshBasicMaterial({ color: 0xffa64a }));
+  dial.position.set(-2.38, 1.11, -D + 0.395);
+  scene.add(dial);
+  cyl(0.04, 0.1, lambert(0xd8d2c4), -1.25, 1.01, -D + 0.62); // mug
 
   // A creeper left beside the car.
   const padMat = lambert(0x1b1c1e);
@@ -774,6 +798,7 @@ export class Shop {
   }
 
   open() {
+    this.before = { ...this.tune }; // what each setting was when you walked in (for the undo arrows)
     this.render();
     this.el.classList.remove('hidden');
     document.body.classList.add('in-shop');
@@ -791,8 +816,9 @@ export class Shop {
   // Size the view so the car sits in the open space left of the panel.
   resize(w, h) {
     this.camera.aspect = w / Math.max(1, h);
-    const panel = Math.min(w * 0.56, 520);
-    this.camera.setViewOffset(w, h, panel / 2, 0, w, h);
+    const panel = Math.min(w * 0.42, 380);
+    const rail = 64;
+    this.camera.setViewOffset(w, h, (panel - rail) / 2, 0, w, h);
     this.camera.updateProjectionMatrix();
   }
 
@@ -818,6 +844,12 @@ export class Shop {
   }
 
   #change(key, value, rerender = false) {
+    // A turbo needs forged internals under it.
+    if (key === 'turbo' && value !== 'none' && this.tune.internals !== 'forged') {
+      this.flashMsg = 'Not yet: fit forged internals before a turbo';
+      this.render();
+      return;
+    }
     // Parts must be bought before they are fitted.
     const w = this.wallet;
     if (w && !w.owns(key, value)) {
@@ -830,6 +862,12 @@ export class Shop {
       rerender = true;
     }
     this.tune[key] = value;
+    if (key === 'internals' && value !== 'forged' && this.tune.turbo && this.tune.turbo !== 'none') {
+      this.tune.turbo = 'none'; // stock internals can't hold boost
+      this.flashMsg = 'Turbo removed: stock internals can’t take boost';
+      rerender = true;
+    }
+    if (key === 'wheel') rerender = true; // its colour choices change with it
     this.#applyCar();
     this.onChange();
     if (rerender) this.render();
@@ -858,6 +896,21 @@ export class Shop {
       this.#tag(card.querySelector('em'), key, valueOf(id));
       card.addEventListener('click', () => this.#change(key, valueOf(id), true));
       row.append(card);
+    }
+    return row;
+  }
+
+  // Turbos: locked until forged internals are fitted.
+  #turbos() {
+    const row = this.#cards(TURBOS, 'turbo');
+    if (this.tune.internals !== 'forged') {
+      for (const card of row.children) {
+        if (card.classList.contains('sel')) continue;
+        card.classList.add('locked');
+        const em = card.querySelector('em');
+        em.textContent = 'NEEDS FORGED INTERNALS';
+        em.className = 'lock';
+      }
     }
     return row;
   }
@@ -915,14 +968,40 @@ export class Shop {
     input.step = step;
     input.value = this.tune[key];
     val.textContent = show(Number(input.value));
+    // The little circular arrow under a changed value puts it back how it was.
+    const undo = document.createElement('button');
+    undo.type = 'button';
+    undo.className = 'shop-undo';
+    undo.setAttribute('aria-label', 'Undo');
+    undo.innerHTML = '<svg viewBox="0 0 24 24"><path d="M5 12a7 7 0 1 0 2-5"/><path d="M5 3v5h5"/></svg>';
+    const was = this.before?.[key];
+    const sync = () => undo.classList.toggle('on', was !== undefined && Number(input.value) !== Number(was));
+    undo.addEventListener('click', (e) => {
+      e.preventDefault();
+      input.value = was;
+      val.textContent = show(Number(was));
+      this.#change(key, Number(was));
+      this.#readout();
+      sync();
+    });
     input.addEventListener('input', () => {
       const v = Number(input.value);
       val.textContent = show(v);
       this.#change(key, v);
       this.#readout();
+      sync();
     });
-    el.append(name, val, input);
+    sync();
+    el.append(name, val, input, undo);
     return el;
+  }
+
+  // The colours the fitted wheel comes in (none shown if it only comes in one).
+  #wheelColorChips() {
+    const id = this.tune.wheel in WHEELS ? this.tune.wheel : 'bbs';
+    const cols = Object.keys(WHEELS[id].colors || {});
+    if (cols.length < 2) return [];
+    return [this.#chips('Colour', 'wheelColor', cols.map((k) => [k, WHEEL_COLORS[k][0]]), wheelColorOf(id, this.tune.wheelColor))];
   }
 
   #readout() {
@@ -930,29 +1009,19 @@ export class Shop {
     const t = this.tune;
     const ws = wheelSetup(t);
     const style = WHEELS[t.wheel] || WHEELS.bbs;
-    this.readoutEl.innerHTML = '';
-    for (const line of [
-      `${style.name} ${ws.rim}x${RIM_WIDTH_IN[ws.rim]} ET${35 - (t.offsetFront ?? 0)}`,
-      `${ws.width}/${ws.profile}R${ws.rim} ${TIRES[t.tire]?.name || ''}${ws.stretched ? ' stretched' : ''}`,
-      `Camber ${deg(t.camberFront)} F  ${deg(t.camberRear)} R`,
-    ]) {
-      const d = document.createElement('div');
-      d.textContent = line;
-      this.readoutEl.append(d);
-    }
+    const run = dynoRun(t);
+    const hp = Math.round(run.peakHp.hp);
+    const nm = Math.round(run.peakNm.nm);
+    this.readoutEl.textContent = `${hp} HP · ${nm} NM · ${Math.round(run.mass).toLocaleString('en-US')} KG · ${style.name} ${ws.rim}"`;
   }
 
   #tabContent() {
+    if (!TABS.some(([id]) => id === this.tab)) this.tab = 'car';
     const t = this.tune;
     const label = { soft: 'Soft', stock: 'Stock', sport: 'Sport', race: 'Race', off: 'None' };
     if (this.tab === 'body') {
       return [
         this.#section('Paint', this.#paint()),
-        this.#section(
-          'Lights',
-          this.#chips('Headlights', 'headlights', Object.entries(HEADLIGHTS).map(([k, v]) => [k, v[0]])),
-          this.#chips('Tail lights', 'taillights', Object.entries(TAILLIGHTS).map(([k, v]) => [k, v[0]])),
-        ),
         this.#section(
           'Number boards',
           this.#chips('On the doors', 'numbers', [[false, 'None'], [true, 'Fitted']]),
@@ -983,12 +1052,9 @@ export class Shop {
       }
       return [this.#section('Your cars', row, this.#hint('Switching car reloads the game. Each car keeps its own parts, paint and builds.'))];
     }
-    if (this.tab === 'interior') {
-      return [this.#section('Seats', this.#cards(SEATS, 'seats')), this.#section('Weight reduction', this.#cards(WEIGHTS, 'weight'))];
-    }
     if (this.tab === 'wheels') {
       return [
-        this.#section('Rims', this.#cards(WHEELS, 'wheel')),
+        this.#section('Rims', this.#cards(WHEELS, 'wheel'), ...this.#wheelColorChips()),
         this.#section(
           'Size & fitment',
           this.#chips('Rim size', 'rim', RIM_SIZES.map((r) => [r, `${r}"`])),
@@ -1012,20 +1078,31 @@ export class Shop {
       return [
         this.#section('Engine swap', this.#engineNow(), this.#swapButton()),
         this.#section('Intake', this.#cards(INTAKES, 'intake')),
-        this.#section('Turbo', this.#cards(TURBOS, 'turbo')),
+        this.#section('Internals', this.#cards(INTERNALS, 'internals')),
+        this.#section('Turbo', this.#turbos()),
         this.#section('Exhaust', this.#cards(EXHAUSTS, 'exhaust')),
       ];
     }
-    if (this.tab === 'drive') {
+    if (this.tab === 'ecu') {
+      const base = CAR.engine.limiterRpm;
+      const POP_PACE = ['', 'Slow burble', 'Slow burble', 'Lazy', 'Lazy', 'Steady', 'Steady', 'Quick', 'Quick', 'Rapid fire', 'Machine gun'];
       return [
-        this.#section('Clutch', this.#cards(CLUTCHES, 'clutch')),
-        this.#section(
-          'Gearbox',
-          this.#cards(GEARBOXES, 'gearbox'),
-          this.#chips('Final drive', 'finalDrive', FINAL_DRIVES.map((f) => [f, f.toFixed(2)])),
-          this.#hint('A higher final drive number is shorter: quicker out of corners, lower top speed.'),
-        ),
-        this.#section('Differential', this.#cards(DIFFS, 'diff')),
+        this.#section('ECU', this.#cards(ECUS, 'ecu')),
+        ...(t.ecu === 'tuned'
+          ? [
+              this.#section(
+                'Rev limiter',
+                this.#slider('revLimit', 'Rev limit', 0, REV_LIMIT_MAX, 50, (v) => `${(base + v).toLocaleString('en-US')} rpm${v ? ` · +${v.toLocaleString('en-US')}` : ''}`),
+                this.#hint('Revving past where the engine makes its power holds a gear longer, but the power falls away up there.'),
+              ),
+              this.#section(
+                'Pops & bangs',
+                this.#slider('popAmount', 'Pops per lift-off', 0, 12, 1, (v) => (v === 0 ? 'None' : `${v}`)),
+                this.#slider('popSpeed', 'Pop speed', 1, 10, 1, (v) => POP_PACE[v]),
+                this.#chips('Flames', 'flames', [[false, 'Off'], [true, 'On']]),
+              ),
+            ]
+          : [this.#hint('Fit a tuned ECU to raise the rev limit and set the pops and flames.')]),
       ];
     }
     if (this.tab === 'brakes') {
@@ -1112,7 +1189,6 @@ export class Shop {
       ready: true,
       factory: true,
     };
-    // (A car's own engine is the factory card, not a swap: no 13B swap into an RX-7.)
     for (const [id, sw] of [['stock', stockCard], ...Object.entries(ENGINE_SWAPS).filter(([, w]) => w.code !== BASE_CAR.engineName)]) {
       const card = document.createElement('div');
       card.className = 'swap-card' + (id === fitted ? ' sel' : '') + (sw.ready ? '' : ' soon');
@@ -1425,6 +1501,11 @@ export class Shop {
           if (this.wallet && !this.wallet.owns(k, v)) missing++;
           else this.tune[k] = v;
         }
+        // A turbo needs forged internals: builds saved before internals existed get them.
+        if (this.tune.turbo && this.tune.turbo !== 'none' && this.tune.internals !== 'forged') {
+          if (b.tune && !('internals' in b.tune)) this.tune.internals = 'forged';
+          else this.tune.turbo = 'none';
+        }
         this.#applyCar();
         this.onChange();
         this.flash = missing ? `Loaded "${b.name}" except ${missing} part(s) you don't own yet` : `Loaded "${b.name}"`;
@@ -1524,39 +1605,44 @@ export class Shop {
     stage.append(rev);
     const title = document.createElement('div');
     title.className = 'shop-car';
-    title.innerHTML = '<b></b><span>Drag to look around · pinch to zoom</span>';
+    title.innerHTML = '<span>TUNING</span><b></b>';
     title.querySelector('b').textContent = CAR.name;
     this.readoutEl = document.createElement('div');
     this.readoutEl.className = 'shop-readout';
-    stage.append(title, this.readoutEl);
-    this.#readout();
-
-    const panel = document.createElement('div');
-    panel.className = 'shop-panel';
-    const head = document.createElement('div');
-    head.className = 'shop-head';
-    head.innerHTML = '<h2>TUNING SHOP</h2><span class="shop-money"></span>';
-    if (this.wallet) head.querySelector('.shop-money').textContent = money(this.wallet.balance);
-    const done = document.createElement('button');
-    done.type = 'button';
-    done.className = 'big';
-    done.textContent = 'DONE';
-    done.addEventListener('click', () => this.close());
-    head.append(done);
-    const tabs = document.createElement('div');
-    tabs.className = 'shop-tabs';
+    // Left: a column of category icons, and Exit at the bottom.
+    const rail = document.createElement('div');
+    rail.className = 'shop-rail';
     for (const [id, name] of TABS) {
       const b = document.createElement('button');
       b.type = 'button';
-      b.textContent = name;
+      b.title = name;
+      b.setAttribute('aria-label', name);
+      b.innerHTML = `<svg viewBox="0 0 24 24">${ICONS[id] || ''}</svg>`;
       if (this.tab === id) b.classList.add('sel');
       b.addEventListener('click', () => {
         this.tab = id;
         this.swapView = false;
         this.render();
       });
-      tabs.append(b);
+      rail.append(b);
     }
+    const exit = document.createElement('button');
+    exit.type = 'button';
+    exit.className = 'shop-exit';
+    exit.textContent = 'EXIT';
+    exit.addEventListener('click', () => this.close());
+    rail.append(exit);
+    stage.append(title, rail, this.readoutEl);
+    this.#readout();
+
+    // Right: the parts and settings of the chosen category.
+    const panel = document.createElement('div');
+    panel.className = 'shop-panel';
+    const head = document.createElement('div');
+    head.className = 'shop-head';
+    head.innerHTML = '<h2></h2><span class="shop-money"></span>';
+    head.querySelector('h2').textContent = (TABS.find(([id]) => id === this.tab) || TABS[0])[1];
+    if (this.wallet) head.querySelector('.shop-money').textContent = money(this.wallet.balance);
     const body = document.createElement('div');
     body.className = 'shop-body';
     if (this.flashMsg) {
@@ -1578,7 +1664,7 @@ export class Shop {
       this.render();
     });
     body.append(reset);
-    panel.append(head, tabs, body);
+    panel.append(head, body);
     el.append(stage, panel);
   }
 }

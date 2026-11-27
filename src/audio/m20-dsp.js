@@ -1,13 +1,12 @@
 // DSP core that synthesizes engines from first principles: the BMW M20 2.5 straight-six
-// (E30 325i), the GM LS3 6.2 V8 and the Mazda 13B two-rotor Wankel (RX-7). Each engine is a
-// profile in ENGINES.
+// (E30 325i) and the swap engines. Each engine is a profile in ENGINES.
 // Runs inside an AudioWorklet when the browser allows it, otherwise on the main thread
 // (see M20EngineSound.js). It has no imports so it can be shipped into a worklet as text.
 //
 // Signal path, per sample:
 //   crank angle -> one exhaust pressure pulse per cylinder per cycle, in firing order
 //   -> two manifolds / banks (header delay with partial reflection)
-//   -> M20: collector into one pipe; LS3: true dual pipes, one per bank
+//   -> collector into one pipe, or true dual pipes (one per bank) on a V engine
 //   -> exhaust pipe (delay line with inverted reflection = pipe resonances)
 //   -> muffler (lowpass + body resonance) + turbulent "rasp" noise riding on each pulse
 //   + intake roar (throttle) + valve-train tick + starter motor when cranking
@@ -111,61 +110,7 @@ export const ENGINES = {
     level: 0.68,
     factoryTurbo: 'factory',                   // the stock turbo is always there; set({ turbo: 1 }) upgrades it
   },
-  ls3: {
-    label: 'GM LS3 6.2 V8',
-    firing: [1, 8, 7, 2, 6, 5, 4, 3],
-    angles: [0, 90, 180, 270, 360, 450, 540, 630],
-    bank: [0, 1, 0, 1, 1, 0, 1, 0],            // odd cylinders left bank, even right
-    cylGain: [1.0, 0.94, 1.06, 0.96, 1.05, 0.9, 1.02, 0.95],
-    cylTiming: [0, 1.2, -1.4, 0.8, -0.6, 1.6, -1, 0.5],
-    idleRpm: 650, redline: 6600, crankFlare: 1300, starterRatio: 10,
-    dual: true,                                // true duals: each bank keeps its own uneven beat
-    header: [0.0014, 0.0014], pipe: [3.5, 3.8], pipeRefl: 0.45,
-    listen: [1, 0.7],                          // heard from behind, nearer the left tailpipe
-    width: [46, 12], pump: 0.13, jitter: 0.08, idleJitter: 0.12, lope: [0.013, 0.008],
-    chop: [1.1, 1, 0.9, 1, 0.35, 0.45, 1.5, 1.15, 1.05, 1, 1.05, 1, 1.05, 1, 1.05, 1],
-    sizzle: 0.45,                              // eight overlapping pulses: less crackle per pulse
-    idleNoise: 0.4,                            // ...and less turbulence noise at idle, or it hisses
-    muff: [300, 620, 0.08, 1200, 1100], body: [80, 6], drone: [165, 1],
-    rasp: [900, 0.12, 0.75], rumble: [180, 0.05, 1.35], intake: [300, 0.06, 0.14],
-    itb: { level: 0.4, boxRing: 0.3 },        // its firing note crosses the box's ring around 5,500 rpm
-    level: 1.4,
-  },
-  rotary13b: {
-    label: 'Mazda 13B two-rotor Wankel',
-    // Each rotor has three faces and each face fires once every three turns of the eccentric
-    // shaft, so the rotors fire twice per shaft turn (pitch = rpm / 30, like a four-cylinder),
-    // but the full pattern only repeats every 1,080 deg: 6 "faces" here, rotors alternating.
-    cycleDeg: 1080,
-    firing: ['1A', '2A', '1B', '2B', '1C', '2C'],
-    angles: [0, 180, 360, 540, 720, 900],
-    bank: [0, 1, 0, 1, 0, 1],                 // front rotor, rear rotor
-    cylGain: [1.0, 0.93, 1.05, 0.96, 0.94, 1.04], // faces and apex seals never seal quite alike
-    cylTiming: [0, 1.5, -1, 2, -1.5, 0.5],
-    idleRpm: 750, redline: 7500, crankFlare: 1500, starterRatio: 11, // the game's RX-7 idles at 750
-    dual: false,                               // short manifold into one pipe
-    header: [0.0009, 0.0012], pipe: [3.0, 3.0], pipeRefl: 0.45,
-    // Tuned against a recording of an FD RX-7 idling (used only for measurements): a very
-    // regular brap once every three shaft turns, energy at 60-500 Hz, little sub.
-    width: [14, 4], tail: 160, pulseSharp: 0.15, // the port opens fast (14 deg), the gas flows on
-    raspFloor: 0.3,                            // a little rasp even at idle
-    // zing: the clean, high rotary note, locked to the rotors. Harmonics of the firing
-    // frequency (rpm / 30), quiet at idle and strongest from about 6,500 rpm
-    zing: { harmonics: [[3, 1], [4, 0.8], [5, 0.45], [6, 0.3]], level: 0.55, from: 1500, to: 6500 },
-    pump: 0.14, jitter: 0.03, idleJitter: 0.03, lope: [0.004, 0.002], scatter: 1,
-    baseLope: 0.45,                            // even a stock 13B idles choppy
-    // one strong brap per 1,080 deg (repeats every cycle, both halves the same)
-    chop: [1.35, 1.2, 0.72, 0.8, 0.85, 0.75, 1.35, 1.2, 0.72, 0.8, 0.85, 0.75],
-    sizzle: 0.6, idleNoise: 2.0, tick: 0, intakeLag: 360, popMul: 1.0, hitTail: 70,
-    subMin: 60,                                // 27 Hz firing at idle: the brap lives above it
-    idleHitScale: 1.5,                         // pipes make a bigger difference at idle
-    muff: [1100, 900, 0.1, 3200, 1600], body: [112, 5], drone: [170, 3.5],
-    stumble: 0,                                // a rotary's brap is metronome-regular
-    mid: [290, 6],                             // third pipe resonance heard on the reference
-    rasp: [1300, 0.2, 0.8], rumble: [300, 0.06, 1.0], intake: [600, 0.12, 0.25],
-    itb: { level: 1.6, width: 0.6, roarBand: [250, 1800] }, // shorter gulps: its note is low and pure
-    level: 1.3, post: 0.62,                    // driven harder, then turned down: rounder thumps
-  },  // Honda K24A2 2.4 inline-four (TSX / Accord): fires every 180 deg (pitch = rpm / 30), a 4-2-1
+  // Honda K24A2 2.4 inline-four (TSX / Accord): fires every 180 deg (pitch = rpm / 30), a 4-2-1
   // header pairing 1+4 and 2+3, short sharp pulses for the raspy Honda bark, a strong intake,
   // and i-VTEC: above ~5,800 rpm under load the high-lift cam comes in and it goes hard
   k24: {
@@ -486,7 +431,7 @@ export class M20Dsp {
     this.cyc = new Float32Array(Math.ceil(fs * 0.4)); this.cycN = 0; this.sincePost = 0;
   }
 
-  /** Switch engine profile ('m20' | 'ls3'). Keeps running at the current rpm. */
+  /** Switch engine profile (a key of ENGINES). Keeps running at the current rpm. */
   useEngine(name) {
     const E = ENGINES[name];
     if (!E) return;
@@ -571,7 +516,9 @@ export class M20Dsp {
     // lift-off tracking for afterfire pops
     if (c.throttle < 0.06) {
       if (this.offT === 0 && this.popArmed && this.rpmS > 3500) {
-        this.popBudget = Math.floor(Math.random() * this.X.pops * (this.E.popMul || 1)); // stock 0-1, street 0-2, race 0-4 (more on a rotary)
+        this.popBudget = this.target.popCount != null
+          ? this.target.popCount // tuned ECU: exactly this many
+          : Math.floor(Math.random() * this.X.pops * (this.E.popMul || 1)); // stock 0-1, street 0-2, race 0-4 (more on a rotary)
       }
       this.popArmed = false;
       this.offT += n / this.fs;
@@ -782,8 +729,11 @@ export class M20Dsp {
           }
           // afterfire: only well into a real lift-off (not limiter or shift cuts), a few at most
           this.pop[k] = 0;
-          if (this.popBudget > 0 && overrun && ign > 0.5 && rpm > 2400 &&
-              this.offT > 0.35 && this.offT < 1.8 && Math.random() < 0.035) {
+          // (a tuned ECU sets the pace: popRate 1 slow .. 10 machine-gun, and keeps going longer)
+          const ecu = this.target.popCount != null;
+          if (this.popBudget > 0 && overrun && ign > 0.5 && rpm > (ecu ? 1800 : 2400) &&
+              this.offT > (ecu ? 0.2 : 0.35) && this.offT < (ecu ? 4 : 1.8) &&
+              Math.random() < (ecu ? 0.012 * (this.target.popRate || 5) : 0.035)) {
             this.pop[k] = 0.5 + 0.7 * Math.random();
             this.popEnv = this.pop[k];
             this.popBudget--;

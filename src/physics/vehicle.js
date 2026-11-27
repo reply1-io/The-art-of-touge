@@ -155,7 +155,7 @@ export class Vehicle {
   // input: { throttle 0/1, brake 0/1, handbrake 0/1, clutch bool, steer -1 (left) .. +1 (right) }
   // The car's spec with the tuning-shop parts applied (rebuilt only when the parts change).
   #applyParts(t) {
-    const key = [t.intake, t.turbo, t.clutch, t.gearbox, t.finalDrive, t.brakes, t.handbrake, t.angleKit, t.weight].join('|');
+    const key = [t.intake, t.turbo, t.clutch, t.gearbox, t.finalDrive, t.brakes, t.handbrake, t.angleKit, t.weight, t.ecu, t.revLimit].join('|');
     if (key === this.partsKey) return this.partsSpec;
     const p = partsSetup(t);
     this.parts = p;
@@ -163,6 +163,7 @@ export class Vehicle {
     this.partsSpec = { ...this.spec, mass: p.mass, maxSteer: p.maxSteer, handbrakeTorque: p.handbrakeTorque, clutchTorque: p.clutchTorque, brakeTorqueFront: this.spec.brakeTorqueFront * p.brakeScale, brakeTorqueRear: this.spec.brakeTorqueRear * p.brakeScale };
     this.engine.turbo = p.turbo;
     this.engine.intake = p.intake;
+    this.engine.revExtra = p.revExtra;
     this.trans.setParts(p);
     // Weight reduction: lighter body, inertia scaled with it.
     const k = p.mass / this.spec.mass;
