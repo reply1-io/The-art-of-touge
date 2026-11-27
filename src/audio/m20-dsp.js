@@ -229,6 +229,51 @@ export const ENGINES = {
 
 };
 
+// ---- five K24 versions to compare (all share the K24's idle speed, coast-down, quick limiter,
+// VTEC-only-in-gear and room fix; they differ in voice). 'k24' itself is the shared base.
+const K24_COAST = [
+    [1, -15, 1.4, 1800, 2300, 0, 0, 'coast'], [2, 11, 1.8, 1800, 2300, 0, 0, 'coast'],
+    [1, -20, 1.2, 0, 0, 1900, 2400, 'coast', 900, 765], [2, -15, 1.8, 0, 0, 1900, 2400, 'coast', 900, 765],
+    [3, -12, 2.0, 0, 0, 1900, 2400, 'coast', 900, 765], [4, 15, 2.2, 0, 0, 1900, 2400, 'coast', 900, 765]];
+const K24_VERSIONS = {
+  // A: solved to the owner's real-car band shares (idle and on the gas)
+  k24a: { label: 'K24 A: your car (matched to your recording)',
+    width: [34, 4], jitter: 0.08, rasp: [1100, 0.05, 10], rumble: [300, 0.06, 0.7], intakeRoar: 1, diffuse: 1,
+    stateEq: { ...ENGINES.k24.stateEq, rev: [[40, 0.9, 10], [100, 1.4, -2.1], [250, 1.0, 3.3], [650, 1.1, 0.9], [1500, 0.9, 8.1], [3800, 0.9, 10.3], [9000, 0.6, -15.0]] },
+    orderEq: [[2, -3, 2.2, 1500, 3000, 0, 0, 'load'], [2, -7, 2.2, 1500, 3000, 4500, 6000, 'load'], ...K24_COAST, [3, 5, 1.8, 1500, 3000, 0, 0, 'load']],
+    zing: { harmonics: [[3, 1], [4, 0.7], [6, 0.45]], level: 0.3, from: 4800, to: 5200, vtec: true } },
+  // B: A with an edge: some of the extra rasp, zing, sharpness and pitch (about halfway to D)
+  k24b: { label: 'K24 B: your car with more edge',
+    width: [30, 5], jitter: 0.06, rasp: [1200, 0.05, 12.5], rumble: [300, 0.06, 0.6], intakeRoar: 0.9, diffuse: 0.8,
+    stateEq: { ...ENGINES.k24.stateEq, rev: [[40, 0.9, 10], [100, 1.4, -3], [290, 1.0, 3.3], [650, 1.1, 0.9], [1500, 0.9, 9.5], [3800, 0.9, 11.2], [9000, 0.6, -14]] },
+    orderEq: [[2, -3, 2.2, 1500, 3000, 0, 0, 'load'], [2, -7, 2.2, 1500, 3000, 4500, 6000, 'load'], ...K24_COAST,
+      [3, 5.5, 1.8, 1500, 3000, 0, 0, 'load'], [1, -2.5, 1.4, 1500, 3000, 0, 0, 'load']],
+    zing: { harmonics: [[3, 1], [4, 0.72], [6, 0.48], [8, 0.2]], level: 0.3, from: 3000, to: 5500, vtec: true, base: 0.3 } },
+  // C: stock RSX Type-S exhaust (matched to the RSX free-rev clip): deep, boomy, dark; 1x and 3x
+  // carry it, little 2x, little above 1 kHz; VTEC on top
+  k24c: { label: 'K24 C: stock RSX exhaust (matched to the RSX clip)',
+    width: [28, 4], jitter: 0.05, idleNoise: 1.8, tick: 1.5, raspFloor: 0.6,
+    muff: [380, 500, 0.07, 1000, 400], muffRpm: 0.6, muffRpm2: 0.03,
+    body: [64, 5], drone: [480, 8], mid: [520, 3], eq: null, stateEq: null, rpmEq: null,
+    // its idle note is the firing note itself, so the coast-down glides on that (2x held down)
+    orderEq: [[2, -10, 2.2, 1500, 3000, 0, 0, 'load'], [2, -7, 2.0, 2500, 1500, 900, 765, 'coast']],
+    rasp: [1600, 0.2, 0.6], rumble: [300, 0.06, 0.7], intake: [500, 0.1, 0.07], intakeRoar: 0.8, diffuse: 1,
+    zing: { harmonics: [[3, 1], [4, 0.7], [6, 0.45]], level: 0.3, from: 4800, to: 5200, vtec: true } },
+  // D: header and straight pipe: open, loud, raspy and metallic; sharp pulses, zing whenever it revs
+  k24d: { label: 'K24 D: header + straight pipe',
+    width: [22, 6], jitter: 0.04, muff: [600, 900, 0.12, 2200, 1500], muffRpm: 0.6, muffRpm2: 0.05,
+    rasp: [1400, 0.06, 18], rumble: [300, 0.06, 0.6], intakeRoar: 0.8, diffuse: 0.6,
+    stateEq: { ...ENGINES.k24.stateEq, rev: [[40, 0.9, 8], [100, 1.4, -5], [360, 1.0, 3], [650, 1.1, 0], [1500, 0.9, 12], [3800, 0.9, 13], [9000, 0.6, -9]], revDb: 1 },
+    zing: { harmonics: [[3, 1], [4, 0.8], [6, 0.6], [8, 0.4]], level: 0.38, from: 2500, to: 5500, vtec: true, base: 0.7 } },
+  // E: from the driver's seat: the exhaust muffled behind you, the intake honk and VTEC howl in front
+  k24e: { label: "K24 E: driver's seat (intake forward)",
+    width: [30, 5], jitter: 0.06, muff: [300, 400, 0.05, 800, 300], muffRpm: 0.3, muffRpm2: 0,
+    intake: [700, 0.15, 2.5], intakeRoar: 3, rasp: [1100, 0.05, 6], rumble: [300, 0.06, 0.6], diffuse: 1,
+    stateEq: { ...ENGINES.k24.stateEq, rev: [[40, 0.9, 6], [100, 1.4, -2], [300, 1.0, 4], [1200, 1.0, 8], [2600, 1.2, 6], [5000, 0.8, -8], [9000, 0.6, -18]] },
+    zing: { harmonics: [[4, 1], [6, 0.7], [8, 0.4]], level: 0.45, from: 2500, to: 5500, vtec: true, base: 0.7 } },
+};
+for (const [k, v] of Object.entries(K24_VERSIONS)) ENGINES[k] = { ...ENGINES.k24, ...v };
+
 export const IDLE_RPM = ENGINES.m20.idleRpm;
 
 // Exhaust presets, applied on top of the engine profile. open: muffler cutoff multiplier;

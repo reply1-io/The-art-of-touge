@@ -131,6 +131,15 @@ input[type=range] { width: 100%; accent-color: var(--needle); }
             <button id="gK24" aria-pressed="false">K24 four</button>
           </div>
         </div>
+        <div class="row" id="k24Row" hidden><span class="seglabel">Version</span>
+          <div class="seg" role="group" aria-label="K24 version">
+            <button id="vA" aria-pressed="true" title="Matched to your recording">A</button>
+            <button id="vB" aria-pressed="false" title="Your car with more edge">B</button>
+            <button id="vC" aria-pressed="false" title="Stock RSX exhaust">C</button>
+            <button id="vD" aria-pressed="false" title="Header + straight pipe">D</button>
+            <button id="vE" aria-pressed="false" title="Driver's seat">E</button>
+          </div>
+        </div>
         <div class="row"><span class="seglabel">Mode</span>
           <div class="seg" role="group" aria-label="Mode">
             <button id="mFree" aria-pressed="true">Free rev</button>
@@ -260,6 +269,16 @@ const CARS = {
     peakNm: 575, peakRpm: 4600, spread: 6500, mass: 1300, freeRev: 9500,
   },
 };
+// five K24 versions to compare: same car model, each its own voice
+const K24_LABELS = {
+  a: ['A: your car', 'Matched to your recording of a real K24: a clean, textured thrum at idle, and on the gas a broad growl with rasp on top, band for band against the real car.'],
+  b: ['B: your car, more edge', 'A with an edge: sharper pulses, more rasp, a higher voice and some zing whenever it revs.'],
+  c: ['C: stock RSX exhaust', 'Matched to a stock-exhaust RSX free-revving: deep and boomy, dark up top, carried by the firing note and its 3rd harmonic, with VTEC on top.'],
+  d: ['D: header + straight pipe', 'Open, loud, raspy and metallic: short sharp pulses, the rasp and zing right up front.'],
+  e: ["E: driver's seat", 'From inside the car: the exhaust muffled behind you, the intake honk and the high-harmonic howl in front.'],
+};
+for (const [v, [t, d]] of Object.entries(K24_LABELS)) CARS['k24' + v] = { ...CARS.k24, title: `K24 Engine Sound, ${t}`, intro: d + ' Press Start, then hold the gas. In Drive mode, VTEC crosses over at 5,000 rpm in gear.' };
+let k24Version = 'a';
 let eng = 'm20', REDLINE = ENGINES.m20.redline, IDLE = ENGINES.m20.idleRpm, MASS = CARS.m20.mass;
 const $ = (id) => document.getElementById(id);
 
@@ -431,7 +450,9 @@ function setEngineChoice(name) {
   $('gLS3').setAttribute('aria-pressed', String(name === 'ls3'));
   $('gJZ').setAttribute('aria-pressed', String(name === 'jz1'));
   $('gROT').setAttribute('aria-pressed', String(name === 'rotary13b'));
-  $('gK24').setAttribute('aria-pressed', String(name === 'k24'));
+  $('gK24').setAttribute('aria-pressed', String(name.startsWith('k24')));
+  $('k24Row').hidden = !name.startsWith('k24');
+  for (const v of 'abcde') $('v' + v.toUpperCase()).setAttribute('aria-pressed', String(name === 'k24' + v));
   MAXDIAL = E.redline > 6900 ? 8000 : 7000;
   $('scopeTitle').textContent = (E.cycleDeg || 720) === 720
     ? 'One engine cycle (720° of crank), live output'
@@ -447,7 +468,8 @@ $('gM20').onclick = () => setEngineChoice('m20');
 $('gLS3').onclick = () => setEngineChoice('ls3');
 $('gJZ').onclick = () => setEngineChoice('jz1');
 $('gROT').onclick = () => setEngineChoice('rotary13b');
-$('gK24').onclick = () => setEngineChoice('k24');
+$('gK24').onclick = () => setEngineChoice('k24' + k24Version);
+for (const v of 'abcde') $('v' + v.toUpperCase()).onclick = () => { k24Version = v; setEngineChoice('k24' + v); };
 
 // ---------- pedals: pointer + keyboard ----------
 const held = { gas: new Set(), brake: new Set() };
