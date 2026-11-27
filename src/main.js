@@ -50,8 +50,8 @@ const settings = loadSettings();
 // Options no longer in the menu: always the default (camera stays on the CAMERA button).
 if (settings.mode === 'autoClutch') settings.mode = 'manual';
 Object.assign(settings, { picture: 'sharp', vhs: true, sound: true });
-// Night driving only.
-settings.time = 'night';
+// Day, sunset or night (the old rain setting goes back to night).
+if (!['day', 'sunset', 'night'].includes(settings.time)) settings.time = 'night';
 const tune = loadTuning();
 
 // ---------- Rendering ----------
@@ -283,7 +283,7 @@ function renderChoices() {
         : key === 'map'
           ? Object.entries(TRACKS).map(([id, t]) => [id, t.name])
           : key === 'time'
-          ? Object.entries(TIMES).map(([id, t]) => [id, t.name])
+          ? [['day', 'Day'], ['sunset', 'Sunset'], ['night', 'Night']]
           : key === 'picture'
           ? [['sharp', 'Sharp'], ['retro', 'Retro pixels']]
           : key === 'sound' || key === 'vhs'
@@ -1219,6 +1219,7 @@ shop.onEngine = () => {
 };
 shop.resize(window.innerWidth, window.innerHeight);
 $('btn-shop2').addEventListener('click', () => shop.open());
+$('btn-shop-home').addEventListener('click', () => shop.open());
 window.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return; // typing a build name
   if (!running) {
@@ -1537,7 +1538,7 @@ function setupOnline() {
     });
   // The room decides the road and time for everyone in it.
   online.onRoom = (room) => {
-    if (room.time === 'night' && room.time !== settings.time && TIMES[room.time]) {
+    if (room.time && room.time !== settings.time && ['day', 'sunset', 'night'].includes(room.time)) {
       settings.time = room.time;
       saveSettings(settings);
       applySettings();
