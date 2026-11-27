@@ -40,6 +40,20 @@ function hexToHsl(hex) {
 
 const SHOP_KEYS = ['seats', 'offsetFront', 'offsetRear', 'plateStyle', 'plateText', 'stretch', 'intake', 'internals', 'turbo', 'clutch', 'gearbox', 'finalDrive', 'coilovers', 'brakes', 'handbrake', 'angleKit', 'weight', 'paint', 'numbers', 'number', 'numberW', 'numberH', 'exhaust', 'tire', 'diff', 'rideHeight', 'brakeBias', 'springFront', 'springRear', 'antiRollFront', 'antiRollRear', 'wheel', 'wheelColor', 'rim', 'profile', 'camberFront', 'camberRear', 'strutFront', 'strutRear'];
 
+// Category icons for the rail down the left (24x24, drawn in strokes).
+const ICONS = {
+  car: '<path d="M2 16v-3l3-5h10l4 5h3v3"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/>',
+  body: '<rect x="7" y="9" width="8" height="12"/><path d="M9 9V6h4v3M13 4h3M18 5l2-1M18 8h3"/>',
+  interior: '<path d="M7 3h5l-1 10h6l1 7M9 13l-2 7"/>',
+  wheels: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/><path d="M12 3v7M12 14v7M3 12h7M14 12h7"/>',
+  chassis: '<path d="M12 2v3l5 2-10 3 10 3-10 3 10 3-5 2v3"/>',
+  brakes: '<circle cx="11" cy="13" r="8"/><circle cx="11" cy="13" r="3"/><path d="M15 4h5v8h-3"/>',
+  engine: '<path d="M4 9h3V6h8v3h3l2 3v5h-2v2H7l-3-3z"/><path d="M10 6V3h4"/>',
+  drive: '<circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3"/>',
+  dyno: '<path d="M3 3v18h18"/><path d="M5 17c4-1 5-9 9-10 3-1 4 3 6 2"/>',
+  builds: '<path d="M4 4h13l3 3v13H4z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/>',
+};
+
 const TABS = [
   ['car', 'Car'],
   ['body', 'Exterior'],
@@ -786,6 +800,7 @@ export class Shop {
   }
 
   open() {
+    this.before = { ...this.tune }; // what each setting was when you walked in (for the undo arrows)
     this.render();
     this.el.classList.remove('hidden');
     document.body.classList.add('in-shop');
@@ -803,8 +818,9 @@ export class Shop {
   // Size the view so the car sits in the open space left of the panel.
   resize(w, h) {
     this.camera.aspect = w / Math.max(1, h);
-    const panel = Math.min(w * 0.56, 520);
-    this.camera.setViewOffset(w, h, panel / 2, 0, w, h);
+    const panel = Math.min(w * 0.42, 380);
+    const rail = 64;
+    this.camera.setViewOffset(w, h, (panel - rail) / 2, 0, w, h);
     this.camera.updateProjectionMatrix();
   }
 
@@ -954,13 +970,31 @@ export class Shop {
     input.step = step;
     input.value = this.tune[key];
     val.textContent = show(Number(input.value));
+    // The little circular arrow under a changed value puts it back how it was.
+    const undo = document.createElement('button');
+    undo.type = 'button';
+    undo.className = 'shop-undo';
+    undo.setAttribute('aria-label', 'Undo');
+    undo.innerHTML = '<svg viewBox="0 0 24 24"><path d="M5 12a7 7 0 1 0 2-5"/><path d="M5 3v5h5"/></svg>';
+    const was = this.before?.[key];
+    const sync = () => undo.classList.toggle('on', was !== undefined && Number(input.value) !== Number(was));
+    undo.addEventListener('click', (e) => {
+      e.preventDefault();
+      input.value = was;
+      val.textContent = show(Number(was));
+      this.#change(key, Number(was));
+      this.#readout();
+      sync();
+    });
     input.addEventListener('input', () => {
       const v = Number(input.value);
       val.textContent = show(v);
       this.#change(key, v);
       this.#readout();
+      sync();
     });
-    el.append(name, val, input);
+    sync();
+    el.append(name, val, input, undo);
     return el;
   }
 
@@ -980,37 +1014,7 @@ export class Shop {
     const run = dynoRun(t);
     const hp = Math.round(run.peakHp.hp);
     const nm = Math.round(run.peakNm.nm);
-    const mu = (TIRES[t.tire] || TIRES.street).mu;
-    const brake = (t.brakes === 'bbk' ? 1.3 : 1) * mu;
-    this.readoutEl.innerHTML = '';
-    const head = document.createElement('div');
-    head.className = 'spec-head';
-    head.textContent = 'SPEC';
-    this.readoutEl.append(head);
-    // Segmented meters, 2000s style: ten blocks each.
-    for (const [name, frac, val] of [
-      ['POWER', hp / 420, `${hp} HP`],
-      ['TORQUE', nm / 520, `${nm} NM`],
-      ['GRIP', (mu - 0.6) / 0.9, ''],
-      ['BRAKES', (brake - 0.6) / 1.4, ''],
-    ]) {
-      const row = document.createElement('div');
-      row.className = 'spec-row';
-      const lit = Math.max(1, Math.min(10, Math.round(frac * 10)));
-      row.innerHTML = `<span></span><i>${'<b></b>'.repeat(lit)}${'<u></u>'.repeat(10 - lit)}</i><em></em>`;
-      row.querySelector('span').textContent = name;
-      row.querySelector('em').textContent = val;
-      this.readoutEl.append(row);
-    }
-    for (const line of [
-      `${Math.round(run.mass).toLocaleString('en-US')} kg · ${(run.mass / run.peakHp.hp).toFixed(1)} kg/hp`,
-      `${style.name} ${ws.rim}x${RIM_WIDTH_IN[ws.rim]} ET${35 - (t.offsetFront ?? 0)} · ${ws.width}/${ws.profile}R${ws.rim}`,
-    ]) {
-      const d = document.createElement('div');
-      d.className = 'spec-line';
-      d.textContent = line;
-      this.readoutEl.append(d);
-    }
+    this.readoutEl.textContent = `${hp} HP · ${nm} NM · ${Math.round(run.mass).toLocaleString('en-US')} KG · ${style.name} ${ws.rim}"`;
   }
 
   #tabContent() {
@@ -1595,39 +1599,44 @@ export class Shop {
     stage.append(rev);
     const title = document.createElement('div');
     title.className = 'shop-car';
-    title.innerHTML = '<b></b><span>Drag to look around · pinch to zoom</span>';
+    title.innerHTML = '<span>TUNING</span><b></b>';
     title.querySelector('b').textContent = CAR.name;
     this.readoutEl = document.createElement('div');
     this.readoutEl.className = 'shop-readout';
-    stage.append(title, this.readoutEl);
-    this.#readout();
-
-    const panel = document.createElement('div');
-    panel.className = 'shop-panel';
-    const head = document.createElement('div');
-    head.className = 'shop-head';
-    head.innerHTML = '<h2><span>TUNING</span> SHOP</h2><span class="shop-money"></span>';
-    if (this.wallet) head.querySelector('.shop-money').textContent = money(this.wallet.balance);
-    const done = document.createElement('button');
-    done.type = 'button';
-    done.className = 'big';
-    done.textContent = 'DONE';
-    done.addEventListener('click', () => this.close());
-    head.append(done);
-    const tabs = document.createElement('div');
-    tabs.className = 'shop-tabs';
+    // Left: a column of category icons, and Exit at the bottom.
+    const rail = document.createElement('div');
+    rail.className = 'shop-rail';
     for (const [id, name] of TABS) {
       const b = document.createElement('button');
       b.type = 'button';
-      b.textContent = name;
+      b.title = name;
+      b.setAttribute('aria-label', name);
+      b.innerHTML = `<svg viewBox="0 0 24 24">${ICONS[id] || ''}</svg>`;
       if (this.tab === id) b.classList.add('sel');
       b.addEventListener('click', () => {
         this.tab = id;
         this.swapView = false;
         this.render();
       });
-      tabs.append(b);
+      rail.append(b);
     }
+    const exit = document.createElement('button');
+    exit.type = 'button';
+    exit.className = 'shop-exit';
+    exit.textContent = 'EXIT';
+    exit.addEventListener('click', () => this.close());
+    rail.append(exit);
+    stage.append(title, rail, this.readoutEl);
+    this.#readout();
+
+    // Right: the parts and settings of the chosen category.
+    const panel = document.createElement('div');
+    panel.className = 'shop-panel';
+    const head = document.createElement('div');
+    head.className = 'shop-head';
+    head.innerHTML = '<h2></h2><span class="shop-money"></span>';
+    head.querySelector('h2').textContent = (TABS.find(([id]) => id === this.tab) || TABS[0])[1];
+    if (this.wallet) head.querySelector('.shop-money').textContent = money(this.wallet.balance);
     const body = document.createElement('div');
     body.className = 'shop-body';
     if (this.flashMsg) {
@@ -1649,7 +1658,7 @@ export class Shop {
       this.render();
     });
     body.append(reset);
-    panel.append(head, tabs, body);
+    panel.append(head, body);
     el.append(stage, panel);
   }
 }
