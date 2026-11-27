@@ -184,6 +184,14 @@ export const ENGINES = {
     // ITBs on the K24 layer on top of its own sound: the exhaust and its 400-600 Hz bark stay (no
     // ducking, no mid cut), a lighter trumpet note, and intake rasp and hiss on top
     itb: { level: 0.04, roar: 0.18, duck: 0, octave: 0, lowCut: 25, drone: [[520, 1.4, 0], [850, 1.4, 0]], hiss: 0.07, hissFloor: 0.3 },
+    // tuned to a recording of a real K24: an idle voice and a revving voice, blended by throttle and
+    // revs ([Hz, Q, dB] peaking filters; revDb: revs this much louder relative to idle)
+    stateEq: {
+      idle: [[42, 1.3, -5.3], [306, 3, -17], [280, 0.9, -1.5], [650, 0.8, -2.4]],      // clean thrum near 100 Hz, no 310 Hz whine
+      rev: [[100, 1.6, -9.8], [175, 2, 1.5], [260, 1.4, 12], [360, 1.6, -0.7], [650, 1.2, -5.4],
+        [1600, 1, 12], [3800, 1, 11.3], [9000, 0.5, -12]],                           // growl and rasp, less fizz (solved to the targets)
+      revDb: -0.7,
+    },
     overrunFire: true,                         // off the throttle it falls back to an idle-like level, never a gap
     idleHitScale: 0.35,                        // a loud exhaust hardens its idle less (its idle is already full)
     // filters that follow the revs: [multiple of the firing note, dB, Q]. Its exhaust carries the
@@ -382,6 +390,7 @@ export class M20Dsp {
     this.orderEq = Array.from({ length: 8 }, () => new Biquad());
     this.eq = Array.from({ length: 10 }, () => new Biquad()); this.eqFor = '';
     this.rpmEq = [new Biquad(), new Biquad()];
+    this.stIdle = Array.from({ length: 6 }, () => new Biquad()); this.stRev = Array.from({ length: 10 }, () => new Biquad()); this.revW = 0; this.revL = 0;
     this.dcHp = new Biquad().set('hp', 28, 0.7, 0, fs);
     this.raspBp = new Biquad(); this.raspHp = new Biquad().set('hp', 900, 0.7, 0, fs);
     this.rumbleBp = new Biquad(); this.rumbleLp = new Biquad().set('lp', 1200, 0.5, 0, fs);
@@ -550,6 +559,14 @@ export class M20Dsp {
       this.drone.set('pk', E.drone[0] * X.droneHz, 1.6, E.drone[1] + X.droneDb, fs);
       if (E.mid) this.mid.set('pk', E.mid[0], 1.4, E.mid[1], fs);
       if (E.eq && this.eqFor !== this.engine) { this.eqFor = this.engine; E.eq.forEach(([hz, q, db], k) => this.eq[k].set('pk', hz, q, db, fs)); }
+      if (E.stateEq) { // idle voice vs revving voice: weight from throttle and revs
+        const idl = this.c.idleRpm || 800;
+        // mostly the throttle; the revs alone (coasting) bring in only a little of the revving voice
+        const wt = Math.min(1, Math.max(0, Math.max(this.thrS * 1.5, 0.35 * (this.rpmS - idl * 1.25) / 2000)));
+        this.revW = wt; this.revL = Math.min(1, this.thrS * 1.5); // level follows the throttle only
+        E.stateEq.idle.forEach(([hz, q, db], k) => this.stIdle[k].set('pk', hz, q, db * (1 - wt), fs));
+        E.stateEq.rev.forEach(([hz, q, db], k) => this.stRev[k].set('pk', hz, q, db * wt, fs));
+      }
       if (E.rpmEq) E.rpmEq.forEach(([hz, q, db, r0, r1], k) => {
         this.rpmEq[k].set('pk', hz, q, db * Math.min(1, Math.max(0, (this.rpmS - r0) / (r1 - r0))), fs);
       });
@@ -863,6 +880,11 @@ export class M20Dsp {
       // an engine's own tone EQ, on everything it makes (exhaust, rasp, intake, tick)
       if (E.eq) for (let k = 0; k < E.eq.length; k++) y = this.eq[k].run(y);
       if (E.rpmEq) for (let k = 0; k < E.rpmEq.length; k++) y = this.rpmEq[k].run(y);
+      if (E.stateEq) {
+        for (let k = 0; k < E.stateEq.idle.length; k++) y = this.stIdle[k].run(y);
+        for (let k = 0; k < E.stateEq.rev.length; k++) y = this.stRev[k].run(y);
+        y *= Math.pow(10, (E.stateEq.revDb || 0) * this.revL / 20);
+      }
       y = this.dcHp.run(y);
       // outdoor room: a ground reflection (~3 ms) and nearby surfaces (7, 13 ms), plus a short,
       // soft diffuse tail; quiet, but it takes away the dry, in-the-box sound
