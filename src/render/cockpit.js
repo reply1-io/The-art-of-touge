@@ -75,7 +75,7 @@ export class Cockpit {
     // shapes still read.
     const dark = new THREE.MeshLambertMaterial({ color: 0x1b1c20, emissive: 0x0a0a0c, flatShading: true });
     const panel = new THREE.MeshLambertMaterial({ color: 0x2a2b30, emissive: 0x0e0e11, flatShading: true });
-    const cloth = new THREE.MeshLambertMaterial({ color: 0x3a3c44, emissive: 0x131418, side: THREE.DoubleSide });
+    const cloth = new THREE.MeshLambertMaterial({ color: 0x26272b, emissive: 0x0b0b0d, side: THREE.DoubleSide });
     const sleeve = new THREE.MeshLambertMaterial({ map: sleeveTexture(), flatShading: true });
     this.sleeve = sleeve;
 
