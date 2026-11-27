@@ -188,12 +188,13 @@ export const ENGINES = {
     // revs ([Hz, Q, dB] peaking filters; revDb: revs this much louder relative to idle)
     stateEq: {
       idle: [[42, 1.3, -5.3], [306, 3, -17], [280, 0.9, -1.5], [650, 0.8, -2.4]],      // clean thrum near 100 Hz, no 310 Hz whine
-      rev: [[100, 1.6, -9.8], [175, 2, 1.5], [260, 1.4, 12], [360, 1.6, -0.7], [650, 1.2, -5.4],
-        [1600, 1, 12], [3800, 1, 11.3], [9000, 0.5, -12]],                           // growl and rasp, less fizz (solved to the targets)
-      revDb: -0.7,
+      rev: [[100, 1.6, -9.8], [230, 2, 1.5], [320, 1.4, 12], [480, 1.4, -4], [700, 1.2, -6.5],
+        [1600, 1, 14], [3800, 1, 12.5], [9000, 0.5, -12]],                           // growl and rasp, less fizz (solved to the targets)
+      revDb: -2.5,
     },
     overrunFire: true,                         // off the throttle it falls back to an idle-like level, never a gap
-    fastCut: true,                             // a quick Honda limiter: each cut stops combustion at once
+    fastCut: true,
+    room: 0.3,                                 // fewer early reflections: their fixed comb rang in the background ('digital')                             // a quick Honda limiter: each cut stops combustion at once
     idleHitScale: 0.35,                        // a loud exhaust hardens its idle less (its idle is already full)
     // filters that follow the revs: [multiple of the firing note, dB, Q]. Its exhaust carries the
     // odd multiples (1x, 3x) and little of 2x
@@ -206,7 +207,7 @@ export const ENGINES = {
       [1, -15, 1.4, 0, 0, 1250, 1080, 'coast'], [2, 11, 1.8, 0, 0, 1250, 1080, 'coast'],
       // ...and a little more where 2x crosses the pipe's notch near 171 Hz (2,500-2,750 rpm)
       [1, -6, 1.6, 2250, 2450, 2800, 3000, 'coast'], [2, 7, 2.2, 2250, 2450, 2800, 3000, 'coast'],
-      [3, 5, 1.8, 1500, 3000]],                  // 3x up off idle: a higher-pitched voice // (and eased off again at idle itself, which is as it was)
+      [3, 8, 1.8, 1500, 3000]],                  // 3x up off idle: a higher-pitched voice // (and eased off again at idle itself, which is as it was)
     coastEven: 0.25,                           // coasting, the two pairs pulse alike (no half-pitch lurch)
     // the high-rpm bark: 400-600 Hz up, faded in with the revs ([Hz, Q, dB, from rpm, full rpm])
     rpmEq: [[580, 1.1, 2, 3500, 6000], [230, 1.0, -5, 3500, 6000]],
@@ -546,7 +547,9 @@ export class M20Dsp {
 
     // block-rate coefficient updates
     const thr0 = C.throttle, rpm0 = C.rpm, X = this.X;
-    if (this.coef++ % 4 === 0) {
+    // filters are recalculated every block (128 samples): stepping them less often leaves a faint
+    // 'digital' buzz at the update rate behind the engine as the revs and the tracking filters move
+    if (this.coef++ % (this.E.stateEq || this.E.orderEq ? 1 : 4) === 0) {
       const E = this.E, m = E.muff, open = X.open * (1 - 0.22 * this.T.on); // the turbine muffles a bit
       // the muffler lets more through as the revs rise: a higher-pitched note up top, idle as before
       this.muffLp.set('lp', (m[0] + m[1] * thr0 + rpm0 * m[2] * (E.muffRpm ?? 1.5)) * open, 0.6, 0, fs);
@@ -721,8 +724,9 @@ export class M20Dsp {
       // manifolds: slightly different runner lengths, partial reflection at the collector
       const dA = fs * E.header[0], dB = fs * E.header[1];
       const hA = this.hdrA.read(dA), hB = this.hdrB.read(dB);
-      this.hdrA.write(a - 0.32 * hA);
-      this.hdrB.write(b - 0.32 * hB);
+      const hfb = E.hdrFb ?? 0.32; // reflection inside the header runners
+      this.hdrA.write(a - hfb * hA);
+      this.hdrB.write(b - hfb * hB);
       // afterfire kick: a short low-passed burst entering the pipe, so the
       // muffler shapes it into a thud-crack rather than a digital click
       this.popEnv *= 0.9965;
@@ -897,7 +901,8 @@ export class M20Dsp {
       let wet = this.reflLp.run(this.refl.read(fs * 0.0029) * 0.45 + this.refl.read(fs * 0.0073) * 0.28 + this.refl.read(fs * 0.013) * 0.2);
       let dif = this.roomHp.run(this.roomLp.run(this.refl.read(fs * 0.019)));
       for (const a of this.ap) { const dl = a.d.read(a.n - 1); const v = dif + 0.6 * dl; a.d.write(v); dif = dl - 0.6 * v; }
-      y = y * 0.85 + wet * 0.5 + dif * 0.22;
+      const rm = E.room ?? 1;      // how much of the outdoor room (reflections and diffuse tail)
+      y = y * (1 - 0.15 * rm) + wet * 0.5 * rm + dif * 0.22 * (E.diffuse ?? rm);
       // the trumpets go in after the room: they are right in front of you, and a near-pure note
       // through the ground reflection would swell and vanish as the revs sweep past its notches
       if (itbAct) {
