@@ -133,6 +133,13 @@ export class M20EngineSound {
     this._send({ set: { engine: name, idleRpm: ENGINES[name].idleRpm } });
   }
 
+  /** A whole engine profile (as built by enginePhysics.buildProfile): installed and used at once. */
+  setProfile(profile) {
+    this.engine = 'custom';
+    ENGINES.custom = profile;
+    this._send({ set: { profile, idleRpm: profile.idleRpm } });
+  }
+
   start() {
     this.running = true;
     this._send({ cmd: 'start' });

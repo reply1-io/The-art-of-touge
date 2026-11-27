@@ -730,6 +730,8 @@ export class CarAudio {
         starter: cranking ? 1 : 0,
         exhaust: this.exhaust || 'stock', // street/race: rowdier voice and a lopey idle
         intake: this.intake || 'stock',   // 'itb': the stacks' howl and induction air
+        cut: e.limiterCut ? 1 : 0,          // the rev limiter's fuel cut (engines with fastCut stop firing at once)
+        inGear: !!(vehicle.trans && vehicle.trans.gear > 0 && vehicle.trans.coupling > 0.5), // VTEC only under load
         cabin: inCar,
         idleRpm: e.spec?.idleRpm ?? 760,
         // turbo: the synth's whistle, air rush and lift-off flutter follow the game's boost

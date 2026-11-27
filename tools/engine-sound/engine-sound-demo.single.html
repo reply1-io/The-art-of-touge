@@ -128,6 +128,16 @@ input[type=range] { width: 100%; accent-color: var(--needle); }
             <button id="gJZ" aria-pressed="false">1JZ six</button>
             <button id="gLS3" aria-pressed="false">LS3 V8</button>
             <button id="gROT" aria-pressed="false">13B rotary</button>
+            <button id="gK24" aria-pressed="false">K24 four</button>
+          </div>
+        </div>
+        <div class="row" id="k24Row" hidden><span class="seglabel">Version</span>
+          <div class="seg" role="group" aria-label="K24 version">
+            <button id="vA" aria-pressed="true" title="Matched to your recording">A</button>
+            <button id="vB" aria-pressed="false" title="Your car with more edge">B</button>
+            <button id="vC" aria-pressed="false" title="Stock RSX exhaust">C</button>
+            <button id="vD" aria-pressed="false" title="Header + straight pipe">D</button>
+            <button id="vE" aria-pressed="false" title="Driver's seat">E</button>
           </div>
         </div>
         <div class="row"><span class="seglabel">Mode</span>
@@ -204,15 +214,14 @@ input[type=range] { width: 100%; accent-color: var(--needle); }
 <script type="module">
 // ---- inlined from src/audio/m20-dsp.js ----
 // DSP core that synthesizes engines from first principles: the BMW M20 2.5 straight-six
-// (E30 325i), the GM LS3 6.2 V8 and the Mazda 13B two-rotor Wankel (RX-7). Each engine is a
-// profile in ENGINES.
+// (E30 325i) and the swap engines. Each engine is a profile in ENGINES.
 // Runs inside an AudioWorklet when the browser allows it, otherwise on the main thread
 // (see M20EngineSound.js). It has no imports so it can be shipped into a worklet as text.
 //
 // Signal path, per sample:
 //   crank angle -> one exhaust pressure pulse per cylinder per cycle, in firing order
 //   -> two manifolds / banks (header delay with partial reflection)
-//   -> M20: collector into one pipe; LS3: true dual pipes, one per bank
+//   -> collector into one pipe, or true dual pipes (one per bank) on a V engine
 //   -> exhaust pipe (delay line with inverted reflection = pipe resonances)
 //   -> muffler (lowpass + body resonance) + turbulent "rasp" noise riding on each pulse
 //   + intake roar (throttle) + valve-train tick + starter motor when cranking
@@ -261,6 +270,10 @@ const ENGINES = {
     muff: [420, 700, 0.09, 1500, 1200], body: [115, 4], drone: [240, 1],
     rasp: [1200, 0.15, 1.0], rumble: [260, 0.06, 1.0], intake: [420, 0.08, 0.10],
     level: 1.0,
+    // ITBs heard on their own, trimmed off the throttle to a mic over a real M20's trumpets (on the
+    // throttle it is left as it was): per band [below 70, 70-400, 400-1000, 1000-2500, above 2500 Hz]
+    // in dB; offPost: the sub cut again after the output stage; body: breathy noise through 70-400 Hz
+    itb: { soloTrim: { off: [-5, 4.5, -6.5, 0, 0], offPost: -5, body: 0.358 } },
   },
   jz2: {
     // Toyota 2JZ-GTE run N/A: 3.0 L square (86 x 86 mm) straight-six, same 1-5-3-6-2-4 order
@@ -312,62 +325,129 @@ const ENGINES = {
     level: 0.68,
     factoryTurbo: 'factory',                   // the stock turbo is always there; set({ turbo: 1 }) upgrades it
   },
-  ls3: {
-    label: 'GM LS3 6.2 V8',
-    firing: [1, 8, 7, 2, 6, 5, 4, 3],
-    angles: [0, 90, 180, 270, 360, 450, 540, 630],
-    bank: [0, 1, 0, 1, 1, 0, 1, 0],            // odd cylinders left bank, even right
-    cylGain: [1.0, 0.94, 1.06, 0.96, 1.05, 0.9, 1.02, 0.95],
-    cylTiming: [0, 1.2, -1.4, 0.8, -0.6, 1.6, -1, 0.5],
-    idleRpm: 650, redline: 6600, crankFlare: 1300, starterRatio: 10,
-    dual: true,                                // true duals: each bank keeps its own uneven beat
-    header: [0.0014, 0.0014], pipe: [3.5, 3.8], pipeRefl: 0.45,
-    listen: [1, 0.7],                          // heard from behind, nearer the left tailpipe
-    width: [46, 12], pump: 0.13, jitter: 0.08, idleJitter: 0.12, lope: [0.013, 0.008],
-    chop: [1.1, 1, 0.9, 1, 0.35, 0.45, 1.5, 1.15, 1.05, 1, 1.05, 1, 1.05, 1, 1.05, 1],
-    sizzle: 0.45,                              // eight overlapping pulses: less crackle per pulse
-    idleNoise: 0.4,                            // ...and less turbulence noise at idle, or it hisses
-    muff: [300, 620, 0.08, 1200, 1100], body: [80, 6], drone: [165, 1],
-    rasp: [900, 0.12, 0.75], rumble: [180, 0.05, 1.35], intake: [300, 0.06, 0.14],
-    itb: { level: 0.4, boxRing: 0.3 },        // its firing note crosses the box's ring around 5,500 rpm
-    level: 1.4,
+  // Honda K24A2 2.4 inline-four (TSX / Accord): fires every 180 deg (pitch = rpm / 30), a 4-2-1
+  // header pairing 1+4 and 2+3, short sharp pulses for the raspy Honda bark, a strong intake,
+  // and i-VTEC: above ~5,800 rpm under load the high-lift cam comes in and it goes hard
+  k24: {
+    label: 'Honda K24A2 2.4 inline-four (i-VTEC)',
+    firing: [1, 3, 4, 2],
+    angles: [0, 180, 360, 540],
+    bank: [0, 1, 0, 1],                        // 1+4 and 3+2 share a header pair
+    cylGain: [1.06, 0.9, 1.04, 0.92],          // pairs 1+4 and 3+2 differ: the once-a-turn beat
+    cylTiming: [0, 1.5, -1, 1],
+    idleRpm: 765, redline: 7100, crankFlare: 1600, starterRatio: 12, // a real K24 idles ~765 (firing 25.5 Hz = rpm / 30)
+    dual: false,
+    header: [0.0014, 0.0017], pipe: [3.0, 3.0], pipeRefl: 0.45,
+    width: [26, 6], pump: 0.12, jitter: 0.045, idleJitter: 0.06, lope: [0.006, 0.003], // sharp, clean, even pulses
+    chop: [1.1, 0.9, 1.2, 0.5, 1.05, 1, 1.15, 0.8],
+    sizzle: 1.0, idleNoise: 3, tick: 0.08, raspFloor: 1, subMin: 40, raspLp: 2200, // rasp, not hiss; little tick // a textured idle, like the real car // a buzzy, tappy idle; the 25 Hz fundamental is felt more than heard
+    muff: [380, 500, 0.07, 1000, 400], muffRpm: 0.15, muffRpm2: 0,
+    body: [64, 5], drone: [440, 8], mid: [460, 3], // a low boom, and the pipe's main ring at 400-500 Hz
+    eq: [[105, 0.8, 4], [720, 1.1, -6], [1700, 0.7, -6], [3800, 0.7, -5], [250, 0.9, -3], // more 70-150 Hz body; darker above; 150-400 down 3 dB
+      [1750, 1.4, -6.5], [3900, 1.3, -10.3], [105, 1.3, 4.2], [45, 0.9, -3.5]], // and less below 70 Hz                            // and darker still up top, more low body
+    // ITBs on the K24 layer on top of its own sound: the exhaust and its 400-600 Hz bark stay (no
+    // ducking, no mid cut), a lighter trumpet note, and intake rasp and hiss on top
+    itb: { level: 0.04, roar: 0.18, duck: 0, octave: 0, lowCut: 25, drone: [[520, 1.4, 0], [850, 1.4, 0]], hiss: 0.07, hissFloor: 0.3 },
+    // tuned to a recording of a real K24: an idle voice and a revving voice, blended by throttle and
+    // revs ([Hz, Q, dB] peaking filters; revDb: revs this much louder relative to idle)
+    stateEq: {
+      // solved against band shares measured on the owner's real K24 (idle, and on the gas at 5,000-6,800)
+      idle: [[40, 1.0, -6.7], [102, 3.0, 12.5], [76, 4.0, -6], [250, 1.0, 8.1], [650, 0.9, 0.5], [1500, 0.9, 2.4], [3800, 0.9, -1.2], [9000, 0.6, -2.7]],
+      rev: [[40, 0.9, 10], [100, 1.4, -4], [330, 1.0, 3.3], [650, 1.1, 0.9], [1500, 0.9, 11], [3800, 0.9, 12], [9000, 0.6, -13]], // more rasp, higher growl
+      revDb: 2.5, idleDb: -2.6, // revs ~4 dB louder relative to idle than before (idle down a little, revs up a little)
+    },
+    overrunFire: true,                         // off the throttle it falls back to an idle-like level, never a gap
+    fastCut: true,
+    room: 0.3, diffuse: 0.6,                   // fewer early reflections, a little less tail (clarity): their fixed comb rang in the background ('digital')                             // a quick Honda limiter: each cut stops combustion at once
+    idleHitScale: 0.35,                        // a loud exhaust hardens its idle less (its idle is already full)
+    // filters that follow the revs: [multiple of the firing note, dB, Q]. Its exhaust carries the
+    // odd multiples (1x, 3x) and little of 2x
+    // 2x cut through the mid revs (at idle 2x is left alone; near redline part of it comes back
+    // as the bark)
+    orderEq: [[2, -3, 2.2, 1500, 3000, 0, 0, 'load'], [2, -7, 2.2, 1500, 3000, 4500, 6000, 'load'],
+      // off the throttle (coasting down) 2x leads all the way: firing note held down, 2x up, so the
+      // pitch follows one line from the redline bark straight onto the ~70 Hz idle note and never
+      // drops under it; both ease off at idle itself (last field: only off the throttle)
+      // (the real K24's idle peak is 4x the firing note, ~102 Hz, so 4x is the one that leads the coast
+      // and glides onto it; the firing note and 2x are held down)
+      // above ~2,000 rpm 2x leads (the muffler, nearly shut off the throttle, smothers 4x up there)...
+      [1, -15, 1.4, 1800, 2300, 0, 0, 'coast'], [2, 11, 1.8, 1800, 2300, 0, 0, 'coast'],
+      // ...below it 4x leads, the firing note, 2x and 3x held down, down onto the ~102 Hz idle note
+      // ([.., 'coast', r4, r5]: also eased off right at idle, which keeps its own voice)
+      [1, -20, 1.2, 0, 0, 1900, 2400, 'coast', 900, 765], [2, -15, 1.8, 0, 0, 1900, 2400, 'coast', 900, 765],
+      [3, -12, 2.0, 0, 0, 1900, 2400, 'coast', 900, 765], [4, 15, 2.2, 0, 0, 1900, 2400, 'coast', 900, 765],
+      [3, 6, 1.8, 1500, 3000, 0, 0, 'load'], [1, -5, 1.4, 1500, 3000, 0, 0, 'load']], // 3x up, the firing note down on the gas: higher // (and eased off again at idle itself, which is as it was)
+    coastEven: 0.25,                           // coasting, the two pairs pulse alike (no half-pitch lurch)
+    // the high-rpm bark: 400-600 Hz up, faded in with the revs ([Hz, Q, dB, from rpm, full rpm])
+    rpmEq: [[580, 1.1, 2, 3500, 6000], [230, 1.0, -5, 3500, 6000]],
+    rasp: [1300, 0.05, 15], rumble: [300, 0.06, 0.5], intake: [800, 0.1, 0.9], intakeRoar: 0.8, // rasp centred 1-2.5 kHz
+    level: 1.1,
+    // i-VTEC crossover: on above `on` rpm with the throttle past minThr, off below `off` or on a
+    // lift (so it doesn't flicker); glides in over `glide` s. Then: intake noise and roar, rasp
+    // and level up, and sharper pulses (width, crank degrees)
+    vtec: { on: 5000, off: 4700, minThr: 0.6, glide: 0.03, intake: 4, roar: 3, rasp: 3.2, width: 8, level: 1.4, kick: 0.15 },
+    // the high cam's own voice: an intake howl on the upper firing harmonics, only on VTEC (with a
+    // short surge as the cam switches over), so the crossover changes the sound, not just its volume
+    zing: { harmonics: [[3, 1], [4, 0.75], [6, 0.5], [8, 0.3]], level: 0.3, from: 2500, to: 5500, vtec: true, base: 0.55 }, // zing whenever it revs; VTEC adds the rest
   },
-  rotary13b: {
-    label: 'Mazda 13B two-rotor Wankel',
-    // Each rotor has three faces and each face fires once every three turns of the eccentric
-    // shaft, so the rotors fire twice per shaft turn (pitch = rpm / 30, like a four-cylinder),
-    // but the full pattern only repeats every 1,080 deg: 6 "faces" here, rotors alternating.
-    cycleDeg: 1080,
-    firing: ['1A', '2A', '1B', '2B', '1C', '2C'],
-    angles: [0, 180, 360, 540, 720, 900],
-    bank: [0, 1, 0, 1, 0, 1],                 // front rotor, rear rotor
-    cylGain: [1.0, 0.93, 1.05, 0.96, 0.94, 1.04], // faces and apex seals never seal quite alike
-    cylTiming: [0, 1.5, -1, 2, -1.5, 0.5],
-    idleRpm: 750, redline: 7500, crankFlare: 1500, starterRatio: 11, // the game's RX-7 idles at 750
-    dual: false,                               // short manifold into one pipe
-    header: [0.0009, 0.0012], pipe: [3.0, 3.0], pipeRefl: 0.45,
-    // Tuned against a recording of an FD RX-7 idling (used only for measurements): a very
-    // regular brap once every three shaft turns, energy at 60-500 Hz, little sub.
-    width: [14, 4], tail: 160, pulseSharp: 0.15, // the port opens fast (14 deg), the gas flows on
-    raspFloor: 0.3,                            // a little rasp even at idle
-    // zing: the clean, high rotary note, locked to the rotors. Harmonics of the firing
-    // frequency (rpm / 30), quiet at idle and strongest from about 6,500 rpm
-    zing: { harmonics: [[3, 1], [4, 0.8], [5, 0.45], [6, 0.3]], level: 0.55, from: 1500, to: 6500 },
-    pump: 0.14, jitter: 0.03, idleJitter: 0.03, lope: [0.004, 0.002], scatter: 1,
-    baseLope: 0.45,                            // even a stock 13B idles choppy
-    // one strong brap per 1,080 deg (repeats every cycle, both halves the same)
-    chop: [1.35, 1.2, 0.72, 0.8, 0.85, 0.75, 1.35, 1.2, 0.72, 0.8, 0.85, 0.75],
-    sizzle: 0.6, idleNoise: 2.0, tick: 0, intakeLag: 360, popMul: 1.0, hitTail: 70,
-    subMin: 60,                                // 27 Hz firing at idle: the brap lives above it
-    idleHitScale: 1.5,                         // pipes make a bigger difference at idle
-    muff: [1100, 900, 0.1, 3200, 1600], body: [112, 5], drone: [170, 3.5],
-    stumble: 0,                                // a rotary's brap is metronome-regular
-    mid: [290, 6],                             // third pipe resonance heard on the reference
-    rasp: [1300, 0.2, 0.8], rumble: [300, 0.06, 1.0], intake: [600, 0.12, 0.25],
-    itb: { level: 1.6, width: 0.6, roarBand: [250, 1800] }, // shorter gulps: its note is low and pure
-    level: 1.3, post: 0.62,                    // driven harder, then turned down: rounder thumps
-  },
+
 };
+
+// ---- five K24 versions to compare (all share the K24's idle speed, coast-down, quick limiter,
+// VTEC-only-in-gear and room fix; they differ in voice). 'k24' itself is the shared base.
+const K24_COAST = [
+    [1, -15, 1.4, 1800, 2300, 0, 0, 'coast'], [2, 11, 1.8, 1800, 2300, 0, 0, 'coast'],
+    [1, -20, 1.2, 0, 0, 1900, 2400, 'coast', 900, 765], [2, -15, 1.8, 0, 0, 1900, 2400, 'coast', 900, 765],
+    [3, -12, 2.0, 0, 0, 1900, 2400, 'coast', 900, 765], [4, 15, 2.2, 0, 0, 1900, 2400, 'coast', 900, 765]];
+const K24_VERSIONS = {
+  // A: solved to the owner's real-car band shares (idle and on the gas)
+  k24a: { label: 'K24 A: your car (matched to your recording)',
+    width: [34, 4], jitter: 0.08, rasp: [1100, 0.05, 10], rumble: [300, 0.06, 0.7], intakeRoar: 1, diffuse: 1,
+    stateEq: { ...ENGINES.k24.stateEq, rev: [[40, 0.9, 10], [100, 1.4, -2.1], [250, 1.0, 3.3], [650, 1.1, 0.9], [1500, 0.9, 8.1], [3800, 0.9, 10.3], [9000, 0.6, -15.0]] },
+    orderEq: [[2, -3, 2.2, 1500, 3000, 0, 0, 'load'], [2, -7, 2.2, 1500, 3000, 4500, 6000, 'load'], ...K24_COAST, [3, 5, 1.8, 1500, 3000, 0, 0, 'load']],
+    zing: { harmonics: [[3, 1], [4, 0.7], [6, 0.45]], level: 0.3, from: 4800, to: 5200, vtec: true } },
+  // B: A with an edge: some of the extra rasp, zing, sharpness and pitch (about halfway to D)
+  k24b: { label: 'K24 B: your car with more edge',
+    width: [30, 5], jitter: 0.06, rasp: [1200, 0.05, 12.5], rumble: [300, 0.06, 0.6], intakeRoar: 0.9, diffuse: 0.8,
+    stateEq: { ...ENGINES.k24.stateEq, rev: [[40, 0.9, 10], [100, 1.4, -3], [290, 1.0, 3.3], [650, 1.1, 0.9], [1500, 0.9, 9.5], [3800, 0.9, 11.2], [9000, 0.6, -14]] },
+    orderEq: [[2, -3, 2.2, 1500, 3000, 0, 0, 'load'], [2, -7, 2.2, 1500, 3000, 4500, 6000, 'load'], ...K24_COAST,
+      [3, 5.5, 1.8, 1500, 3000, 0, 0, 'load'], [1, -2.5, 1.4, 1500, 3000, 0, 0, 'load']],
+    zing: { harmonics: [[3, 1], [4, 0.72], [6, 0.48], [8, 0.2]], level: 0.3, from: 3000, to: 5500, vtec: true, base: 0.3 } },
+  // C: stock RSX Type-S exhaust (matched to the RSX free-rev clip): deep, boomy, dark; 1x and 3x
+  // carry it, little 2x, little above 1 kHz; VTEC on top
+  k24c: { label: 'K24 C: stock RSX exhaust (matched to the RSX clip)',
+    width: [28, 4], jitter: 0.05, idleNoise: 1.8, tick: 1.5, raspFloor: 0.6,
+    muff: [380, 500, 0.07, 1000, 400], muffRpm: 0.6, muffRpm2: 0.03,
+    body: [64, 5], drone: [480, 8], mid: [520, 3], eq: null, stateEq: null, rpmEq: null,
+    // its idle note is the firing note itself, so the coast-down glides on that (2x held down)
+    orderEq: [[2, -10, 2.2, 1500, 3000, 0, 0, 'load'], [2, -7, 2.0, 2500, 1500, 900, 765, 'coast']],
+    rasp: [1600, 0.2, 0.6], rumble: [300, 0.06, 0.7], intake: [500, 0.1, 0.07], intakeRoar: 0.8, diffuse: 1,
+    zing: { harmonics: [[3, 1], [4, 0.7], [6, 0.45]], level: 0.3, from: 4800, to: 5200, vtec: true } },
+  // D: header and straight pipe: open, loud, raspy and metallic; sharp pulses, zing whenever it revs
+  k24d: { label: 'K24 D: header + straight pipe',
+    width: [26, 6], jitter: 0.04, muff: [600, 900, 0.12, 2200, 1500], muffRpm: 0.6, muffRpm2: 0.05,
+    rasp: [1400, 0.06, 18], rumble: [300, 0.06, 0.6], intakeRoar: 0.8, diffuse: 0.6,
+    stateEq: { ...ENGINES.k24.stateEq, rev: [[40, 0.9, 8], [100, 1.4, -5], [360, 1.0, 3], [650, 1.1, 0], [1500, 0.9, 12], [3800, 0.9, 13], [9000, 0.6, -9]], revDb: 1 },
+    zing: { harmonics: [[3, 1], [4, 0.8], [6, 0.6], [8, 0.4]], level: 0.38, from: 2500, to: 5500, vtec: true, base: 0.7 } },
+  // E: from the driver's seat: the exhaust muffled behind you, the intake honk and VTEC howl in front
+  k24e: { label: "K24 E: driver's seat (intake forward)",
+    width: [30, 5], jitter: 0.06, muff: [300, 400, 0.05, 800, 300], muffRpm: 0.3, muffRpm2: 0,
+    intake: [700, 0.15, 2.5], intakeRoar: 3, rasp: [1100, 0.05, 6], rumble: [300, 0.06, 0.6], diffuse: 1,
+    stateEq: { ...ENGINES.k24.stateEq, rev: [[40, 0.9, 6], [100, 1.4, -2], [300, 1.0, 4], [1200, 1.0, 8], [2600, 1.2, 6], [5000, 0.8, -8], [9000, 0.6, -18]] },
+    zing: { harmonics: [[4, 1], [6, 0.7], [8, 0.4]], level: 0.45, from: 2500, to: 5500, vtec: true, base: 0.7 } },
+};
+for (const [k, v] of Object.entries(K24_VERSIONS)) ENGINES[k] = { ...ENGINES.k24, ...v };
+
+// ---- ITBs heard on their own (set({ intake: 'itb', solo: 'itb' })): the six is the M20 with the
+// standard ITB voice; the four is a high-revving inline-four on open trumpets. It fires every 180
+// degrees, so each trumpet's gulp ends as the next begins: short, separate gulps with hard edges,
+// a raspier honk (its note is lower than the six's at the same revs, but richer in overtones), more rush of air, and pairs 1+4 and 2+3
+// breathing a little differently (a once-a-turn beat, not the six's growl)
+ENGINES.itb4 = { ...ENGINES.k24, label: 'Inline-four on ITBs', idleRpm: 950, redline: 8200, vtec: null, zing: null,
+  itb: { width: 0.8, skew: 2.6, uneven: 0.8, spread: 6, jitter: 0.07, octave: 0.25, level: 0.5,
+    roar: 1.8, roarBand: [500, 3200], duck: 3.6, box: 0.0024, boxRing: 0.25, boxDamp: 2600, boom: [130, 1.0, 5],
+    lowCut: 70, drone: [[520, 1.4, -3], [850, 1.4, -3]], rasp: [[1800, 1.0, 5], [3600, 0.8, 4]],
+    hiss: 0, bark: [900, 0.03, 3.5], barkGain: 6, idleFloor: 0.3, soloAir: 1.6 } };
 
 const IDLE_RPM = ENGINES.m20.idleRpm;
 
@@ -483,6 +563,15 @@ const ITB = {
   // the intake bark: a resonance around 700-900 Hz (higher with the revs) that barks on each
   // blip and lets go: it follows the throttle opening, 30 ms attack, 60 ms release
   bark: [700, 0.03, 3.5], barkGain: 6, barkAttack: 0.03, barkRelease: 0.06,
+  // heard on their own (solo), as a mic over the trumpets hears them (matched to a recording of a
+  // real M20 on ITBs): on the throttle a little less 70-150 Hz and a lot of air on top; off it the
+  // trumpets go breathy, a broadband hiss of air through the barely open plates, not a low hum
+  solo: {
+    onLowDb: -7,                  // 70-150 Hz on the throttle (-5 measured; the peak's skirts share it)
+    offLowDb: -13, split: 180,     // below 150 Hz off the throttle (split a little above, so 70-150 drops fully)
+    breath: 0.182, breathBand: [380, 1600], breathRpm: 1.25, breathCap: 1.4, breathLow: [650, 1.2, 0.358], // and a hollow 400-1000 Hz core: Hz, Q, gain; // louder the faster it spins: more air drawn past the plates // the breathy hiss off the throttle (400 Hz-6 kHz)
+    airOn: 0.2, airOff: 0.065, airBand: [6000, 14000], // air on top, on and off the throttle
+  },
 };
 // how each trumpet differs from the average (firing order), scaled by `uneven`
 const ITB_UNEVEN = [0.26, 0.05, -0.23, -0.22, 0.25, -0.1, 0.15, -0.16];
@@ -503,6 +592,7 @@ class M20Dsp {
     this.ap = [113, 337, 541, 773].map((n) => ({ d: new Delay(n + 1), n }));
     this.roomLp = new Biquad().set('lp', 2800, 0.7, 0, fs); this.roomHp = new Biquad().set('hp', 120, 0.7, 0, fs);
     this.envF = 0;
+    this.vtecOn = false; this.vtecS = 0; this.vtecWas = false; this.vtecKick = 0; // i-VTEC high cam (engines that have it)
     this.roarLp = new Biquad().set('lp', 3400, 0.6, 0, fs);   // exhaust flow roar (before the muffler)
     this.intakeRoar = new Biquad(); this.zj = 0;
     this.itbOn = 0; this.itbSet = ''; this.itbPrev = 0;
@@ -533,8 +623,12 @@ class M20Dsp {
     this.thrS = 0; this.rpmS = 800;
     this.muffLp = new Biquad(); this.muffLp2 = new Biquad();
     this.body = new Biquad(); this.drone = new Biquad(); this.mid = new Biquad();
+    this.orderEq = Array.from({ length: 12 }, () => new Biquad());
+    this.eq = Array.from({ length: 10 }, () => new Biquad()); this.eqFor = '';
+    this.rpmEq = [new Biquad(), new Biquad()];
+    this.stIdle = Array.from({ length: 10 }, () => new Biquad()); this.stRev = Array.from({ length: 10 }, () => new Biquad()); this.revW = 0; this.revL = 0; this.cutS = 0;
     this.dcHp = new Biquad().set('hp', 28, 0.7, 0, fs);
-    this.raspBp = new Biquad(); this.raspHp = new Biquad().set('hp', 900, 0.7, 0, fs);
+    this.raspBp = new Biquad(); this.raspLp1 = new Biquad(); this.raspLp2 = new Biquad(); this.raspHp = new Biquad().set('hp', 900, 0.7, 0, fs);
     this.rumbleBp = new Biquad(); this.rumbleLp = new Biquad().set('lp', 1200, 0.5, 0, fs);
     this.intakeBp = new Biquad();
     this.tickHp = new Biquad().set('hp', 3500, 0.7, 0, fs);
@@ -552,7 +646,7 @@ class M20Dsp {
     this.cyc = new Float32Array(Math.ceil(fs * 0.4)); this.cycN = 0; this.sincePost = 0;
   }
 
-  /** Switch engine profile ('m20' | 'ls3'). Keeps running at the current rpm. */
+  /** Switch engine profile (a key of ENGINES). Keeps running at the current rpm. */
   useEngine(name) {
     const E = ENGINES[name];
     if (!E) return;
@@ -565,13 +659,16 @@ class M20Dsp {
     this.pop = new Float32Array(n);
     this.lastX = new Float32Array(n).fill(1);
     this.itbJ = new Float32Array(n).fill(1);
+    this.itbSet = ''; this.eqFor = '';  // per-engine filter caches (a new custom profile keeps the name)
     this.coef = 0;                      // refresh filters on the next block
   }
 
   /** Values from the game: { rpm, throttle (0..1), exhaust ('stock' | 'street' | 'race'), idleRpm, engine },
    *  and in 'direct' mode also { ignition (0/1), starter (0/1) }. */
   set(v) {
-    if (v.engine && v.engine !== this.engine) this.useEngine(v.engine);
+    // a whole engine profile built elsewhere (the engine builder): installed as 'custom'
+    if (v.profile) { ENGINES.custom = v.profile; this.useEngine('custom'); const { profile, ...rest } = v; v = rest; }
+    else if (v.engine && v.engine !== this.engine) this.useEngine(v.engine);
     Object.assign(this.target, v);
   }
 
@@ -634,7 +731,9 @@ class M20Dsp {
     // lift-off tracking for afterfire pops
     if (c.throttle < 0.06) {
       if (this.offT === 0 && this.popArmed && this.rpmS > 3500) {
-        this.popBudget = Math.floor(Math.random() * this.X.pops * (this.E.popMul || 1)); // stock 0-1, street 0-2, race 0-4 (more on a rotary)
+        this.popBudget = this.target.popCount != null
+          ? this.target.popCount // tuned ECU: exactly this many
+          : Math.floor(Math.random() * this.X.pops * (this.E.popMul || 1)); // stock 0-1, street 0-2, race 0-4 (more on a rotary)
       }
       this.popArmed = false;
       this.offT += n / this.fs;
@@ -687,7 +786,9 @@ class M20Dsp {
 
     // block-rate coefficient updates
     const thr0 = C.throttle, rpm0 = C.rpm, X = this.X;
-    if (this.coef++ % 4 === 0) {
+    // filters are recalculated every block (128 samples): stepping them less often leaves a faint
+    // 'digital' buzz at the update rate behind the engine as the revs and the tracking filters move
+    if (this.coef++ % (this.E.stateEq || this.E.orderEq ? 1 : 4) === 0) {
       const E = this.E, m = E.muff, open = X.open * (1 - 0.22 * this.T.on); // the turbine muffles a bit
       // the muffler lets more through as the revs rise: a higher-pitched note up top, idle as before
       this.muffLp.set('lp', (m[0] + m[1] * thr0 + rpm0 * m[2] * (E.muffRpm ?? 1.5)) * open, 0.6, 0, fs);
@@ -700,7 +801,32 @@ class M20Dsp {
       this.body.set('pk', E.body[0], 1.1, E.body[1] + X.bodyDb, fs);
       this.drone.set('pk', E.drone[0] * X.droneHz, 1.6, E.drone[1] + X.droneDb, fs);
       if (E.mid) this.mid.set('pk', E.mid[0], 1.4, E.mid[1], fs);
+      if (E.eq && this.eqFor !== this.engine) { this.eqFor = this.engine; E.eq.forEach(([hz, q, db], k) => this.eq[k].set('pk', hz, q, db, fs)); }
+      if (E.stateEq) { // idle voice vs revving voice: weight from throttle and revs
+        const idl = this.c.idleRpm || 800;
+        // mostly the throttle; the revs alone (coasting) bring in only a little of the revving voice
+        const wt = Math.min(1, Math.max(0, Math.max(this.thrS * 1.5, 0.35 * (this.rpmS - idl * 1.25) / 2000)));
+        this.revW = wt; this.revL = Math.min(1, this.thrS * 1.5); // level follows the throttle only
+        // the idle voice only near idle (its fixed peaks would otherwise grab whatever harmonic passes them
+        // on a coast-down)
+        const near = Math.min(1, Math.max(0, 1 - (this.rpmS - idl * 1.1) / 500));
+        E.stateEq.idle.forEach(([hz, q, db], k) => this.stIdle[k].set('pk', hz, q, db * (1 - wt) * near, fs));
+        E.stateEq.rev.forEach(([hz, q, db], k) => this.stRev[k].set('pk', hz, q, db * wt, fs));
+      }
+      if (E.rpmEq) E.rpmEq.forEach(([hz, q, db, r0, r1], k) => {
+        this.rpmEq[k].set('pk', hz, q, db * Math.min(1, Math.max(0, (this.rpmS - r0) / (r1 - r0))), fs);
+      });
+      if (E.orderEq) { // follow the firing note (crank rpm / 60 x firings per turn)
+        const ff = Math.max(10, this.rpmS) / 60 * E.firing.length * 360 / (E.cycleDeg || 720);
+        const coast = 1 - Math.min(1, this.thrS * 3); // 1 off the throttle, 0 from a third of the pedal
+        E.orderEq.forEach(([h, db, q, r0, r1, r2, r3, only, r4, r5], k) => {
+          const rs = this.rpmS, ramp = (a, b) => Math.min(1, Math.max(0, (rs - a) / (b - a)));
+          const fade = (r1 ? ramp(r0, r1) : 1) * (r3 ? 1 - ramp(r2, r3) : 1) * (only === 'coast' ? coast : only === 'load' ? 1 - coast : 1) * (r5 ? 1 - ramp(r4, r5) : 1); // in over r0-r1, out over r2-r3 (and r4-r5)
+          this.orderEq[k].set('pk', Math.min(fs * 0.45, h * ff), q, db * fade, fs);
+        });
+      }
       this.raspBp.set('bp', E.rasp[0] + rpm0 * E.rasp[1], 0.6, 0, fs);
+      if (E.raspLp) { this.raspLp1.set('lp', E.raspLp, 0.7, 0, fs); this.raspLp2.set('lp', E.raspLp, 0.7, 0, fs); }
       this.rumbleBp.set('bp', E.rumble[0] + rpm0 * E.rumble[1], 0.45, 0, fs);
       this.intakeBp.set('bp', E.intake[0] + rpm0 * E.intake[1], 1.4, 0, fs);
       this.intakeRoar.set('bp', 500 + rpm0 * 0.12, 0.7, 0, fs);
@@ -720,6 +846,20 @@ class M20Dsp {
         this.itbHiss[0].set('hp', I.hissBand[0], 0.7, 0, fs); this.itbHiss[1].set('hp', I.hissBand[0], 0.7, 0, fs);
         this.itbHiss[2].set('lp', I.hissBand[1], 0.5, 0, fs);
         this.itbBarkAtk = 1 - Math.exp(-1 / (I.barkAttack * fs)); this.itbBarkRel = 1 - Math.exp(-1 / (I.barkRelease * fs));
+        const S = I.solo, B = () => new Biquad();
+        this.soloF = { // Linkwitz-Riley split at 150 Hz (the two halves sum back flat), the low bump, the hiss and the air
+          hp: [B().set('hp', S.split, 0.7071, 0, fs), B().set('hp', S.split, 0.7071, 0, fs)], lp: [B().set('lp', S.split, 0.7071, 0, fs), B().set('lp', S.split, 0.7071, 0, fs)],
+          pk: B().set('pk', 105, 0.8, S.onLowDb, fs),
+          br: [B().set('hp', S.breathBand[0], 0.7, 0, fs), B().set('lp', S.breathBand[1], 0.5, 0, fs)], brLo: B().set('bp', S.breathLow[0], S.breathLow[1], 0, fs),
+          air: [B().set('hp', S.airBand[0], 0.7, 0, fs), B().set('hp', S.airBand[0], 0.7, 0, fs), B().set('lp', S.airBand[1], 0.7, 0, fs)],
+        };
+        // per-engine band trims: Linkwitz-Riley splits at 85 (a little above 70, so the whole of
+        // 20-70 Hz takes the cut), 400, 1000 and 2500 Hz
+        const lr = (t, f) => [B().set(t, f, 0.7071, 0, fs), B().set(t, f, 0.7071, 0, fs)];
+        this.soloBands = [85, 400, 1000, 2500].map((f) => ({ lp: lr('lp', f), hp: lr('hp', f) }));
+        this.soloBody = B().set('bp', 230, 1.1, 0, fs);
+        this.soloBandOut = new Float64Array(5);
+        this.soloPost = { lp: lr('lp', 85), hp: lr('hp', 85) }; // the sub cut again after the output stage
       }
     }
     if (this.I && this.itbOn > 0.001) this.itbBark.set('bp', this.I.bark[0] + rpm0 * this.I.bark[1], this.I.bark[2], 0, fs);
@@ -756,15 +896,31 @@ class M20Dsp {
 
       // combustion strength
       const overrun = thr < 0.06 && rpm > idle * 1.35; // fuel cut
-      const fuel = overrun ? 0 : 1;
+      // engines with overrunFire keep firing at idle strength off the throttle (no fuel-cut silence)
+      // a limiter cut (set({ cut: 1 })) on engines with fastCut stops combustion at once (a quick limiter
+      // can't wait for the throttle smoothing, and overrunFire would otherwise keep it firing)
+      this.cutS += ((this.target.cut && E.fastCut ? 1 : 0) - this.cutS) * 0.05;
+      const fuel = (overrun && !E.overrunFire ? 0 : 1) * (1 - this.cutS);
       // idle firings hit harder with a free-flowing exhaust (louder, punchier idle)
       const load = ign * fuel * (0.32 * (1 + (X.idleHit - 1) * (E.idleHitScale || 1) * (1 - thr)) + 0.68 * thr);
       const pump = E.pump;                     // air being pushed out with no combustion
-      const width = E.width[0] - E.width[1] * thr; // crank degrees; harder hit under load
+      // i-VTEC: the high-lift cam comes in above the crossover under load, out on a lift
+      const V = E.vtec;
+      if (V) {
+        // only under load: free-revving in neutral (set({ inGear: false })) stays on the low cam
+        if (!this.vtecOn && rpm > V.on && thr > V.minThr && ign > 0.5 && this.target.inGear !== false) this.vtecOn = true;
+        else if (this.vtecOn && (rpm < V.off || thr < 0.2 || ign < 0.5 || this.target.inGear === false)) this.vtecOn = false;
+        if (this.vtecOn && !this.vtecWas) this.vtecKick = 1;   // the switch-over surge
+        this.vtecWas = this.vtecOn;
+        this.vtecKick *= 1 - 1 / ((V.kick || 0.15) * fs);
+        this.vtecS += ((this.vtecOn ? 1 : 0) - this.vtecS) / (V.glide * fs);
+      } else this.vtecS = 0;
+      const vt = this.vtecS;
+      const width = E.width[0] - E.width[1] * thr - (V ? V.width * vt : 0); // crank degrees; harder hit under load
 
       let a = 0, b = 0, env = 0, inEnv = 0, hit = 0, itbB = 0;
       this.itbOn += (itbT - this.itbOn) * 0.0005;
-      const itbAct = this.itbOn > 0.001, I = this.I, sp = cyc / ncyl;
+      const itbAct = this.itbOn > 0.001, I = this.I, sp = cyc / ncyl, solo = this.target.solo === 'itb' && itbAct, soloOut = solo;
       // with a louder exhaust the trumpets get angrier too: 0 stock, 0.5 street, 1 race
       const aggro = Math.min(1, Math.max(0, (X.level - 1) / 0.5));
       for (let k = 0; k < ncyl; k++) {
@@ -788,8 +944,11 @@ class M20Dsp {
           }
           // afterfire: only well into a real lift-off (not limiter or shift cuts), a few at most
           this.pop[k] = 0;
-          if (this.popBudget > 0 && overrun && ign > 0.5 && rpm > 2400 &&
-              this.offT > 0.35 && this.offT < 1.8 && Math.random() < 0.035) {
+          // (a tuned ECU sets the pace: popRate 1 slow .. 10 machine-gun, and keeps going longer)
+          const ecu = this.target.popCount != null;
+          if (this.popBudget > 0 && overrun && ign > 0.5 && rpm > (ecu ? 1800 : 2400) &&
+              this.offT > (ecu ? 0.2 : 0.35) && this.offT < (ecu ? 4 : 1.8) &&
+              Math.random() < (ecu ? 0.012 * (this.target.popRate || 5) : 0.035)) {
             this.pop[k] = 0.5 + 0.7 * Math.random();
             this.popEnv = this.pop[k];
             this.popBudget--;
@@ -802,7 +961,8 @@ class M20Dsp {
         let x = xc - this.tjit[k];
         if (x < 0) x += cyc;
         const p = this.pulse(x, width, sharp, tail);
-        const amp = E.cylGain[k] * this.jit[k] * (load + pump + this.pop[k] * 0.9);
+        const cg = overrun && E.coastEven != null ? 1 + (E.cylGain[k] - 1) * E.coastEven : E.cylGain[k];
+        const amp = cg * this.jit[k] * (load + pump + this.pop[k] * 0.9);
         const v = p * amp;
         if (E.bank[k] === 0) a += v; else b += v;
         env += v;
@@ -824,8 +984,9 @@ class M20Dsp {
       // manifolds: slightly different runner lengths, partial reflection at the collector
       const dA = fs * E.header[0], dB = fs * E.header[1];
       const hA = this.hdrA.read(dA), hB = this.hdrB.read(dB);
-      this.hdrA.write(a - 0.32 * hA);
-      this.hdrB.write(b - 0.32 * hB);
+      const hfb = E.hdrFb ?? 0.32; // reflection inside the header runners
+      this.hdrA.write(a - hfb * hA);
+      this.hdrB.write(b - hfb * hB);
       // afterfire kick: a short low-passed burst entering the pipe, so the
       // muffler shapes it into a thud-crack rather than a digital click
       this.popEnv *= 0.9965;
@@ -861,22 +1022,25 @@ class M20Dsp {
       let y = this.muffLp2.run(this.muffLp.run(pipeOut));
       y = this.drone.run(this.body.run(y));
       if (E.mid) y = this.mid.run(y);
+      if (E.orderEq) for (let k = 0; k < E.orderEq.length; k++) y = this.orderEq[k].run(y);
 
       // rumble: gas turbulence in the pipe, fills the gaps between the harmonics
       y += this.rumbleLp.run(this.rumbleBp.run(randn() * hit)) * (0.45 * (1 - 0.75 * lope) * E.idleNoise + 1.5 * thr) * X.rumble * E.rumble[2];
 
       // rasp: turbulence that rides on each pulse, grows with rpm and load
       // at idle the loud pipes' rasp stays low (it reads as hiss); it opens up with load
-      const raspAmt = (0.05 * (1 - 0.7 * lope) * E.idleNoise + 0.22 * thr) * Math.min(1.3, Math.max(E.raspFloor || 0, rpm / 4500)) * X.rasp * E.rasp[2] * (1 - 0.4 * this.T.on);
+      const raspAmt = (0.05 * (1 - 0.7 * lope) * E.idleNoise + 0.22 * thr) * Math.min(1.3, Math.max(E.raspFloor || 0, rpm / 4500)) * X.rasp * E.rasp[2] * (1 - 0.4 * this.T.on) * (V ? 1 + (V.rasp - 1) * vt + 1.5 * this.vtecKick : 1);
       // the crack on top of an afterfire: short (popEnv^3 decays fast), band-limited by the
       // rasp filter, and quieter through the stock muffler
       const crack = this.popEnv > 0.02 ? randn() * this.popEnv ** 3 * X.crack : 0;
-      y += this.raspHp.run(this.raspBp.run(randn() * hit * raspAmt + crack * 0.9));
+      const rsp = this.raspHp.run(this.raspBp.run(randn() * hit * raspAmt + crack * 0.9));
+      // engines with raspLp keep the rasp a rasp (1-3 kHz) rather than a hiss running up to 12 kHz
+      y += E.raspLp ? this.raspLp2.run(this.raspLp1.run(rsp)) : rsp;
 
       // intake roar (heard more than you'd think with the throttle open)
-      y += this.intakeBp.run(randn() * inEnv) * E.intake[2] * thr * (0.3 + rpm / 6500);
+      y += this.intakeBp.run(randn() * inEnv) * E.intake[2] * thr * (0.3 + rpm / 6500) * (V ? 1 + (V.intake - 1) * vt : 1);
       // intake roar: a broad rush that opens up at high revs and full throttle
-      y += this.intakeRoar.run(randn()) * 0.28 * thr * thr * hr * hr * (E.intakeRoar ?? 1);
+      y += this.intakeRoar.run(randn()) * 0.28 * thr * thr * hr * hr * (E.intakeRoar ?? 1) * (V ? 1 + (V.roar - 1) * vt : 1);
 
       // valve-train tick
       // sizzle: a little crackle on the loudest pulses of a loud exhaust (kept low and
@@ -901,7 +1065,10 @@ class M20Dsp {
         const dB = itbB - this.itbPrev; this.itbPrev = itbB;
         // ~1 at 6,000 rpm; grows gently with the revs (it would double with them otherwise)
         const note = dB * (I.width * sp) / (36000 / fs) * Math.pow(6000 / Math.max(600, rpm), 0.75);
-        const thrI = Math.sqrt(thr);                                 // they take over early in the pedal travel
+        // they take over early in the pedal travel. Heard on their own (set({ solo: 'itb' })), the
+        // nearly shut plates at idle still pass a soft chuff from every trumpet
+        // (shut plates at high revs pass less: on a lift-off the note fades as well as dropping in pitch)
+        const thrI = solo ? Math.max(Math.sqrt(thr), (I.idleFloor ?? 0.3) * Math.min(1, Math.pow(1.5 * (this.c.idleRpm || 900) / Math.max(1, rpm), I.liftFade ?? 0.6))) : Math.sqrt(thr);
         const roar = this.itbRoarLp.run(this.itbRoarHp.run(randn() * itbB)) * I.roar * (1 + 0.8 * aggro) * Math.min(1.2, 0.4 + rpm / 7500);
         // through the airbox: its wall-to-wall ring (a feedback comb, a little damped each bounce)
         // and the snout's boom
@@ -972,7 +1139,8 @@ class M20Dsp {
       if (E.zing) {
         const Z = E.zing;
         const u = Math.min(1, Math.max(0, (rpm - Z.from) / (Z.to - Z.from)));
-        const target = ign * Z.level * (0.04 + 0.96 * u * u * (3 - 2 * u)) * (0.45 + 0.55 * thr) * (0.85 + 0.15 * X.open);
+        let target = ign * Z.level * (0.04 + 0.96 * u * u * (3 - 2 * u)) * (0.45 + 0.55 * thr) * (0.85 + 0.15 * X.open);
+        if (Z.vtec) target *= (Z.base || 0) + (1 - (Z.base || 0)) * this.vtecS + 0.8 * this.vtecKick; // a VTEC howl (base: share heard without VTEC)
         this.zingAmp += (target - this.zingAmp) * 0.002;
         // small random phase wobble: a howl from moving metal and air, not an organ note
         this.zj = this.zj * 0.9995 + randn() * 0.012;
@@ -983,6 +1151,14 @@ class M20Dsp {
         this.envF += (env - this.envF) * 0.02;
         y += z * this.zingAmp * (0.75 + 0.25 * Math.min(1.5, this.envF * 2)) * itbDuck;
       }
+      // an engine's own tone EQ, on everything it makes (exhaust, rasp, intake, tick)
+      if (E.eq) for (let k = 0; k < E.eq.length; k++) y = this.eq[k].run(y);
+      if (E.rpmEq) for (let k = 0; k < E.rpmEq.length; k++) y = this.rpmEq[k].run(y);
+      if (E.stateEq) {
+        for (let k = 0; k < E.stateEq.idle.length; k++) y = this.stIdle[k].run(y);
+        for (let k = 0; k < E.stateEq.rev.length; k++) y = this.stRev[k].run(y);
+        y *= Math.pow(10, ((E.stateEq.revDb || 0) * this.revL + (E.stateEq.idleDb || 0) * (1 - this.revL)) / 20);
+      }
       y = this.dcHp.run(y);
       // outdoor room: a ground reflection (~3 ms) and nearby surfaces (7, 13 ms), plus a short,
       // soft diffuse tail; quiet, but it takes away the dry, in-the-box sound
@@ -990,9 +1166,12 @@ class M20Dsp {
       let wet = this.reflLp.run(this.refl.read(fs * 0.0029) * 0.45 + this.refl.read(fs * 0.0073) * 0.28 + this.refl.read(fs * 0.013) * 0.2);
       let dif = this.roomHp.run(this.roomLp.run(this.refl.read(fs * 0.019)));
       for (const a of this.ap) { const dl = a.d.read(a.n - 1); const v = dif + 0.6 * dl; a.d.write(v); dif = dl - 0.6 * v; }
-      y = y * 0.85 + wet * 0.5 + dif * 0.22;
+      const rm = E.room ?? 1;      // how much of the outdoor room (reflections and diffuse tail)
+      y = y * (1 - 0.15 * rm) + wet * 0.5 * rm + dif * 0.22 * (E.diffuse ?? rm);
       // the trumpets go in after the room: they are right in front of you, and a near-pure note
       // through the ground reflection would swell and vanish as the revs sweep past its notches
+      // the trumpets on their own (set({ solo: 'itb' })): no exhaust, starter, tick or turbo
+      if (solo) y = 0;
       if (itbAct) {
         y += this.itbOut;
         // the whole car with ITBs on the throttle: low cut here, the rest after the output stage
@@ -1010,8 +1189,37 @@ class M20Dsp {
         const H = this.itbHiss;
         const hissLvl = I.hissFloor * Math.min(1, rpm / 400) + (1 - I.hissFloor) * thr; // fades out only when the engine stops
         y += H[2].run(H[1].run(H[0].run(randn()))) * I.hiss * this.itbOn * hissLvl / E.level;
+        if (solo) { // a mic over the trumpets
+          const F = this.soloF, S = I.solo, on = Math.min(1, thr * 2.5), off = 1 - on, run = Math.min(1, rpm / 400) * this.itbOn * ign;
+          // the lows: off the throttle everything below 150 Hz drops 10 dB, on it 70-150 Hz drops 5
+          const hi = F.hp[1].run(F.hp[0].run(y)), lo = F.lp[1].run(F.lp[0].run(y));
+          y = hi + lo * (on + off * Math.pow(10, S.offLowDb / 20));
+          y += (F.pk.run(y) - y) * on;
+          // off the throttle: air hissing past the barely open plates, swelling with each intake stroke
+          // (on a lift-off from high revs it stays gentle: capped, and the per-stroke pulsing smooths
+          // out as the strokes come faster, or it turns into a loud, grainy rasp)
+          const rr = Math.max(1, rpm / (this.c.idleRpm || 900)), dep = 0.5 * Math.min(1, 2 / rr);
+          const breathe = (1 - dep + dep * Math.min(1, itbB / 1.2)) * Math.min(S.breathCap, Math.pow(rr, S.breathRpm));
+          const nz = randn();
+          y += (F.br[1].run(F.br[0].run(nz)) * S.breath + F.brLo.run(nz) * S.breathLow[2]) * off * breathe * run / E.level;
+          // and air on top, on and off the throttle
+          y += F.air[2].run(F.air[1].run(F.air[0].run(randn()))) * (S.airOn * on + S.airOff * off / rr) * (I.soloAir ?? 1) * run / E.level; // off the throttle the air fades as the revs rise
+          const T = I.soloTrim;
+          if (T) {
+            y += this.soloBody.run(nz) * T.body * off * breathe * run / E.level; // breathy body, not hum
+            const b = this.soloBandOut; let r = y;
+            for (let k = 0; k < 4; k++) { const X = this.soloBands[k]; b[k] = X.lp[1].run(X.lp[0].run(r)); r = X.hp[1].run(X.hp[0].run(r)); }
+            b[4] = r;
+            // off the throttle the trimmed bands; on it the sound as it was (crossfaded between)
+            let t = 0;
+            for (let k = 0; k < 5; k++) t += b[k] * Math.pow(10, T.off[k] / 20);
+            y = y * on + t * off;
+          }
+          y *= I.soloGain ?? 1;
+        }
       }
-      let o = Math.tanh(y * 0.38 * E.level * X.level) * 1.35 * (E.post || 1); // gentle: mostly linear, only peaks round off
+      if (solo) y *= 0.6; // on their own: headroom, so the trumpets' peaks stay out of the limiter
+      let o = Math.tanh(y * 0.38 * E.level * X.level * (E.vtec ? 1 + (E.vtec.level - 1) * this.vtecS : 1)) * 1.35 * (E.post || 1); // gentle: mostly linear, only peaks round off
       // soft knee above 0.9 so loud engines never clip the output
       if (o > 0.9) o = 0.9 + 0.1 * Math.tanh((o - 0.9) / 0.1);
       else if (o < -0.9) o = -0.9 - 0.1 * Math.tanh((-o - 0.9) / 0.1);
@@ -1024,6 +1232,12 @@ class M20Dsp {
         // the rasp boost can push peaks back over: the same soft knee as above
         if (o > 0.9) o = 0.9 + 0.1 * Math.tanh((o - 0.9) / 0.1);
         else if (o < -0.9) o = -0.9 - 0.1 * Math.tanh((-o - 0.9) / 0.1);
+      }
+      // on their own, off the throttle: the output stage's distortion folds some of the loud breath
+      // back down below 70 Hz, so the sub trim goes in again after it
+      if (soloOut && this.I.soloTrim) {
+        const P = this.soloPost, T = this.I.soloTrim, off = 1 - Math.min(1, this.thrS * 2.5);
+        o = o * (1 - off) + (P.hp[1].run(P.hp[0].run(o)) + P.lp[1].run(P.lp[0].run(o)) * Math.pow(10, (T.offPost ?? 0) / 20)) * off;
       }
       out[i] = o;
 
@@ -1044,8 +1258,8 @@ class M20Dsp {
 }
 
 // ---- inlined from src/audio/M20EngineSound.js ----
-// M20EngineSound - procedural engine audio: the E30 325i's BMW M20B25 straight-six, and a
-// GM LS3 6.2 V8 (engine.setEngine('ls3')). No samples: the sound is synthesized by M20Dsp
+// M20EngineSound - procedural engine audio: the E30 325i's BMW M20B25 straight-six and the
+// swap engines (engine.setEngine(name)). No samples: the sound is synthesized by M20Dsp
 // (m20-dsp.js). The class keeps its M20 name so existing code keeps working.
 //
 //   const engine = await M20EngineSound.create(audioCtx);
@@ -1107,7 +1321,7 @@ const timeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout((
 class M20EngineSound {
   /**
    * @param {AudioContext} ctx
-   * @param {{ dspSource?: string, engine?: 'm20' | 'ls3' }} [opts] dspSource: the text of
+   * @param {{ dspSource?: string, engine?: string }} [opts] dspSource: the text of
    *   m20-dsp.js. Pass it when the code is minified by a bundler (with Vite:
    *   import dspSource from './m20-dsp.js?raw'). engine: which engine to start with.
    */
@@ -1170,11 +1384,18 @@ class M20EngineSound {
    */
   setTurbo(on, size = 'small') { this._send({ set: { turbo: on ? 1 : 0, turboSize: size } }); }
 
-  /** 'm20' (BMW straight-six) or 'ls3' (GM V8). Switches instantly, even while running. */
+  /** An engine profile name ('m20', or a swap). Switches instantly, even while running. */
   setEngine(name) {
     if (!ENGINES[name]) throw new Error(`unknown engine ${name}`);
     this.engine = name;
     this._send({ set: { engine: name, idleRpm: ENGINES[name].idleRpm } });
+  }
+
+  /** A whole engine profile (as built by enginePhysics.buildProfile): installed and used at once. */
+  setProfile(profile) {
+    this.engine = 'custom';
+    ENGINES.custom = profile;
+    this._send({ set: { profile, idleRpm: profile.idleRpm } });
   }
 
   start() {
@@ -1226,6 +1447,16 @@ let MAXDIAL = 7000;
 const GEARS = [3.83, 2.20, 1.40, 1.00, 0.81], FINAL = 3.73, TYRE_R = 0.31; // Getrag 260, 3.73 diff
 // What the page shows and how the little car model drives, per engine.
 const CARS = {
+  k24: {
+    eyebrow: 'Honda K24A2 · 2.4 inline-four, i-VTEC · 205 hp', title: 'K24 Engine Sound',
+    intro: 'No recordings are used. A 2.4 L Honda four firing 1-3-4-2 through a 4-2-1 header: a deep, boomy bark and a lumpy idle. In Drive mode, hold the gas past 5,000 rpm in gear and VTEC crosses over: the high-lift cam brings in an intake howl and a harder, raspier voice. Free-revving in neutral it stays on the low cam, and the limiter is a quick Honda brap. Press Start, then hold the gas.',
+    bankA: 'Cylinders 1 and 4', bankB: 'Cylinders 2 and 3',
+    noteH: 'Why VTEC kicks in',
+    noteP: 'A four fires every 180°, so the main pitch is rpm ÷ 30 (36 Hz at idle, 237 Hz at the limiter). Its exhaust carries the odd multiples of that note (1x and 3x) and little of 2x, and the two cylinder pairs pulse a little differently: a deep, boomy bark with a once-a-turn lump. Past 5,000 rpm under load the high-lift cam takes over: an intake howl on the 3rd, 4th and 6th harmonics surges in, the rasp opens up and it gets a little louder. Lift or drop below 4,700 and it falls back.',
+    peakNm: 224, peakRpm: 4500, spread: 6000, mass: 1250, freeRev: 11000,
+    decay: 1.42, // off the gas it slides back to idle (timing as before the idle moved to 765)
+    limiterCut: 0.018, dragOnGas: 0.4, // a quick Honda limiter (about 25 bounces a second); it revs freely on the gas
+  },
   m20: {
     eyebrow: 'E30 325i · M20B25 2.5 straight-six · 168 hp', title: 'M20 Engine Sound',
     intro: 'No recordings are used. The sound is built live from six cylinders firing in the order 1-5-3-6-2-4, two exhaust manifolds, the pipe and the muffler. Press Start, then hold the gas.',
@@ -1267,6 +1498,16 @@ const CARS = {
     peakNm: 575, peakRpm: 4600, spread: 6500, mass: 1300, freeRev: 9500,
   },
 };
+// five K24 versions to compare: same car model, each its own voice
+const K24_LABELS = {
+  a: ['A: your car', 'Matched to your recording of a real K24: a clean, textured thrum at idle, and on the gas a broad growl with rasp on top, band for band against the real car.'],
+  b: ['B: your car, more edge', 'A with an edge: sharper pulses, more rasp, a higher voice and some zing whenever it revs.'],
+  c: ['C: stock RSX exhaust', 'Matched to a stock-exhaust RSX free-revving: deep and boomy, dark up top, carried by the firing note and its 3rd harmonic, with VTEC on top.'],
+  d: ['D: header + straight pipe', 'Open, loud, raspy and metallic: short sharp pulses, the rasp and zing right up front.'],
+  e: ["E: driver's seat", 'From inside the car: the exhaust muffled behind you, the intake honk and the high-harmonic howl in front.'],
+};
+for (const [v, [t, d]] of Object.entries(K24_LABELS)) CARS['k24' + v] = { ...CARS.k24, title: `K24 Engine Sound, ${t}`, intro: d + ' Press Start, then hold the gas. In Drive mode, VTEC crosses over at 5,000 rpm in gear.' };
+let k24Version = 'a';
 let eng = 'm20', REDLINE = ENGINES.m20.redline, IDLE = ENGINES.m20.idleRpm, MASS = CARS.m20.mass;
 const $ = (id) => document.getElementById(id);
 
@@ -1438,6 +1679,9 @@ function setEngineChoice(name) {
   $('gLS3').setAttribute('aria-pressed', String(name === 'ls3'));
   $('gJZ').setAttribute('aria-pressed', String(name === 'jz1'));
   $('gROT').setAttribute('aria-pressed', String(name === 'rotary13b'));
+  $('gK24').setAttribute('aria-pressed', String(name.startsWith('k24')));
+  $('k24Row').hidden = !name.startsWith('k24');
+  for (const v of 'abcde') $('v' + v.toUpperCase()).setAttribute('aria-pressed', String(name === 'k24' + v));
   MAXDIAL = E.redline > 6900 ? 8000 : 7000;
   $('scopeTitle').textContent = (E.cycleDeg || 720) === 720
     ? 'One engine cycle (720° of crank), live output'
@@ -1453,6 +1697,8 @@ $('gM20').onclick = () => setEngineChoice('m20');
 $('gLS3').onclick = () => setEngineChoice('ls3');
 $('gJZ').onclick = () => setEngineChoice('jz1');
 $('gROT').onclick = () => setEngineChoice('rotary13b');
+$('gK24').onclick = () => setEngineChoice('k24' + k24Version);
+for (const v of 'abcde') $('v' + v.toUpperCase()).onclick = () => { k24Version = v; setEngineChoice('k24' + v); };
 
 // ---------- pedals: pointer + keyboard ----------
 const held = { gas: new Set(), brake: new Set() };
@@ -1482,14 +1728,20 @@ function step(dt) {
   }
   sim.thrIn += ((held.gas.size ? 1 : 0) - sim.thrIn) * Math.min(1, dt * 14);
   sim.brake = held.brake.size ? 1 : 0;
-  if (sim.rpm >= REDLINE) sim.cut = 0.045;         // rev limiter: short fuel cuts, about 12 bounces a second
+  if (sim.rpm >= REDLINE) sim.cut = Math.max(sim.cut, CARS[eng].limiterCut ?? 0.045); // rev limiter: short fuel cuts (the K24's are quicker)
+  // engines with their own (short) limiter cut: each cut is a whole number of frames, at least one
+  // (an 18 ms cut is one frame at 60 fps), so they bounce quickly; the rest as before
+  const whole = sim.cut >= dt * 0.5;
   sim.cut = Math.max(0, sim.cut - dt);
+  sim.cutting = CARS[eng].limiterCut ? whole : sim.cut > 0;
   sim.shift = Math.max(0, sim.shift - dt);
   sim.blip = Math.max(0, sim.blip - dt);
-  sim.thr = sim.cut > 0 ? 0 : sim.blip > 0 ? Math.max(0.75, sim.thrIn) : sim.shift > 0 ? 0 : sim.thrIn;
+  sim.thr = sim.cutting ? 0 : sim.blip > 0 ? Math.max(0.75, sim.thrIn) : sim.shift > 0 ? 0 : sim.thrIn;
 
   if (mode === 'free' || sim.gear === 0) {
-    let a = sim.thr * (torque(sim.rpm) * (1 + boostGain() * boostNow()) / CARS[eng].peakNm) * CARS[eng].freeRev - (250 + (sim.rpm - IDLE) * 0.75);
+    // the fixed part of the drag fades out near idle, so the revs settle onto idle without undershooting
+    const over = sim.rpm - IDLE;
+    let a = sim.thr * (torque(sim.rpm) * (1 + boostGain() * boostNow()) / CARS[eng].peakNm) * CARS[eng].freeRev - (250 * Math.min(1, Math.max(0, over / 300)) + over * (CARS[eng].decay ?? 0.75) * (1 - (1 - (CARS[eng].dragOnGas ?? 1)) * sim.thr));
     if (sim.rpm < IDLE) a += (IDLE - sim.rpm) * 6;
     sim.rpm += a * dt;
     return;
@@ -1573,7 +1825,8 @@ let last = performance.now(), shown = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   step(dt);
-  if (engine && state === 'running') { engine.setRpm(sim.rpm); engine.setThrottle(sim.thr); }
+  // VTEC (K24) only under load: in gear with the clutch in, not free-revving in neutral
+  if (engine && state === 'running') { engine.setRpm(sim.rpm); engine.setThrottle(sim.thr); engine.setState({ inGear: mode === 'manual' || (mode !== 'free' && sim.gear > 0 && sim.shift === 0), cut: sim.cutting ? 1 : 0 }); }
   shown += (sim.rpm - shown) * Math.min(1, dt * 18);
   const [nx, ny] = pt(132, ang(Math.min(MAXDIAL + 150, shown)));
   needle.setAttribute('x2', nx); needle.setAttribute('y2', ny);
