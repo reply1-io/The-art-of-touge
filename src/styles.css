@@ -2323,3 +2323,30 @@ body.replay-ui-off #toast {
     font-size: 18px;
   }
 }
+
+/* Camera adjustment in the settings. */
+.cam-adjust .cam-slider {
+  display: block;
+  margin-top: 8px;
+}
+
+.cam-adjust .cam-slider .label b {
+  float: right;
+  font-weight: 400;
+  color: var(--accent);
+}
+
+.cam-adjust input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.cam-adjust .cam-reset {
+  margin-top: 8px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 16px;
+  color: var(--muted, #aaa);
+  background: none;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}

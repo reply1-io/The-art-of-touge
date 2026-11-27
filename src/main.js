@@ -40,7 +40,7 @@ import { MiniMap } from './ui/miniMap.js';
 import { Rain } from './render/rain.js';
 import { Recorder, Director, FreeCam, HZ, lensFor, drivingLens } from './game/replay.js';
 import { medalTimes, medalFor } from './game/medals.js';
-import { loadSettings, saveSettings, loadTuning, saveTuning } from './settings.js';
+import { loadSettings, saveSettings, loadTuning, saveTuning, CAM_DEFAULTS } from './settings.js';
 
 const DT = 1 / 60; // fixed physics step
 const MAX_STEPS = 5;
@@ -272,6 +272,7 @@ function toast(text, seconds = 1.4) {
 }
 
 function renderChoices() {
+  renderCamAdjust();
   for (const box of document.querySelectorAll('.choices[data-setting]')) {
     const key = box.dataset.setting;
     const options =
@@ -339,9 +340,8 @@ function applySettings() {
   applyTime();
   updateTitleSub();
   rig.mode = settings.camera;
-  rig.userFov = Math.max(50, Math.min(150, settings.fov ?? 60));
-  for (const el of document.querySelectorAll('.drive-fov input')) el.value = String(rig.userFov);
-  for (const el of document.querySelectorAll('.drive-fov b')) el.textContent = `${rig.userFov}\u00b0`;
+  rig.adjust = settings.cams?.[rig.mode] || rig.adjust;
+  rig.userFov = rig.mode === 'chase' ? 60 : Math.max(50, Math.min(150, rig.adjust.fov ?? 60)); // (the chase camera's size keeps to 60; its own FOV is in adjust)
   audio.setMuted(!settings.sound);
   // The camcorder look: heavy while driving (a filmed run), off for a clean picture.
   vhs.strength = settings.vhs ? 0.85 : 0;
@@ -650,13 +650,74 @@ function showResults(r) {
   setTimeout(() => $('results').classList.remove('hidden'), 1200);
 }
 $('btn-home').addEventListener('click', goHome);
-// Field of view while driving: the chase camera moves in or out to match.
-for (const el of document.querySelectorAll('.drive-fov input')) {
-  el.addEventListener('input', () => {
-    settings.fov = Number(el.value);
-    saveSettings(settings);
-    applySettings();
-  });
+// Camera adjustment in the settings: pick a camera (it becomes the one you drive with), then set
+// its field of view, tilt, centre and how close it sits. Each camera keeps its own.
+const CAM_SLIDERS = [
+  ['fov', 'Field of view', 40, 150, 1, (v) => `${v}\u00b0`],
+  ['tilt', 'Tilt', -20, 20, 1, (v) => (v === 0 ? 'Level' : `${v > 0 ? 'Up' : 'Down'} ${Math.abs(v)}\u00b0`)],
+  ['x', 'Centre', -100, 100, 5, (v) => (v === 0 ? 'Middle' : `${v > 0 ? 'Right' : 'Left'} ${Math.abs(v)}`)],
+  ['closer', 'Closer', -100, 100, 5, (v) => (v === 0 ? 'As set' : v > 0 ? `Closer ${v}` : `Further ${-v}`)],
+];
+const CAM_NAMES = [['chase', 'Chase'], ['cockpit', 'In car'], ['bumper', 'Bumper']];
+function renderCamAdjust() {
+  for (const box of document.querySelectorAll('.cam-adjust')) {
+    box.innerHTML = '';
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = 'Camera';
+    const pick = document.createElement('div');
+    pick.className = 'choices';
+    for (const [id, name] of CAM_NAMES) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = name;
+      if (settings.camera === id) b.classList.add('sel');
+      b.addEventListener('click', () => {
+        settings.camera = id;
+        saveSettings(settings);
+        applySettings();
+        renderChoices();
+      });
+      pick.append(b);
+    }
+    box.append(label, pick);
+    const cur = settings.cams[settings.camera] || settings.cams.chase;
+    for (const [key, name, min, max, step, show] of CAM_SLIDERS) {
+      const row = document.createElement('label');
+      row.className = 'cam-slider';
+      const t = document.createElement('span');
+      t.className = 'label';
+      t.textContent = name;
+      const val = document.createElement('b');
+      val.textContent = show(cur[key]);
+      t.append(val);
+      const input = document.createElement('input');
+      input.type = 'range';
+      input.min = String(min);
+      input.max = String(max);
+      input.step = String(step);
+      input.value = String(cur[key]);
+      input.addEventListener('input', () => {
+        cur[key] = Number(input.value);
+        val.textContent = show(cur[key]);
+        saveSettings(settings);
+        applySettings();
+      });
+      row.append(t, input);
+      box.append(row);
+    }
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.className = 'cam-reset';
+    reset.textContent = 'RESET THIS CAMERA';
+    reset.addEventListener('click', () => {
+      settings.cams[settings.camera] = { ...CAM_DEFAULTS[settings.camera] };
+      saveSettings(settings);
+      applySettings();
+      renderCamAdjust();
+    });
+    box.append(reset);
+  }
 }
 $('btn-recover').addEventListener('click', () => {
   recoverCar();

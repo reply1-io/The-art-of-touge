@@ -7,6 +7,13 @@ const ROADS = ['dragon', 'tunitas-down', 'tunitas-up', 'us276-up', 'us276-down']
 // Roads only offered one way: an old save naming the other direction moves to the best one.
 const BEST = { 'tunitas-up': 'tunitas-down', 'us276-up': 'us276-down' };
 
+// Each camera's adjustments as it comes.
+export const CAM_DEFAULTS = {
+  chase: { fov: 60, tilt: 0, x: 0, closer: 0 },
+  cockpit: { fov: 88, tilt: 0, x: 0, closer: 0 },
+  bumper: { fov: 70, tilt: 0, x: 0, closer: 0 },
+};
+
 const DEFAULTS = {
   mode: 'manual', // 'manual' | 'autoClutch' | 'auto'
   camera: 'chase', // 'chase' | 'bumper'
@@ -19,7 +26,7 @@ const DEFAULTS = {
   time: 'night', // 'day' | 'sunset' | 'night'
   stage: -1, // world map: which road to start on (-1 = the whole route)
   money: 'unlimited', // 'career' | 'unlimited'
-  fov: 60, // driving camera field of view, 50..150
+  fov: 60, // (old: one field of view for every camera; now per camera in cams)
   driveMode: 'free', // 'free' (Free Roam) | 'touge' (races)
   netName: '',
   netServer: '',
@@ -46,6 +53,12 @@ export function loadSettings() {
   const s = { ...DEFAULTS, ...read(KEY), stage: -1 };
   if (!ROADS.includes(s.map)) s.map = 'dragon';
   s.map = BEST[s.map] ?? s.map;
+  // Camera adjustments, one set per camera: field of view, tilt (deg, + looks up), centre (-100
+  // left .. 100 right) and closer (-100 further back .. 100 closer to the windscreen / car).
+  const old = (s.fov ?? 60) - 60; // an older single FOV setting carries over
+  const def = { chase: 60 + old, cockpit: 88 + old, bumper: 70 + old };
+  s.cams = s.cams || {};
+  for (const m of Object.keys(CAM_DEFAULTS)) s.cams[m] = { ...CAM_DEFAULTS[m], fov: Math.max(40, Math.min(150, def[m])), ...(s.cams[m] || {}) };
   return s;
 }
 
