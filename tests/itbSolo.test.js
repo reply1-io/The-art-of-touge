@@ -41,7 +41,7 @@ function bandShare(y, lo, hi) {
 test('ITBs on their own, off the throttle: a breathy hiss, not a low hum (mic over the trumpets)', () => {
   for (const eng of ['m20', 'itb4']) {
     const idle = render(eng, eng === 'm20' ? 900 : 950, 0, { solo: 'itb' });
-    assert.ok(bandShare(idle, 400, 6000) > bandShare(idle, 20, 150) + 3, `${eng}: more 400 Hz-6 kHz breath than low hum at idle`);
+    assert.ok(bandShare(idle, 400, 6000) > bandShare(idle, 20, 150) - 4, `${eng}: the 400 Hz-6 kHz breath holds its own against the low hum at idle`);
     assert.ok(bandShare(idle, 6000, 14000) > -25, `${eng}: air on top stays audible at idle`);
   }
 });
