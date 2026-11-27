@@ -84,8 +84,8 @@ function textTexture(lines, w, h, draw) {
 // workbench and pegboard of tools, shelves of parts, a rolling tool chest, an engine on a stand and
 // strip lights overhead. The car just sits on the floor; the camera walks round it.
 function buildGarage(scene) {
-  scene.background = new THREE.Color(0x15130f);
-  scene.fog = new THREE.Fog(0x15130f, 12, 30);
+  scene.background = new THREE.Color(0x070605);
+  scene.fog = new THREE.Fog(0x070605, 8, 22);
   const lambert = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, ...extra });
   const box = (w, h, d, mat, x, y, z, ry = 0) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -98,16 +98,15 @@ function buildGarage(scene) {
   const D = 6.2; // half depth (z)
   const H = 3.6; // ceiling height
 
-  // Light: warm fill from the strip lights, a cooler spill from the open door.
-  scene.add(new THREE.HemisphereLight(0xfff1d8, 0x2a241c, 0.9));
-  const key = new THREE.PointLight(0xfff0d0, 26, 14, 1.3);
-  key.position.set(0.5, H - 0.3, 0.6);
-  scene.add(key);
-  const fill = new THREE.PointLight(0xffe3b0, 10, 10, 1.4);
-  fill.position.set(-3.6, H - 0.4, -3);
+  // Late at night, working on your own car: the strip lights are off. A warm work lamp hangs over
+  // the car (see the drop light below), a little lamp glows on the bench, and blue night comes in
+  // under the half-open door. The corners stay dark.
+  scene.add(new THREE.HemisphereLight(0x5a6a8c, 0x14100c, 0.22));
+  const fill = new THREE.PointLight(0xffb870, 1.6, 9, 1.6); // the neon sign's glow on the left wall
+  fill.position.set(-W + 0.8, 2.6, 0.6);
   scene.add(fill);
-  const door = new THREE.DirectionalLight(0xa8c4ff, 0.7);
-  door.position.set(6, 3, 8);
+  const door = new THREE.DirectionalLight(0x4f6fa8, 0.35);
+  door.position.set(6, 1.2, 4);
   scene.add(door);
 
   // Concrete floor: speckled, with expansion joints and oil stains where cars have stood.
@@ -186,7 +185,7 @@ function buildGarage(scene) {
   const beamMat = lambert(0x5c4632);
   for (const z of [-3.6, -1.2, 1.2, 3.6]) box(W * 2, 0.18, 0.14, beamMat, 0, H - 0.09, z);
 
-  // The roller door on the right wall, half open, with daylight under it.
+  // The roller door on the right wall, half open, with the night outside under it.
   const shutterTex = textTexture(null, 64, 128, (g) => {
     g.fillStyle = '#9da3a8';
     g.fillRect(0, 0, 64, 128);
@@ -202,13 +201,13 @@ function buildGarage(scene) {
   const shutter = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.9), lambert(0xffffff, { map: shutterTex }));
   shutter.position.set(W - 0.02, H - 0.95, 0.8);
   shutter.rotation.y = -Math.PI / 2;
-  const daylight = new THREE.Mesh(new THREE.PlaneGeometry(5, H - 1.9), new THREE.MeshBasicMaterial({ color: 0xc9dcf2 }));
+  const daylight = new THREE.Mesh(new THREE.PlaneGeometry(5, H - 1.9), new THREE.MeshBasicMaterial({ color: 0x0f1a2c }));
   daylight.position.set(W - 0.03, (H - 1.9) / 2, 0.8);
   daylight.rotation.y = -Math.PI / 2;
   scene.add(shutter, daylight);
 
-  // Strip lights.
-  const tubeMat = new THREE.MeshBasicMaterial({ color: 0xfff6e0 });
+  // Strip lights (switched off).
+  const tubeMat = lambert(0x8a8c88);
   for (const [x, z] of [[0.5, 0.6], [-3.6, -3]]) {
     box(1.5, 0.08, 0.16, lambert(0x2b2b2b), x, H - 0.25, z);
     box(1.4, 0.05, 0.08, tubeMat, x, H - 0.31, z);
@@ -660,12 +659,34 @@ function buildGarage(scene) {
   mat.position.set(0, 0.006, 0.2);
   scene.add(mat);
   cyl(0.008, 1.0, lambert(0x111111), -0.6, H - 0.6, 1.4);
-  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe2a8 }));
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffd08a }));
   bulb.position.set(-0.6, H - 1.15, 1.4);
   scene.add(bulb);
-  const drop = new THREE.PointLight(0xffd59a, 3, 5, 1.6);
+  // A wire cage shade round the bulb.
+  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.22, 8, 1, true), lambert(0x2a2622, { side: THREE.DoubleSide, wireframe: true }));
+  shade.position.set(-0.6, H - 1.06, 1.4);
+  scene.add(shade);
+  const drop = new THREE.PointLight(0xffbf78, 16, 9, 1.5);
   drop.position.copy(bulb.position);
   scene.add(drop);
+
+  // On the back bench: a little lamp left on, an old radio with its dial lit, a mug.
+  const lampPos = new THREE.Vector3(-3.0, 1.35, -D + 0.55);
+  box(0.03, 0.4, 0.03, lambert(0x222222), lampPos.x, 1.15, lampPos.z);
+  const lampShade = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.14, 8, 1, true), lambert(0x2d4a3a, { side: THREE.DoubleSide }));
+  lampShade.position.copy(lampPos);
+  scene.add(lampShade);
+  const lampBulb = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 4), new THREE.MeshBasicMaterial({ color: 0xffcf8a }));
+  lampBulb.position.set(lampPos.x, lampPos.y - 0.05, lampPos.z);
+  scene.add(lampBulb);
+  const benchLamp = new THREE.PointLight(0xffaa5c, 3.2, 4, 1.6);
+  benchLamp.position.set(lampPos.x, lampPos.y - 0.1, lampPos.z + 0.1);
+  scene.add(benchLamp);
+  box(0.42, 0.22, 0.14, lambert(0x3a2a1e), -2.35, 1.07, -D + 0.32); // radio
+  const dial = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.06), new THREE.MeshBasicMaterial({ color: 0xffa64a }));
+  dial.position.set(-2.38, 1.11, -D + 0.395);
+  scene.add(dial);
+  cyl(0.04, 0.1, lambert(0xd8d2c4), -1.25, 1.01, -D + 0.62); // mug
 
   // A creeper left beside the car.
   const padMat = lambert(0x1b1c1e);
