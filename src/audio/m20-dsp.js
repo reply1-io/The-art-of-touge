@@ -223,6 +223,13 @@ const K24_VERSIONS = {
 };
 for (const [k, v] of Object.entries(K24_VERSIONS)) ENGINES[k] = { ...ENGINES.k24, ...v };
 
+// Honda K20A 2.0 (Integra / Civic Type R): the K24's voice, smaller and higher strung. It idles at
+// 800, the high cam comes in at 5,800 and it revs to 8,600, so the VTEC howl lives higher up.
+ENGINES.k20 = { ...ENGINES.k24, label: 'Honda K20A 2.0 inline-four (Type R i-VTEC)', idleRpm: 800, redline: 8400, crankFlare: 1800,
+  rpmEq: [[640, 1.1, 2, 4500, 7500], [230, 1.0, -5, 4500, 7500]],
+  vtec: { ...ENGINES.k24.vtec, on: 5800, off: 5500 },
+  zing: { ...ENGINES.k24.zing, from: 3200, to: 6800, base: 0.45 } };
+
 // ---- ITBs heard on their own (set({ intake: 'itb', solo: 'itb' })): the six is the M20 with the
 // standard ITB voice; the four is a high-revving inline-four on open trumpets. It fires every 180
 // degrees, so each trumpet's gulp ends as the next begins: short, separate gulps with hard edges,
