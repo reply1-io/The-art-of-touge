@@ -399,6 +399,10 @@ export const ITB = {
   // the intake bark: a resonance around 700-900 Hz (higher with the revs) that barks on each
   // blip and lets go: it follows the throttle opening, 30 ms attack, 60 ms release
   bark: [700, 0.03, 3.5], barkGain: 6, barkAttack: 0.03, barkRelease: 0.06,
+  // the gulp: when the throttles snap open, every trumpet sucks in a big breath at once, a deep
+  // whoosh of air that falls in pitch as the inrush settles. Sized by how far the pedal went in;
+  // gulpHz: [low, high] of the whoosh, gulpLow: the deep whump under it, gulpDecay: seconds
+  gulp: 45, gulpHz: [180, 650], gulpLow: [70, 1.6], gulpLowGain: 1.2, gulpDecay: 0.4,
 };
 // how each trumpet differs from the average (firing order), scaled by `uneven`
 export const ITB_UNEVEN = [0.26, 0.05, -0.23, -0.22, 0.25, -0.1, 0.15, -0.16];
@@ -427,6 +431,7 @@ export class M20Dsp {
     this.itbEq = [new Biquad(), new Biquad(), new Biquad(), new Biquad(), new Biquad(), new Biquad()]; // low cut x2, drone, rasp x2, drone
     this.itbHiss = [new Biquad(), new Biquad(), new Biquad()]; this.itbPost = [new Biquad(), new Biquad()]; this.itbBark = new Biquad();
     this.itbThrSlow = 0; this.itbEqW = 0; this.itbBarkEnv = 0; this.itbBarkSrc = 0;
+    this.gulpE = 0; this.gulpA = 0; this.gulpThr = 0; this.gulpBp = new Biquad(); this.gulpLp = new Biquad(); this.gulpLow = new Biquad();
     this.itbBox = new Delay(2048); this.itbBoxLp = 0; this.itbBoxA = 0; this.itbBoom = new Biquad();
     // turbo state: boost and shaft speed 0..1, lift-off envelopes and oscillator phases
     this.T = { on: 0, boost: 0, shaft: 0, armed: false, flut: 0, flutRate: 0, flutPh: 0,
@@ -674,6 +679,12 @@ export class M20Dsp {
       }
     }
     if (this.I && this.itbOn > 0.001) this.itbBark.set('bp', this.I.bark[0] + rpm0 * this.I.bark[1], this.I.bark[2], 0, fs);
+    if (this.I && this.itbOn > 0.001 && this.gulpA > 1e-4) { // the whoosh falls in pitch as the inrush settles
+      const G = this.I, u = Math.min(1, this.gulpA);
+      this.gulpBp.set('bp', G.gulpHz[0] + (G.gulpHz[1] - G.gulpHz[0]) * u, 0.7, 0, fs);
+      this.gulpLp.set('lp', 1200 + 1400 * u, 0.6, 0, fs);
+      this.gulpLow.set('lp', G.gulpLow[0], G.gulpLow[1], 0, fs);
+    }
     const itbT = this.target.intake === 'itb' ? 1 : 0;
 
     const E = this.E, ncyl = E.firing.length;
@@ -992,6 +1003,15 @@ export class M20Dsp {
         const open = Math.min(1, Math.max(0, thr - this.itbThrSlow - 0.15) * 3);
         this.itbBarkEnv += (open - this.itbBarkEnv) * (open > this.itbBarkEnv ? this.itbBarkAtk : this.itbBarkRel);
         y += this.itbBark.run(this.itbBarkSrc) * this.itbBarkEnv * I.barkGain / E.level;
+        // the gulp: every bit the pedal goes in adds to the breath; a ~10 ms swell, then it lets go
+        const rise = thr - this.gulpThr; this.gulpThr = thr;
+        if (rise > 0) this.gulpE = Math.min(1.5, this.gulpE + rise);
+        this.gulpE *= 1 - 1 / (I.gulpDecay * fs);
+        this.gulpA += (this.gulpE - this.gulpA) * (1 / (0.01 * fs));
+        if (this.gulpA > 1e-4 && I.gulp) {
+          const n = randn();
+          y += (this.gulpLp.run(this.gulpBp.run(n)) + this.gulpLow.run(n) * I.gulpLowGain) * this.gulpA * this.gulpA * I.gulp * this.itbOn * ign / E.level;
+        }
         // air sucking through the trumpets: follows the throttle, not the revs
         const H = this.itbHiss;
         const hissLvl = I.hissFloor * Math.min(1, rpm / 400) + (1 - I.hissFloor) * thr; // fades out only when the engine stops
