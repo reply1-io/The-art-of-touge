@@ -179,7 +179,8 @@ export const ENGINES = {
     sizzle: 1.0, idleNoise: 1.8, tick: 1.5, raspFloor: 0.6, subMin: 40, // a buzzy, tappy idle; the 25 Hz fundamental is felt more than heard
     muff: [380, 500, 0.07, 1000, 400], muffRpm: 0.15, muffRpm2: 0,
     body: [64, 5], drone: [440, 8], mid: [460, 3], // a low boom, and the pipe's main ring at 400-500 Hz
-    eq: [[105, 0.8, 4], [720, 1.1, -6], [1700, 0.7, -6], [3800, 0.7, -5], [250, 0.9, -3]], // + 150-400 Hz down 3 dB // more 70-150 Hz body; darker above
+    eq: [[105, 0.8, 4], [720, 1.1, -6], [1700, 0.7, -6], [3800, 0.7, -5], [250, 0.9, -3], // more 70-150 Hz body; darker above; 150-400 down 3 dB
+      [1750, 1.4, -6.5], [3900, 1.3, -10.3], [105, 1.3, 4.2]],                            // and darker still up top, more low body
     overrunFire: true,                         // off the throttle it falls back to an idle-like level, never a gap
     idleHitScale: 0.35,                        // a loud exhaust hardens its idle less (its idle is already full)
     // filters that follow the revs: [multiple of the firing note, dB, Q]. Its exhaust carries the
@@ -369,7 +370,7 @@ export class M20Dsp {
     this.muffLp = new Biquad(); this.muffLp2 = new Biquad();
     this.body = new Biquad(); this.drone = new Biquad(); this.mid = new Biquad();
     this.orderEq = [new Biquad(), new Biquad(), new Biquad(), new Biquad()];
-    this.eq = [new Biquad(), new Biquad(), new Biquad(), new Biquad(), new Biquad()]; this.eqFor = '';
+    this.eq = Array.from({ length: 8 }, () => new Biquad()); this.eqFor = '';
     this.rpmEq = [new Biquad(), new Biquad()];
     this.dcHp = new Biquad().set('hp', 28, 0.7, 0, fs);
     this.raspBp = new Biquad(); this.raspHp = new Biquad().set('hp', 900, 0.7, 0, fs);
