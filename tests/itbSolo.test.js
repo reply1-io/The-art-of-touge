@@ -26,3 +26,22 @@ test('solo takes the exhaust out: without ITBs fitted the solo flag changes noth
   const d1 = render('m20', 3000, 0.5, { intake: 'stock', solo: 'itb' }), d2 = render('m20', 3000, 0.5, { intake: 'stock' });
   assert.ok(Math.abs(db(d1) - db(d2)) < 1.5, 'stock intake ignores solo');
 });
+
+// how much of the sound is in a band (dB of the total), from a plain DFT on a few bins per band
+function bandShare(y, lo, hi) {
+  const N = 4096, x = y.subarray(0, N); let inB = 0, all = 0;
+  for (let k = 1; k < N / 2; k += 2) {
+    let re = 0, im = 0; const w = (2 * Math.PI * k) / N;
+    for (let i = 0; i < N; i++) { const v = x[i] * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / N)); re += v * Math.cos(w * i); im -= v * Math.sin(w * i); }
+    const p = re * re + im * im, f = (k * 48000) / N; all += p; if (f >= lo && f < hi) inB += p;
+  }
+  return 10 * Math.log10(inB / all);
+}
+
+test('ITBs on their own, off the throttle: a breathy hiss, not a low hum (mic over the trumpets)', () => {
+  for (const eng of ['m20', 'itb4']) {
+    const idle = render(eng, eng === 'm20' ? 900 : 950, 0, { solo: 'itb' });
+    assert.ok(bandShare(idle, 400, 6000) > bandShare(idle, 20, 150) + 3, `${eng}: more 400 Hz-6 kHz breath than low hum at idle`);
+    assert.ok(bandShare(idle, 6000, 14000) > -25, `${eng}: air on top stays audible at idle`);
+  }
+});
