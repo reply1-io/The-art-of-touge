@@ -625,7 +625,7 @@ const ITB = {
     onLowDb: -7,                  // 70-150 Hz on the throttle (-5 measured; the peak's skirts share it)
     offLowDb: -13, split: 180,     // below 150 Hz off the throttle (split a little above, so 70-150 drops fully)
     breath: 0.182, breathBand: [380, 1600], breathRpm: 1.25, breathCap: 1.4, breathLow: [650, 1.2, 0.358], // and a hollow 400-1000 Hz core: Hz, Q, gain; // louder the faster it spins: more air drawn past the plates // the breathy hiss off the throttle (400 Hz-6 kHz)
-    airOn: 0.4, airOff: 0.065, airBand: [6000, 14000], // air on top, on and off the throttle
+    airOn: 0.2, airOff: 0.065, airBand: [6000, 14000], // air on top, on and off the throttle
   },
 };
 // how each trumpet differs from the average (firing order), scaled by `uneven`
