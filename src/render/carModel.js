@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { softTexture } from './softTexture.js';
 import { Cockpit } from './cockpit.js';
 import { RX7_SHAPE } from './shapes/rx7.js';
+import { CIVIC_SHAPE } from './shapes/civic.js';
 import { customShape, registerStockShapes } from './shapes/custom.js';
 import { loadDesigns } from '../builder/customStore.js';
 import { paintTexture, addPaintLayer } from './shapes/paintLayer.js';
@@ -605,7 +606,7 @@ const E30_SHAPE = {
   door: -0.3,
   lamps: HEADLAMPS,
 };
-export const SHAPES = { e30: E30_SHAPE, rx7: RX7_SHAPE };
+export const SHAPES = { e30: E30_SHAPE, rx7: RX7_SHAPE, civic: CIVIC_SHAPE };
 registerStockShapes(SHAPES); // so a Car Builder design can start from either body
 
 // Real reflections: each car keeps a tiny cube map of what is around it (the garage, the road, the

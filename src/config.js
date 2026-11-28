@@ -73,7 +73,69 @@ const E30 = {
   sound: 'm20',
 };
 
-export const CARS = { e30: E30 };
+// Honda Civic Si hatchback (EF, 1988-91): D16A6 1.6 SOHC 16-valve, 108 hp at 6,000 rpm, about
+// 950 kg. Light, short and eager, with a revvy four and short gearing. (The real car drives its
+// front wheels; here, like every car in the game, it drives the rears.)
+const CIVIC = {
+  ...E30,
+  id: 'civic',
+  shape: 'civic',
+  name: 'Honda Civic Si (EF)',
+  blurb: '1.6 SOHC four, 108 hp, 7,000 rpm. Featherweight and short: darty, eager, easy to throw about.',
+  mass: 980,
+  halfExtents: { x: 0.8, y: 0.3, z: 1.98 },
+  centerOfMass: { x: 0, y: -0.18, z: 0.18 }, // nose-heavy, with the engine over the front wheels
+  inertia: { x: 1150, y: 1400, z: 380 },
+  dragArea: 0.62, // Cd 0.35 x 1.77 m2
+  wheelbase: 2.5,
+  trackFront: 1.45,
+  trackRear: 1.465,
+  frontAxleZ: 1.25,
+  rearAxleZ: -1.25,
+  wheelRadius: 0.289, // 185/60 R14
+  wheelWidth: 0.185,
+  wheelInertia: 0.85,
+  maxSteer: (37 * Math.PI) / 180,
+  engine: {
+    idleRpm: 795, // settles about 45 below: a 750 rpm idle
+    idleMaxThrottle: 0.25,
+    redline: 6800,
+    limiterRpm: 7200,
+    limiterResumeRpm: 6950,
+    stallRpm: 430,
+    inertia: 0.11, // a light little four: quick to rev
+    // rpm -> N m at full throttle (D16A6: 108 hp at 6,000, 136 N m at 5,000)
+    torqueCurve: [
+      [0, 70],
+      [800, 95],
+      [1500, 108],
+      [2500, 118],
+      [3500, 126],
+      [4500, 133],
+      [5000, 136],
+      [5800, 132],
+      [6300, 124],
+      [6800, 114],
+      [7200, 104],
+      [7600, 88],
+    ],
+    frictionTorque: 15,
+    frictionPerRpm: 0.006,
+  },
+  gears: [3.25, 1.894, 1.259, 0.937, 0.771],
+  reverse: 3.153,
+  finalDrive: 4.25,
+  clutchTorque: 230,
+  brakeTorqueFront: 1350,
+  brakeTorqueRear: 520,
+  handbrakeTorque: 1500,
+  paint: 0xb3262b, // Rio Red
+  engineName: 'D16A6',
+  engineKg: 120,
+  sound: 'd16',
+};
+
+export const CARS = { e30: E30, civic: CIVIC };
 
 // Cars you made in the Car Builder (kept in this browser): each drives like the car it is built on.
 for (const d of loadDesigns()) {

@@ -223,6 +223,12 @@ const K24_VERSIONS = {
 };
 for (const [k, v] of Object.entries(K24_VERSIONS)) ENGINES[k] = { ...ENGINES.k24, ...v };
 
+// Honda D16A6 1.6 SOHC (EF Civic Si): the Honda four's voice, smaller, softer and without VTEC.
+ENGINES.d16 = { ...ENGINES.k24, label: 'Honda D16A6 1.6 inline-four (SOHC)', idleRpm: 750, redline: 6800, crankFlare: 1500,
+  rpmEq: [[620, 1.1, 1.5, 3500, 6500], [230, 1.0, -5, 3500, 6500]],
+  vtec: null, zing: { ...ENGINES.k24.zing, vtec: false, from: 3000, to: 6500, base: 0.35, level: 0.22 },
+  level: 0.95 };
+
 // Honda K20A 2.0 (Integra / Civic Type R): the K24's voice, smaller and higher strung. It idles at
 // 800, the high cam comes in at 5,800 and it revs to 8,600, so the VTEC howl lives higher up.
 ENGINES.k20 = { ...ENGINES.k24, label: 'Honda K20A 2.0 inline-four (Type R i-VTEC)', idleRpm: 800, redline: 8400, crankFlare: 1800,
