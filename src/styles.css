@@ -2361,3 +2361,12 @@ body.replay-ui-off #toast {
   padding-left: 4px;
   padding-right: 4px;
 }
+
+/* The Car Builder link sits in the home row like the buttons beside it. */
+.home-panel .home-row a.big {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  color: inherit;
+}

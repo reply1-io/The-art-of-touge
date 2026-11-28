@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CARS } from '../config.js';
 import { CarModel } from '../render/carModel.js';
-import { copies, MATS, starterParts, STOCK_NAMES, partMesh, triLook, baseMesh, localCorners, partMatrix, splitStock, pieceName } from '../render/shapes/custom.js';
+import { copies, MATS, starterParts, efCivicParts, STOCK_NAMES, partMesh, triLook, baseMesh, localCorners, partMatrix, splitStock, pieceName } from '../render/shapes/custom.js';
 import { loadDesigns, saveDesign, deleteDesign, newId } from './customStore.js';
 import { paintTexture, addPaintLayer, drawStroke, strokePoint } from '../render/shapes/paintLayer.js';
 import * as sketchPad from './sketchPad.js';
@@ -21,6 +21,7 @@ const SETTINGS = 'touge.settings.v4';
 // A new car: the plain starter body, or the game's E30 or RX-7 to build onto.
 function blank(start = 'e30') {
   // The E30 and RX-7 come in pieces (about 50), so any bit of them can be picked or deleted.
+  if (start === 'civic') return { id: newId(), name: 'EF Civic Si', base: 'e30', paint: '#b5262a', parts: efCivicParts() };
   const parts = start === 'plain' ? starterParts() : splitStock(stockPart(start));
   const paint = start === 'rx7' ? '#c8241d' : '#efeee6';
   return { id: newId(), name: start === 'plain' ? 'My car' : `My ${start === 'rx7' ? 'RX-7' : 'E30'}`, base: start === 'rx7' ? 'rx7' : 'e30', paint, parts };
@@ -30,7 +31,9 @@ function stockPart(model) {
 }
 let design;
 try {
-  design = JSON.parse(localStorage.getItem(DRAFT)) || blank();
+  // car-builder.html?start=civic (or plain, e30) opens a fresh car of that kind.
+  const start = new URLSearchParams(location.search).get('start');
+  design = (start && blank(start)) || JSON.parse(localStorage.getItem(DRAFT)) || blank();
 } catch {
   design = blank();
 }
@@ -1207,7 +1210,7 @@ $('b-cars').onclick = () => {
   [...$('modal-box').querySelectorAll('.car span')].forEach((s, i) => (s.textContent = `${list[i].name} · ${list[i].parts.length} shapes`));
   $('m-new').onclick = () => {
     modal(`<div class="row"><strong style="flex:1">START A NEW CAR FROM</strong></div>
-      <div class="row"><button type="button" data-start="plain">PLAIN BODY</button><button type="button" data-start="e30">THE E30</button></div>`);
+      <div class="row"><button type="button" data-start="plain">PLAIN BODY</button><button type="button" data-start="e30">THE E30</button><button type="button" data-start="civic">EF CIVIC SI</button></div>`);
     for (const s of $('modal-box').querySelectorAll('[data-start]'))
       s.onclick = () => {
         remember();

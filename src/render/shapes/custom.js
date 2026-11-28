@@ -443,6 +443,54 @@ export function customShape(design) {
 }
 
 // A plain car to start from: lower body, cabin, glass, lights, bumpers. Fits the E30's wheels.
+// A Honda EF Civic Si hatchback (1988-91) in plain shapes, to shape further in the builder. Built
+// round the E30's wheels (it drives like the E30): a long low bonnet over a short front overhang
+// for a front-driver, a steep windscreen, a big glasshouse, a long flat roof and the near-upright
+// glass hatch of the Kammback tail. Thin flush headlights across the nose, a full-width tail strip,
+// black rubbing strips down the sides.
+export function efCivicParts() {
+  const P = (type, p, s, mat = 'paint', extra = {}) => ({ type, p, s, r: [0, 0, 0], mat, ...extra });
+  return [
+    // Lower body: the middle, the nose and tail, and the arches over each wheel.
+    P('box', [0, 0.45, 0], [1.66, 0.56, 1.84]),
+    P('box', [0, 0.45, 1.85], [1.66, 0.56, 0.46]),
+    P('box', [0, 0.45, -1.71], [1.66, 0.56, 0.26]),
+    P('box', [0, 0.68, 1.28], [1.66, 0.1, 0.76]),
+    P('box', [0, 0.68, -1.28], [1.66, 0.1, 0.76]),
+    P('box', [0, 0.45, 1.28], [1.18, 0.56, 0.76], 'black'), // front wheel wells
+    P('box', [0, 0.45, -1.28], [1.18, 0.56, 0.76], 'black'), // rear wheel wells
+    // Shoulder line down the sides, and the long low bonnet sloping to the nose.
+    P('box', [0, 0.785, -0.42], [1.64, 0.11, 2.76]),
+    P('wedge', [0, 0.785, 1.45], [1.62, 0.12, 1.26]),
+    // Glasshouse: steep windscreen, side glass, a long flat roof, the glass hatch.
+    P('wedge', [0, 1.07, 0.38], [1.36, 0.46, 0.88], 'glass'),
+    P('box', [0, 1.07, -0.5], [1.38, 0.46, 1.1], 'glass'),
+    P('box', [0, 1.315, -0.55], [1.36, 0.05, 1.02]),
+    P('wedge', [0, 1.07, -1.41], [1.34, 0.46, 0.72], 'glass', { r: [0, 180, 0] }),
+    // Pillars: black B-pillars, body-coloured A-pillars along the screen edges.
+    P('box', [0.69, 1.07, -0.25], [0.03, 0.46, 0.09], 'black', { mirror: true }),
+    P('box', [0.675, 1.07, 0.38], [0.04, 0.05, 0.99], 'paint', { r: [27.6, 0, 0], mirror: true }),
+    P('box', [0.67, 1.07, -1.41], [0.04, 0.05, 0.85], 'paint', { r: [-32.6, 0, 0], mirror: true }),
+    // Nose: thin flush headlights each side of a slim grille, body-coloured bumper, black lip.
+    P('box', [0.5, 0.67, 2.085], [0.52, 0.11, 0.03], 'head', { mirror: true }),
+    P('box', [0, 0.67, 2.088], [0.46, 0.07, 0.03], 'black'),
+    P('box', [0.78, 0.6, 1.98], [0.06, 0.05, 0.16], 'color', { color: '#e8962a', mirror: true }), // side markers
+    P('box', [0, 0.38, 2.11], [1.66, 0.2, 0.1]),
+    P('box', [0, 0.27, 2.12], [1.6, 0.05, 0.08], 'black'),
+    // Tail: a full-width strip of lights with a dark panel between, bumper, black strip.
+    P('box', [0.46, 0.76, -1.845], [0.56, 0.13, 0.03], 'tail', { mirror: true }),
+    P('box', [0, 0.76, -1.848], [0.36, 0.11, 0.03], 'black'),
+    P('box', [0, 0.38, -1.87], [1.66, 0.2, 0.1]),
+    P('box', [0, 0.32, -1.89], [1.6, 0.04, 0.06], 'black'),
+    // Black rubbing strips, door mirrors, door handles.
+    P('box', [0, 0.56, 0], [1.68, 0.05, 1.84], 'black'),
+    P('box', [0, 0.56, 1.85], [1.68, 0.05, 0.46], 'black'),
+    P('box', [0, 0.56, -1.71], [1.68, 0.05, 0.26], 'black'),
+    P('box', [0.78, 0.92, 0.6], [0.1, 0.08, 0.14], 'black', { mirror: true }),
+    P('box', [0.832, 0.74, -0.1], [0.02, 0.025, 0.12], 'black', { mirror: true }),
+  ];
+}
+
 export function starterParts() {
   // (Each a plain shape you can reshape corner by corner.)
   return [
