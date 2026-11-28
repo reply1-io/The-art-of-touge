@@ -7,8 +7,8 @@
 // both points move together and the loop stays seamless.
 const LOOP_START = 1;
 const LOOP_END = 13;
-const MUSIC_VOLUME = 0.32;
-const CLICK_VOLUME = 1; // the clip as recorded, full volume
+const MUSIC_VOLUME = 0.64;
+const CLICK_VOLUME = 0.5;
 const MENU_SCREENS = ['title', 'settings', 'roads', 'pause', 'race', 'results', 'shop'];
 
 export class MenuAudio {
