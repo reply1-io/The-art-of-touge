@@ -8,7 +8,7 @@
 const LOOP_START = 1;
 const LOOP_END = 13;
 const MUSIC_VOLUME = 0.32;
-const CLICK_VOLUME = 0.7;
+const CLICK_VOLUME = 1; // the clip as recorded, full volume
 const MENU_SCREENS = ['title', 'settings', 'roads', 'pause', 'race', 'results', 'shop'];
 
 export class MenuAudio {
@@ -58,7 +58,7 @@ export class MenuAudio {
       return await new Promise((ok, fail) => this.ctx.decodeAudioData(buf, ok, fail));
     };
     try {
-      this.click = await load('click.mp3');
+      this.click = await load('click.wav');
     } catch {
       // No click sound: fine.
     }

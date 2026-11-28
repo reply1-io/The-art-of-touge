@@ -97,7 +97,7 @@ function textTexture(lines, w, h, draw) {
 // strip lights overhead. The car just sits on the floor; the camera walks round it.
 function buildGarage(scene) {
   scene.background = new THREE.Color(0x070605);
-  scene.fog = new THREE.Fog(0x070605, 8, 22);
+  scene.fog = new THREE.Fog(0x070605, 12, 30);
   const lambert = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, ...extra });
   const box = (w, h, d, mat, x, y, z, ry = 0) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -113,7 +113,7 @@ function buildGarage(scene) {
   // Late at night, working on your own car: the strip lights are off. A warm work lamp hangs over
   // the car (see the drop light below), a little lamp glows on the bench, and blue night comes in
   // under the half-open door. The corners stay dark.
-  scene.add(new THREE.HemisphereLight(0x5a6a8c, 0x14100c, 0.22));
+  scene.add(new THREE.HemisphereLight(0x8a8fa0, 0x2a2016, 0.5));
   const fill = new THREE.PointLight(0xffb870, 1.6, 9, 1.6); // the neon sign's glow on the left wall
   fill.position.set(-W + 0.8, 2.6, 0.6);
   scene.add(fill);
@@ -699,6 +699,135 @@ function buildGarage(scene) {
   dial.position.set(-2.38, 1.11, -D + 0.395);
   scene.add(dial);
   cyl(0.04, 0.1, lambert(0xd8d2c4), -1.25, 1.01, -D + 0.62); // mug
+
+  // ---- Plants and lamps: a lived-in garage, warmly lit.
+  const leafMats = [0x2f6b34, 0x3f7f3a, 0x285c2e, 0x4f8a42, 0x1f4f2a].map((c) => lambert(c, { flatShading: true }));
+  const potMats = [lambert(0xa5583a), lambert(0xd9d2c4), lambert(0x2d2d30), lambert(0x6e7f8c)];
+  const plant = (x, y, z, size = 1, kind = 0, potK = 0) => {
+    const g = new THREE.Group();
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.12, 0.3, 8), potMats[potK % potMats.length]);
+    pot.position.y = 0.15;
+    const soil = new THREE.Mesh(new THREE.CylinderGeometry(0.155, 0.155, 0.02, 8), lambert(0x2a1d14));
+    soil.position.y = 0.29;
+    g.add(pot, soil);
+    const leaf = (k) => leafMats[k % leafMats.length];
+    if (kind === 0) {
+      // bushy: a cluster of leafy blobs
+      for (let k = 0; k < 7; k++) {
+        const b = new THREE.Mesh(new THREE.IcosahedronGeometry(0.13 + (k % 3) * 0.03, 0), leaf(k));
+        const a = k * 0.9;
+        b.position.set(Math.cos(a) * 0.12 * (k % 2 + 0.5), 0.42 + (k % 4) * 0.07, Math.sin(a) * 0.12 * (k % 2 + 0.5));
+        b.rotation.set(k, k * 2, 0);
+        g.add(b);
+      }
+    } else if (kind === 1) {
+      // snake plant: tall upright blades
+      for (let k = 0; k < 9; k++) {
+        const h = 0.45 + ((k * 37) % 10) * 0.04;
+        const b = new THREE.Mesh(new THREE.BoxGeometry(0.06, h, 0.015), leaf(k + 1));
+        const a = k * 0.7;
+        b.position.set(Math.cos(a) * 0.07, 0.3 + h / 2, Math.sin(a) * 0.07);
+        b.rotation.set(Math.sin(a) * 0.15, a, Math.cos(a) * 0.15);
+        g.add(b);
+      }
+    } else {
+      // palm: fronds arching out from a stem
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.7, 6), lambert(0x5a4a32));
+      stem.position.y = 0.65;
+      g.add(stem);
+      for (let k = 0; k < 8; k++) {
+        const f = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.6, 4), leaf(k));
+        f.scale.set(1, 1, 0.25);
+        const a = (k / 8) * Math.PI * 2;
+        f.position.set(Math.cos(a) * 0.22, 1.0, Math.sin(a) * 0.22);
+        f.rotation.set(0, -a, Math.PI / 2 + 0.5);
+        f.rotateY(Math.PI / 2);
+        g.add(f);
+      }
+    }
+    g.position.set(x, y, z);
+    g.scale.setScalar(size);
+    g.rotation.y = x * 1.7 + z;
+    scene.add(g);
+    return g;
+  };
+  // On the floor round the walls (big ones), on the bench, the shelves and the tool chest.
+  for (const [x, z, sz, k, pk] of [
+    [-6.5, -5.6, 1.6, 2, 0], [-5.2, -5.7, 1.2, 1, 1], [0.6, -5.7, 1.3, 0, 2], [4.6, -5.5, 1.5, 2, 3],
+    [6.6, -4.0, 1.2, 1, 0], [6.6, -1.4, 1.4, 0, 1], [6.5, 1.6, 1.6, 2, 2], [-6.4, -2.3, 1.3, 0, 3],
+    [-6.5, 3.0, 1.5, 2, 1], [-2.6, 5.7, 1.2, 1, 0], [3.0, 5.6, 1.1, 0, 2],
+  ]) plant(x, 0, z, sz, k, pk);
+  // Little groups of pots: a few more corners filled.
+  for (const [cx, cz] of [[-1.9, -5.65], [5.6, -5.6], [6.55, 3.6], [-6.5, 0.0], [-4.6, 5.7], [0.2, 5.65], [6.6, 0.1]]) {
+    for (let k = 0; k < 3; k++) plant(cx + (k - 1) * 0.36, 0, cz + (k % 2) * 0.12, 0.75 + (k % 2) * 0.35, (k + Math.round(cx)) % 3, k + 1);
+  }
+  for (const [x, y, z, sz, k, pk] of [
+    [-3.8, 0.96, -D + 0.62, 0.7, 0, 1], [-0.7, 0.96, -D + 0.7, 0.6, 1, 2], [2.3, 1.55, -D + 0.4, 0.6, 0, 0],
+    [-W + 0.3, 1.97, 1.85, 0.6, 0, 3], [-W + 0.3, 0.47, 1.9, 0.65, 1, 1],
+  ]) plant(x, y, z, sz, k, pk);
+  // Hanging planters from the beams, trailing leaves.
+  for (const [x, z] of [[-4.6, -3.6], [-1.6, -3.6], [3.4, -3.6], [-6.2, 3.6], [6.2, -1.2], [-6.2, -1.2]]) {
+    cyl(0.006, 0.7, lambert(0x222222), x, H - 0.45, z);
+    const basket = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 5, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), lambert(0x8a6a44, { side: THREE.DoubleSide }));
+    basket.position.set(x, H - 0.8, z);
+    scene.add(basket);
+    for (let k = 0; k < 9; k++) {
+      const a = (k / 9) * Math.PI * 2;
+      const len = 0.25 + (k % 3) * 0.15;
+      const vine = new THREE.Mesh(new THREE.BoxGeometry(0.07, len, 0.03), leafMats[k % leafMats.length]);
+      vine.position.set(x + Math.cos(a) * 0.17, H - 0.82 - len / 2, z + Math.sin(a) * 0.17);
+      vine.rotation.y = -a;
+      scene.add(vine);
+      const top = new THREE.Mesh(new THREE.IcosahedronGeometry(0.08, 0), leafMats[(k + 2) % leafMats.length]);
+      top.position.set(x + Math.cos(a) * 0.1, H - 0.76, z + Math.sin(a) * 0.1);
+      scene.add(top);
+    }
+  }
+
+  // Lamps: two floor lamps, pendant bulbs over the back of the garage, and string lights along
+  // the walls. Warm light everywhere, so the room reads but still feels like late at night.
+  const bulbMat = new THREE.MeshBasicMaterial({ color: 0xffd89a });
+  const lampLight = (x, y, z, i, d) => {
+    const l = new THREE.PointLight(0xffc27e, i, d, 1.4);
+    l.position.set(x, y, z);
+    scene.add(l);
+  };
+  for (const [x, z] of [[-5.2, -4.4], [5.4, 3.4], [-5.6, 4.2]]) {
+    cyl(0.16, 0.03, lambert(0x1c1c1c), x, 0.015, z);
+    cyl(0.018, 1.6, lambert(0x2a2a2a), x, 0.8, z);
+    const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.24, 0.3, 10, 1, true), lambert(0xe8d9b8, { side: THREE.DoubleSide, emissive: 0x6a5030 }));
+    shade.position.set(x, 1.68, z);
+    scene.add(shade);
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), bulbMat);
+    b.position.set(x, 1.62, z);
+    scene.add(b);
+    lampLight(x, 1.6, z, 7, 8);
+  }
+  for (const [x, z] of [[-3.2, -4.2], [0.8, -4.4], [3.8, -4.0]]) {
+    cyl(0.006, 1.1, lambert(0x111111), x, H - 0.55, z);
+    const shade = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.14, 10, 1, true), lambert(0x3a3d34, { side: THREE.DoubleSide }));
+    shade.position.set(x, H - 1.12, z);
+    scene.add(shade);
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), bulbMat);
+    b.position.set(x, H - 1.2, z);
+    scene.add(b);
+    lampLight(x, H - 1.25, z, 5, 7);
+  }
+  // String lights: little bulbs hanging in swags along the back and left walls.
+  const stringBulb = new THREE.MeshBasicMaterial({ color: 0xffcf86 });
+  const swag = (x0, z0, x1, z1, y, n) => {
+    for (let k = 0; k <= n; k++) {
+      const t = k / n;
+      const sag = Math.sin(((t * n) % 4) / 4 * Math.PI) * 0.18;
+      const b = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 4), stringBulb);
+      b.position.set(x0 + (x1 - x0) * t, y - sag, z0 + (z1 - z0) * t);
+      scene.add(b);
+    }
+  };
+  swag(-W + 0.3, -D + 0.08, W - 0.3, -D + 0.08, 2.95, 40);
+  swag(-W + 0.08, -D + 0.3, -W + 0.08, D - 0.3, 2.95, 36);
+  lampLight(0, 2.6, -D + 0.8, 4, 10);
+  lampLight(-W + 0.8, 2.6, 1.5, 3, 9);
 
   // A creeper left beside the car.
   const padMat = lambert(0x1b1c1e);
