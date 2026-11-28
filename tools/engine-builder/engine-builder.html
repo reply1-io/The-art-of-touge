@@ -1,0 +1,326 @@
+<meta charset="utf-8">
+<title>Engine Builder</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: a spec sheet of parts (left) beside a test-cell panel (right): firing wheel, rev readout,
+   and what the physics works out from the parts. One column on phones, test cell first. */
+:root {
+  --bg: #e9edf1;          /* drafting-film blue-grey */
+  --sheet: #f8fafb;
+  --ink: #17212c;
+  --muted: #5b6876;
+  --rule: #cfd7df;
+  --cell: #111820;        /* the test cell stays dark in both themes */
+  --cell-ink: #e8eef3;
+  --cell-dim: #7d8b98;
+  --signal: #f0b100;      /* live readouts */
+  --bank-a: #2f7fd6;
+  --bank-b: #d2457f;
+  --warn: #d6352b;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0c1117; --sheet: #141b23; --ink: #e5ebf0; --muted: #94a2b0; --rule: #26313c;
+  --bank-a: #5aa2ef; --bank-b: #e46b9c; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0c1117; --sheet: #141b23; --ink: #e5ebf0; --muted: #94a2b0; --rule: #26313c;
+  --bank-a: #5aa2ef; --bank-b: #e46b9c; color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 40px; }
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 18px; }
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(30px, 5vw, 44px); line-height: 1; margin: 0; letter-spacing: -0.01em; }
+.lede { margin: 6px 0 0; color: var(--muted); max-width: 62ch; text-wrap: pretty; }
+.preset { display: grid; gap: 4px; }
+label, .lbl { font-family: var(--font-data); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+select, input[type="number"] { font: 500 15px var(--font-data); color: var(--ink); background: var(--sheet); border: 1px solid var(--rule);
+  border-radius: 6px; padding: 7px 9px; min-width: 0; width: 100%; }
+select:focus-visible, input:focus-visible, button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+.grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } .side { order: -1; } .cell { position: static; } }
+
+/* spec sheet */
+.sheet { background: var(--sheet); border: 1px solid var(--rule); border-radius: 10px; padding: 6px 18px 14px; }
+fieldset { border: 0; border-top: 1px solid var(--rule); margin: 0; padding: 14px 0 6px; display: grid; gap: 12px; }
+fieldset:first-of-type { border-top: 0; }
+legend { font-family: var(--font-display); font-weight: 600; font-size: 19px; padding: 0; margin-bottom: 4px; }
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 14px; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field .unit { font-family: var(--font-data); font-size: 11px; color: var(--muted); text-transform: none; letter-spacing: 0; }
+.field.wide { grid-column: 1 / -1; }
+.check { display: flex; align-items: center; gap: 8px; font-family: var(--font-body); font-size: 14px; color: var(--ink); text-transform: none; letter-spacing: 0; padding-top: 18px; }
+.check input { width: 18px; height: 18px; accent-color: var(--signal); }
+.order { font-family: var(--font-data); font-size: 14px; color: var(--ink); }
+
+/* test cell */
+.cell { background: var(--cell); color: var(--cell-ink); border-radius: 12px; padding: 16px; display: grid; gap: 14px; position: sticky; top: max(12px, env(safe-area-inset-top, 0px)); }
+.cell .lbl { color: var(--cell-dim); }
+.readout { display: flex; align-items: end; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.rpm { font: 600 clamp(40px, 7vw, 56px)/1 var(--font-data); font-variant-numeric: tabular-nums; color: var(--signal); }
+.rpm small { font-size: 14px; color: var(--cell-dim); margin-left: 6px; }
+.bar { height: 8px; border-radius: 4px; background: #24303b; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--signal); transition: width 60ms linear; }
+.bar i.limit { background: var(--warn); }
+.btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+button { font: 600 15px var(--font-display); letter-spacing: 0.04em; text-transform: uppercase; border-radius: 8px; border: 1px solid #33414e;
+  background: #1b2530; color: var(--cell-ink); padding: 12px; cursor: pointer; }
+button.go { background: var(--signal); color: #1a1400; border-color: var(--signal); }
+button.gas { grid-column: 1 / -1; padding: 26px 12px; font-size: 20px; touch-action: none; user-select: none; -webkit-user-select: none; }
+button.gas.down { background: #2c3a47; border-color: var(--signal); color: var(--signal); }
+button:disabled { opacity: 0.45; cursor: default; }
+.status { font-family: var(--font-data); font-size: 12px; color: var(--cell-dim); min-height: 1.4em; }
+.wheel { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 14px; align-items: center; }
+.wheel canvas { width: 150px; height: 150px; }
+.wheel p { margin: 0; font-size: 14px; color: var(--cell-ink); text-wrap: pretty; }
+.key { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; font-family: var(--font-data); font-size: 11px; color: var(--cell-dim); }
+.key b { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+@media (max-width: 420px) { .wheel { grid-template-columns: minmax(0, 1fr); justify-items: center; } }
+
+/* physics readouts */
+.physics { background: var(--sheet); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 18px; }
+.physics h2 { font-family: var(--font-display); font-weight: 600; font-size: 19px; margin: 0 0 8px; }
+dl { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0; }
+dt, dd { padding: 8px 0; border-top: 1px solid var(--rule); margin: 0; }
+dt:first-of-type, dd:first-of-type { border-top: 0; }
+dt { font-size: 14px; } dt span { display: block; font-size: 12px; color: var(--muted); }
+dd { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 14px; text-align: right; padding-left: 12px; white-space: nowrap; }
+dd.bad { color: var(--warn); font-weight: 600; }
+.foot { color: var(--muted); font-size: 13px; max-width: 75ch; margin: 0; }
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Engine Builder</h1>
+      <p class="lede">Put in real parts and the sound is worked out from them: firing from the crank, resonances from pipe lengths in hot exhaust gas, the muffler from its type and volume. Nothing is tuned by ear.</p>
+    </div>
+    <div class="preset">
+      <label for="preset">Start from</label>
+      <select id="preset"></select>
+    </div>
+  </header>
+
+  <div class="grid">
+    <form class="sheet" id="spec" autocomplete="off">
+      <fieldset>
+        <legend>Engine</legend>
+        <div class="fields">
+          <div class="field wide"><label for="layout">Layout</label><select id="layout"></select></div>
+          <div class="field wide"><span class="lbl">Firing order</span><span class="order" id="firingOrder"></span></div>
+          <div class="field"><label for="bore">Bore <span class="unit">mm</span></label><input type="number" id="bore" min="50" max="130" step="0.25"></div>
+          <div class="field"><label for="stroke">Stroke <span class="unit">mm</span></label><input type="number" id="stroke" min="45" max="130" step="0.25"></div>
+          <div class="field"><label for="cr">Compression <span class="unit">: 1</span></label><input type="number" id="cr" min="7" max="15" step="0.1"></div>
+          <div class="field"><label for="idle">Idle <span class="unit">rpm</span></label><input type="number" id="idle" min="500" max="1500" step="10"></div>
+          <div class="field"><label for="redline">Redline <span class="unit">rpm</span></label><input type="number" id="redline" min="4000" max="10000" step="100"></div>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Cams</legend>
+        <div class="fields">
+          <div class="field"><label for="evo">Exhaust opens <span class="unit">° before BDC</span></label><input type="number" id="evo" min="25" max="90" step="1"></div>
+          <div class="field"><label for="overlap">Valve overlap <span class="unit">°</span></label><input type="number" id="overlap" min="0" max="90" step="1"></div>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Exhaust</legend>
+        <div class="fields">
+          <div class="field wide"><label for="header">Headers</label><select id="header"></select></div>
+          <div class="field"><label for="primary">Primary length <span class="unit">mm</span></label><input type="number" id="primary" min="150" max="1200" step="10"></div>
+          <div class="field"><label for="primaryDia">Primary diameter <span class="unit">mm</span></label><input type="number" id="primaryDia" min="28" max="60" step="1"></div>
+          <div class="field wide" id="routingField"><label for="routing">Routing</label><select id="routing"></select></div>
+          <div class="field"><label for="pipeDia">Pipe diameter <span class="unit">mm</span></label><input type="number" id="pipeDia" min="38" max="102" step="1"></div>
+          <div class="field"><label for="pipeLen">Pipe length <span class="unit">m, collector to tip</span></label><input type="number" id="pipeLen" min="0.8" max="6" step="0.05"></div>
+          <div class="field"><label class="check" for="cat"><input type="checkbox" id="cat"> Catalytic converter</label></div>
+          <div class="field wide"><label for="muffler">Muffler</label><select id="muffler"></select></div>
+          <div class="field"><label for="mufflerVol">Muffler volume <span class="unit">L</span></label><input type="number" id="mufflerVol" min="2" max="40" step="0.5"></div>
+          <div class="field wide"><label for="resonator">Resonator</label><select id="resonator"></select></div>
+          <div class="field"><label for="resLen">Resonator branch <span class="unit">mm</span></label><input type="number" id="resLen" min="150" max="1500" step="10"></div>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Intake and boost</legend>
+        <div class="fields">
+          <div class="field"><label for="intake">Intake</label><select id="intake"></select></div>
+          <div class="field"><label for="turbo">Turbo</label><select id="turbo">
+            <option value="none">None</option><option value="small">48 mm</option><option value="big">T3 size</option></select></div>
+        </div>
+      </fieldset>
+    </form>
+
+    <div class="side" style="display:grid; gap:18px; min-width:0;">
+      <section class="cell" aria-label="Test cell">
+        <div class="readout">
+          <div><span class="lbl">Engine speed</span><div class="rpm"><span id="rpm">0</span><small>rpm</small></div></div>
+          <div style="text-align:right"><span class="lbl">Firing note</span><div class="rpm" style="font-size:24px"><span id="fireHz">0</span><small>Hz</small></div></div>
+        </div>
+        <div class="bar" aria-hidden="true"><i id="bar"></i></div>
+        <div class="btns">
+          <button class="go" id="start" type="button">Start engine</button>
+          <button id="stop" type="button" disabled>Switch off</button>
+          <button class="gas" id="gas" type="button" disabled>Hold for gas</button>
+        </div>
+        <div class="status" id="status">Press Start, then hold the gas (or the space bar / up arrow).</div>
+        <div class="wheel">
+          <canvas id="wheelCanvas" width="300" height="300" aria-label="Firing wheel"></canvas>
+          <div>
+            <p id="layoutNote"></p>
+            <div class="key"><span><b style="background:var(--bank-a)"></b>exhaust branch A</span><span><b style="background:var(--bank-b)"></b>branch B</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="physics" aria-label="What the physics says">
+        <h2>What the parts work out to</h2>
+        <dl id="derived"></dl>
+      </section>
+    </div>
+  </div>
+  <p class="foot">The sound is synthesized live from these numbers: pressure pulses timed by the crank, down header and pipe delay lines set by length and gas temperature, through a muffler model set by its type and volume. Gas temperatures assumed: 800 °C in the headers, 450 °C down the pipe.</p>
+</div>
+
+<script type="module">
+import { M20EngineSound } from '../../src/audio/M20EngineSound.js';
+import { buildProfile, torqueAt, LAYOUTS, HEADERS, ROUTING, MUFFLERS, RESONATORS, INTAKES, PRESETS } from '../../src/audio/enginePhysics.js';
+
+const $ = (id) => document.getElementById(id);
+const fill = (id, obj) => { $(id).innerHTML = Object.entries(obj).map(([k, v]) => `<option value="${k}">${typeof v === 'string' ? v : v.label}</option>`).join(''); };
+fill('preset', PRESETS); fill('layout', LAYOUTS); fill('header', HEADERS); fill('routing', ROUTING);
+fill('muffler', MUFFLERS); fill('resonator', RESONATORS); fill('intake', INTAKES);
+
+const NUM = ['bore', 'stroke', 'cr', 'idle', 'redline', 'evo', 'overlap', 'primary', 'primaryDia', 'pipeDia', 'pipeLen', 'mufflerVol', 'resLen'];
+const SEL = ['layout', 'header', 'routing', 'muffler', 'resonator', 'intake', 'turbo'];
+let spec = { ...PRESETS.k24 }, built = buildProfile(spec);
+
+function readForm() {
+  const s = { ...spec };
+  for (const k of NUM) { const v = parseFloat($(k).value); if (Number.isFinite(v)) s[k] = Math.min(+$(k).max, Math.max(+$(k).min, v)); }
+  for (const k of SEL) s[k] = $(k).value;
+  s.cat = $('cat').checked;
+  return s;
+}
+function writeForm(s) {
+  for (const k of NUM) $(k).value = s[k];
+  for (const k of SEL) $(k).value = s[k];
+  $('cat').checked = !!s.cat;
+}
+
+const fmt = (v, d = 0) => v.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+function showDerived(s, d) {
+  const L = LAYOUTS[s.layout];
+  $('firingOrder').textContent = L.firing.join(' - ');
+  $('layoutNote').textContent = L.note;
+  const vee = Object.keys(L.side).length > 0;
+  $('routingField').hidden = !vee;
+  $('resLen').disabled = s.resonator !== 'tuned';
+  $('mufflerVol').disabled = s.muffler === 'none';
+  const rows = [
+    ['Displacement', `${fmt(d.displacement, 2)} L`, `${L.firing.length} × ${fmt(d.cylinderVolume * 1000, 0)} cc`],
+    ['Bore / stroke', fmt(d.boreStroke, 2), d.boreStroke > 1.05 ? 'oversquare: revs freely, rasps' : d.boreStroke < 0.95 ? 'undersquare: torquey, smoother' : 'square'],
+    ['Piston speed at redline', `${fmt(d.pistonSpeed, 1)} m/s`, d.pistonSpeed > 25 ? 'over 25 m/s: past what a street engine survives' : 'mean speed, 2 × stroke × rpm'],
+    ['Firing note', `${fmt(d.firingIdle, 1)} → ${fmt(d.firingRedline, 0)} Hz`, 'idle to redline (rpm / 60 × cylinders / 2)'],
+    ['Speed of sound', `${fmt(d.cHeader, 0)} / ${fmt(d.cPipe, 0)} m/s`, 'in the headers / down the pipe (hot gas)'],
+    ['Pipe resonances', d.pipeModes.map((f) => fmt(f, 0)).join(' · ') + ' Hz', 'quarter-wave: (2n − 1) × c / 4L'],
+    ['Headers tuned for', `${fmt(Math.round(d.tunedRpm / 50) * 50, 0)} rpm`, '850 × (180 + EVO) / (length in inches + 3)'],
+  ];
+  if (d.helmholtz) rows.push(['Muffler chamber rings at', `${fmt(d.helmholtz, 0)} Hz`, 'Helmholtz: c / 2π × √(A / V·l)']);
+  if (d.resonatorHz) rows.push(['Resonator cancels', `${fmt(d.resonatorHz, 0)} Hz`, 'quarter-wave side branch c / 4L']);
+  rows.push(['Intake resonance', s.intake === 'itb' ? 'per trumpet' : `${fmt(d.intakeHz, 0)} Hz`, s.intake === 'coldair' ? 'tube quarter-wave' : s.intake === 'itb' ? 'individual throttle bodies' : 'airbox Helmholtz']);
+  if (d.lope > 0.05) rows.push(['Idle lope', `${fmt(d.lope * 100, 0)} %`, 'from valve overlap']);
+  $('derived').innerHTML = rows.map(([a, b, c]) => `<dt>${a}<span>${c}</span></dt><dd class="${(a.startsWith('Piston') && d.pistonSpeed > 25) ? 'bad' : ''}">${b}</dd>`).join('');
+  drawWheel(L, built.profile.bank);
+}
+
+// firing wheel: the two crank revolutions of a four-stroke cycle; a mark where each cylinder fires,
+// coloured by the exhaust branch its pulse goes down
+function drawWheel(L, bank) {
+  const cv = $('wheelCanvas'), g = cv.getContext('2d'), W = cv.width, c = W / 2, r = W * 0.31;
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  g.clearRect(0, 0, W, W);
+  g.strokeStyle = '#2b3743'; g.lineWidth = 10; g.beginPath(); g.arc(c, c, r, 0, Math.PI * 2); g.stroke();
+  g.fillStyle = css('--cell-dim'); g.font = '600 18px "IBM Plex Mono", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('720°', c, c - 10); g.font = '500 14px "IBM Plex Mono", monospace'; g.fillText('one cycle', c, c + 12);
+  L.angles.forEach((deg, k) => {
+    const a = (deg / 720) * Math.PI * 2 - Math.PI / 2;
+    g.strokeStyle = bank[k] ? css('--bank-b') : css('--bank-a'); g.lineWidth = 8; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(c + Math.cos(a) * (r - 16), c + Math.sin(a) * (r - 16)); g.lineTo(c + Math.cos(a) * (r + 16), c + Math.sin(a) * (r + 16)); g.stroke();
+    g.fillStyle = css('--cell-ink'); g.font = '600 16px "IBM Plex Mono", monospace';
+    g.fillText(String(L.firing[k]), c + Math.cos(a) * (r + 34), c + Math.sin(a) * (r + 34));
+  });
+}
+
+// ---- audio and the rev model
+let ctx = null, engine = null, running = false, rpm = 0, thrIn = 0, held = false, cut = 0, last = performance.now();
+function rebuild() {
+  spec = readForm();
+  built = buildProfile(spec);
+  showDerived(spec, built.derived);
+  if (engine) {
+    engine.setProfile(built.profile);
+    engine.setIntake(spec.intake === 'itb' ? 'itb' : 'stock');
+    engine.setTurbo(spec.turbo !== 'none', spec.turbo === 'big' ? 'big' : 'small');
+  }
+}
+$('spec').addEventListener('input', rebuild);
+$('spec').addEventListener('submit', (e) => e.preventDefault());
+$('preset').addEventListener('change', () => { writeForm(PRESETS[$('preset').value]); rebuild(); });
+
+$('start').addEventListener('click', async () => {
+  if (!ctx) {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
+  }
+  ctx.resume();
+  $('start').disabled = true; $('status').textContent = 'Starting…';
+  if (!engine) {
+    engine = await M20EngineSound.create(ctx);
+    const gain = ctx.createGain(); gain.gain.value = 0.8; engine.connect(gain); gain.connect(ctx.destination);
+  }
+  rebuild();
+  rpm = spec.idle; engine.start(); running = true;
+  $('stop').disabled = false; $('gas').disabled = false;
+  $('status').textContent = `Running (audio: ${engine.backend === 'worklet' ? 'AudioWorklet' : 'main thread'}). Hold the gas.`;
+});
+$('stop').addEventListener('click', () => {
+  if (!engine) return; engine.stop(); running = false;
+  $('start').disabled = false; $('stop').disabled = true; $('gas').disabled = true; $('status').textContent = 'Switched off.';
+});
+const press = (on) => { held = on && running; $('gas').classList.toggle('down', held); };
+$('gas').addEventListener('pointerdown', (e) => { e.preventDefault(); try { $('gas').setPointerCapture(e.pointerId); } catch {} press(true); });
+for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) $('gas').addEventListener(ev, () => press(false));
+addEventListener('keydown', (e) => { if ((e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') { e.preventDefault(); press(true); } });
+addEventListener('keyup', (e) => { if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') press(false); });
+
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (running) {
+    thrIn += ((held ? 1 : 0) - thrIn) * Math.min(1, dt * 14);
+    const idle = spec.idle, red = spec.redline;
+    if (rpm >= red) cut = Math.max(cut, 0.02);                    // rev limiter: short fuel cuts
+    const cutting = cut >= dt * 0.5; cut = Math.max(0, cut - dt);
+    const thr = cutting ? 0 : thrIn;
+    // rev model: torque from displacement and cams against friction; bigger engines spin up slower
+    const peak = torqueAt(spec, 4000) * 1.15;
+    const spin = 9500 * Math.pow(2.4 / built.derived.displacement, 0.25);
+    const over = rpm - idle;
+    let a = thr * (torqueAt(spec, rpm) / peak) * spin - (250 * Math.min(1, Math.max(0, over / 300)) + over * 1.3 * (1 - 0.6 * thr));
+    if (rpm < idle) a += (idle - rpm) * 6;
+    rpm = Math.max(0, rpm + a * dt);
+    engine.setRpm(rpm); engine.setThrottle(thr); engine.setState({ cut: cutting ? 1 : 0, inGear: false });
+    $('bar').className = cutting ? 'limit' : '';
+  } else rpm = Math.max(0, rpm - 3000 * dt);
+  $('rpm').textContent = fmt(Math.round(rpm / 10) * 10);
+  $('fireHz').textContent = fmt((rpm / 60) * (LAYOUTS[spec.layout].firing.length / 2), 0);
+  $('bar').style.width = `${Math.min(100, (rpm / (spec.redline * 1.05)) * 100)}%`;
+  requestAnimationFrame(frame);
+}
+writeForm(spec); rebuild(); requestAnimationFrame(frame);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => drawWheel(LAYOUTS[spec.layout], built.profile.bank));
+</script>

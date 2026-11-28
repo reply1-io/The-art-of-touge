@@ -1,0 +1,10 @@
+{
+  "name": "The Art of Touge",
+  "short_name": "Art of Touge",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0b0f1c",
+  "theme_color": "#0b0f1c",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

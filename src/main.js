@@ -1,0 +1,2088 @@
+// The Art of Touge - Phase 2: the E30 on the Akina-inspired pass at night.
+import './styles.css';
+import * as THREE from 'three';
+import RAPIER from '@dimforge/rapier3d-compat';
+import { CAR, partsSetup, wheelSetup, revExtra } from './config.js';
+import { Vehicle } from './physics/vehicle.js';
+import { Engine } from './physics/engine.js';
+import { SoftBarrier } from './physics/barrier.js';
+import { CarModel } from './render/carModel.js';
+import { CameraRig } from './render/camera.js';
+import { VhsRenderer } from './render/vhs.js';
+import { Mountain } from './world/mountain.js';
+import { Sky } from './world/sky.js';
+import { TIMES } from './world/timeOfDay.js';
+import { LensFlare } from './render/lensFlare.js';
+import { TRACKS } from './world/tracks.js';
+import { Input } from './controls/input.js';
+import { Shifter } from './controls/shifter.js';
+import { Hud, formatTime } from './ui/hud.js';
+import { CarAudio } from './audio/carAudio.js';
+import { ExhaustEvents } from './audio/exhaust.js';
+import { DriftScore } from './game/drift.js';
+import { Race } from './game/race.js';
+import { lookOf } from './net/online.js';
+import { Wallet, money } from './game/wallet.js';
+import { Sparks } from './render/sparks.js';
+import { Glints } from './render/glints.js';
+import { TyreSmoke } from './render/smoke.js';
+import { SpeedLines } from './render/speedLines.js';
+import { Ambience } from './audio/ambience.js';
+import { Deer } from './world/deer.js';
+import { Wildlife } from './world/wildlife.js';
+import { Online } from './net/online.js';
+import { makeCode, cleanCode } from './net/p2p.js';
+import { HEADLIGHTS } from './config.js';
+import { TuningPanel } from './ui/tuning.js';
+import { Shop } from './ui/shop.js';
+import { MapView } from './ui/mapView.js';
+import { MiniMap } from './ui/miniMap.js';
+import { Rain } from './render/rain.js';
+import { Recorder, Director, FreeCam, HZ, lensFor, drivingLens } from './game/replay.js';
+import { medalTimes, medalFor } from './game/medals.js';
+import { loadSettings, saveSettings, loadTuning, saveTuning, CAM_DEFAULTS } from './settings.js';
+import { MenuAudio, DRIVE_MUSIC } from './audio/menuAudio.js';
+
+const DT = 1 / 60; // fixed physics step
+const MAX_STEPS = 5;
+const $ = (id) => document.getElementById(id);
+
+const settings = loadSettings();
+// Options no longer in the menu: always the default (camera stays on the CAMERA button).
+if (settings.mode === 'autoClutch') settings.mode = 'manual';
+Object.assign(settings, { picture: 'sharp', vhs: true, sound: true });
+// Day, sunset or night (the old rain setting goes back to night).
+if (!['day', 'sunset', 'night'].includes(settings.time)) settings.time = 'night';
+const tune = loadTuning();
+// Menu music and button clicks.
+const menuAudio = new MenuAudio(import.meta.env?.BASE_URL ?? './');
+
+// ---------- Rendering ----------
+const renderer = new THREE.WebGLRenderer({ canvas: $('view'), antialias: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+// Real shadows from the sun (or moon), in a small area that follows the car.
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap; // crisper edges than the soft variant
+const vhs = new VhsRenderer(renderer, 1);
+const scene = new THREE.Scene();
+// Night: dark blue fog, moonlight and a soft sky fill. The headlights are the main light.
+let FOG_FAR = 340;
+scene.background = new THREE.Color(0x0b1430);
+// Exponential haze: close things stay crisp, the far ranges fade into the sky.
+scene.fog = new THREE.FogExp2(0x0b1430, 0.0011);
+const camera = new THREE.PerspectiveCamera(60, 1, 0.15, 9000);
+const moon = new THREE.DirectionalLight(0x9fb4ff, 0.85);
+moon.position.set(-45, 55, -70);
+moon.castShadow = true;
+moon.shadow.mapSize.set(2048, 2048);
+moon.shadow.camera.left = -13;
+moon.shadow.camera.right = 13;
+moon.shadow.camera.top = 13;
+moon.shadow.camera.bottom = -13;
+moon.shadow.camera.near = 1;
+moon.shadow.camera.far = 140;
+moon.shadow.bias = -0.0006;
+moon.shadow.normalBias = 0.04;
+scene.add(moon, moon.target);
+const hemi = new THREE.HemisphereLight(0x283040, 0x0a0b0e, 0.35);
+scene.add(hemi);
+// Headlights: one spot light that rides on the car and lights the road ahead.
+// A real fall-off (decay 2) and a beam narrow enough to light the road, not blow the trees beside
+// it out to a glowing green.
+// Long reach: a slower fall-off (decay 1.4) and less power close in, so the near road isn't burnt
+// out while the beam still lights the road far ahead.
+// Real low beams: a wide, flat spread with a sharp cut-off along the top, brightest just under the
+// cut-off so it reaches down the road, with the step up on the left (kerb) side, as aimed for
+// driving on the left in Japan. Physical fall-off (decay 2): bright close in, dim far away.
+// Reaches far down the road (gentle fall-off), with a wide soft edge that fades out gradually.
+const headlight = new THREE.SpotLight(0xfff2d8, 260, 260, 0.62, 0.95, 1.25);
+headlight.map = lowBeamTexture();
+scene.add(headlight, headlight.target);
+
+function lowBeamTexture() {
+  const S = 128;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d');
+  const img = g.createImageData(S, S);
+  // u: -1 (one side of the cone) .. 1; v: -1 (down) .. 1 (up). The beam axis points 1.6 degrees
+  // down; the cone's half-angle is 41 degrees, so the horizon sits at v = 0.04.
+  const cut = 0.04;
+  for (let py = 0; py < S; py++) {
+    for (let px = 0; px < S; px++) {
+      const u = (px + 0.5) / S * 2 - 1;
+      const v = 1 - (py + 0.5) / S * 2;
+      // The cut-off: flat on the right, stepping up 15 degrees on the left.
+      const edge = u < -0.02 ? cut + Math.min(0.14, (-0.02 - u) * 0.27) : cut;
+      const below = edge - v; // > 0 under the cut-off
+      let b = 0;
+      if (below > 0) {
+        const soft = Math.min(1, below / 0.012); // a crisp but not aliased edge
+        const hot = Math.exp(-((u + 0.05) ** 2) / 0.05 - ((below - 0.05) ** 2) / 0.006); // hot spot just under the cut
+        const spread = Math.exp(-(u * u) / 0.55) * Math.exp(-below / 0.6); // the wide fill
+        b = soft * Math.min(1, 0.95 * hot + 0.45 * spread);
+      } else {
+        b = 0.012 * Math.exp(v / -0.15 + cut / 0.15) * Math.exp(-(u * u) / 0.3); // a little stray light above
+      }
+      const k = (py * S + px) * 4;
+      img.data[k] = img.data[k + 1] = img.data[k + 2] = Math.round(255 * Math.min(1, b));
+      img.data[k + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.flipY = false; // the light projects the image with v down the canvas
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const sky = new Sky(scene);
+const flare = new LensFlare($('flare'));
+const sunDir = new THREE.Vector3(0, 1, 0);
+let timePreset = TIMES.night;
+
+// Sun (or moon) direction for this road: low over the road's general direction of travel, so you
+// drive toward it a good part of the time.
+function sunDirection(preset) {
+  const az = mountain.sunAz;
+  const el = (preset.sunElevation * Math.PI) / 180;
+  return new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).normalize();
+}
+
+// Does a peak of the far ranges stand between the camera and the sun?
+function behindRange(from) {
+  for (let d = 300; d < 9000; d *= 1.18) {
+    const x = from.x + sunDir.x * d;
+    const z = from.z + sunDir.z * d;
+    if (mountain.rangeHeightAt(x, z) > from.y + sunDir.y * d) return true;
+  }
+  return false;
+}
+
+function applyTime() {
+  if (!mountain) return;
+  const p = TIMES[settings.time] || TIMES.night;
+  timePreset = p;
+  scene.background.setHex(p.fog);
+  scene.fog.color.setHex(p.fog);
+  scene.fog.density = p.fogDensity;
+  FOG_FAR = p.detailRange;
+  sunDir.copy(sunDirection(p));
+  moon.color.setHex(p.sunColor);
+  moon.intensity = p.sunIntensity;
+  moon.position.copy(sunDir).multiplyScalar(100);
+  // Night shadows from the moon are faint; the lamps carry the light.
+  moon.shadow.intensity = p.night ? 0.5 : 1;
+  hemi.color.setHex(p.hemiSky);
+  hemi.groundColor.setHex(p.hemiGround);
+  hemi.intensity = p.hemiIntensity;
+  headlight.visible = p.lights;
+  sky.setTime(p, sunDir);
+  smoke?.setTint({ day: 0xeeeef0, sunset: 0xf3c9b0, night: 0x7d8496, rain: 0xc9ced6 }[settings.time] ?? 0xeeeef0);
+  mountain.setTime(p);
+  wildlife?.setTime(p);
+  camera.updateProjectionMatrix();
+}
+
+function blobShadow() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 4, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(0,0,0,0.55)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 5.0), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2;
+  m.renderOrder = 1;
+  return m;
+}
+
+const hud = new Hud($('hud'));
+const input = new Input($('controls'));
+const rig = new CameraRig(camera);
+const audio = new CarAudio();
+const exhaustEvents = new ExhaustEvents();
+const drift = new DriftScore();
+let sparks;
+let glints;
+let smoke;
+let speedLines;
+let passIndex = -1;
+const ambience = new Ambience(audio);
+const glintTint = new THREE.Color();
+let deer;
+let wildlife;
+let race;
+let online;
+const sparkP = new THREE.Vector3();
+const sparkPush = new THREE.Vector3();
+rig.mode = settings.camera;
+
+let world;
+let vehicle;
+let carModel;
+let shadow;
+let mountain;
+let barrier;
+const run = { phase: 'ready', time: 0, best: null, hint: -1 };
+const roadQ = {};
+let lastGear = null;
+let shifter;
+let tuning;
+let running = false;
+let paused = false;
+// Lighter rendering behind the menus (see setMenuQuality).
+let lastMenuDraw = 0;
+let menuFrames = 0;
+let pausedFrameDrawn = false;
+let menuQuality = false;
+let accumulator = 0;
+let last = performance.now();
+let fps = 60;
+const prevPos = new THREE.Vector3();
+const prevQuat = new THREE.Quaternion();
+const curPos = new THREE.Vector3();
+const curQuat = new THREE.Quaternion();
+
+function resize() {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  renderer.setSize(w, h, false);
+  vhs.setSize(w, h);
+  camera.aspect = w / Math.max(1, h);
+  // Shift the picture up so the car sits above the touch controls instead of behind them.
+  camera.setViewOffset(w, h, 0, h * 0.2, w, h);
+  camera.updateProjectionMatrix();
+  hud.resize();
+  flare.resize();
+  shopRef?.resize(w, h);
+}
+let shopRef = null;
+let miniMap = null;
+window.addEventListener('resize', resize);
+resize();
+
+// ---------- UI ----------
+let toastTimer = 0;
+function toast(text, seconds = 1.4) {
+  const el = $('toast');
+  el.textContent = text;
+  // The race countdown is shown big.
+  el.classList.toggle('count', !!race?.active && /^([123]|GO!)$/.test(text));
+  el.classList.add('show');
+  toastTimer = seconds;
+}
+
+function renderChoices() {
+  renderCamAdjust();
+  for (const box of document.querySelectorAll('.choices[data-setting]')) {
+    const key = box.dataset.setting;
+    const options =
+      key === 'mode'
+        ? [['auto', 'Automatic'], ['manual', 'Manual']]
+        : key === 'driveMode'
+        ? [['free', 'Free Roam'], ['touge', 'Touge']]
+        : key === 'map'
+          ? Object.entries(TRACKS).map(([id, t]) => [id, t.name])
+          : key === 'time'
+          ? [['day', 'Day'], ['sunset', 'Sunset'], ['night', 'Night']]
+          : key === 'picture'
+          ? [['sharp', 'Sharp'], ['retro', 'Retro pixels']]
+          : key === 'sound' || key === 'vhs'
+          ? [[true, 'On'], [false, 'Off']]
+          : key === 'steering'
+            ? [['buttons', 'Buttons'], ['slider', 'Slider']]
+            : key === 'stage'
+            ? [[-1, 'Full route'], ...(TRACKS[settings.map]?.stages || []).map((st, k) => [k, `${k + 1}. ${st.name}`])]
+            : key === 'money'
+            ? [['career', 'Earn it'], ['unlimited', 'Unlimited']]
+            : key === 'driveMusic'
+            ? DRIVE_MUSIC
+            : key === 'shifter'
+              ? [['drag', 'Drag knob'], ['tap', 'Tap gears']]
+              : [['chase', 'Chase'], ['cockpit', 'In car'], ['bumper', 'Bumper']];
+    box.innerHTML = '';
+    for (const [value, label] of options) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      if (settings[key] === value) b.classList.add('sel');
+      b.addEventListener('click', () => {
+        // Joined to someone else's room: they choose the road and time.
+        if ((key === 'map' || key === 'time') && online?.status === 'online' && !online.room && online.roomInfo) {
+          toast('THE HOST PICKS THE ROAD AND TIME');
+          return;
+        }
+        if (key === 'map' && settings.map !== value) {
+          settings.map = value;
+          saveSettings(settings);
+          if (online?.hosting) {
+            const code = online.room.code;
+            online.setRoom({ road: value });
+            setTimeout(() => {
+              online.disconnect();
+              reloadInto({ host: code });
+            }, 400);
+            return;
+          }
+          location.reload();
+          return;
+        }
+        if (key === 'time' && online?.hosting) online.setRoom({ time: value });
+        settings[key] = value;
+        saveSettings(settings);
+        if (key === 'money') wallet.setUnlimited(value === 'unlimited');
+        applySettings();
+        renderChoices();
+      });
+      box.appendChild(b);
+    }
+  }
+}
+
+function applySettings() {
+  applyTime();
+  updateTitleSub();
+  rig.mode = settings.camera;
+  rig.adjust = settings.cams?.[rig.mode] || rig.adjust;
+  menuAudio?.setDriveSong(settings.driveMusic || 'song1');
+  rig.userFov = rig.mode === 'chase' ? 60 : Math.max(50, Math.min(150, rig.adjust.fov ?? 60)); // (the chase camera's size keeps to 60; its own FOV is in adjust)
+  audio.setMuted(!settings.sound);
+  // The camcorder look: heavy while driving (a filmed run), off for a clean picture.
+  vhs.strength = settings.vhs ? 0.85 : 0;
+  // Picture: 'sharp' renders at screen resolution, 'retro' at half (chunky pixels).
+  vhs.pixelSize = menuQuality || settings.picture === 'retro' ? 2 : 1;
+  vhs.setSize(window.innerWidth, window.innerHeight);
+  pausedFrameDrawn = false; // redraw the frozen picture with the new look
+  $('vhs').classList.toggle('off', !settings.vhs);
+  $('controls').dataset.steering = settings.steering;
+  shifter?.setMode(settings.shifter);
+  if (vehicle && vehicle.mode !== settings.mode) {
+    vehicle.setMode(settings.mode);
+    if (settings.mode === 'auto') vehicle.trans.setDrive('D', 0);
+    else vehicle.trans.requestGear(0, 0);
+    shifter?.setGear(vehicle.trans.gear);
+  }
+  const mode = settings.mode;
+  $('shifter').classList.toggle('hidden', mode === 'auto');
+  $('dr').classList.toggle('hidden', mode !== 'auto');
+  $('clutch').classList.toggle('hidden', mode !== 'manual');
+}
+
+function placeCar(pose) {
+  onRoad.link = -1;
+  vehicle.reset(pose.pos, pose.yaw);
+  if (vehicle.mode === 'auto') vehicle.trans.setDrive('D', 0);
+  shifter.setGear(vehicle.trans.gear);
+  run.hint = pose.index;
+  deer?.clear();
+  rig.snap();
+  capturePose();
+  capturePose();
+}
+
+// Back to the summit start line.
+function resetCar() {
+  onRoad.link = -1;
+  placeCar(mountain.spawn);
+  drift.reset();
+  run.phase = 'ready';
+  run.time = 0;
+}
+
+// Back on the road where you are (stuck, rolled or off the road). Cancels a timed run.
+function recoverCar() {
+  if (onRoad.link >= 0) {
+    // Back onto the link road you were on.
+    const l = mountain.links[onRoad.link];
+    const pose = mountain.recoverAt(onRoad.hint - 3, l.road);
+    const keep = run.hint;
+    const k = onRoad.link;
+    placeCar(pose);
+    run.hint = keep;
+    onRoad.link = k;
+    onRoad.hint = pose.index;
+    return;
+  }
+  placeCar(mountain.recoverAt(run.hint - 5));
+  if (race?.active) {
+    race.recovered();
+    return;
+  }
+  if (run.phase === 'running') {
+    run.phase = 'ready';
+    run.time = 0;
+    toast('RUN CANCELLED');
+  }
+}
+
+function setPaused(p) {
+  paused = p;
+  $('pause').classList.toggle('hidden', !p);
+  document.body.classList.toggle('paused', p);
+  pausedFrameDrawn = false;
+  if (p) {
+    input.releaseAll();
+    audio.suspend();
+    drawMaps();
+  } else {
+    audio.resume();
+  }
+  last = performance.now();
+}
+
+// Leave the menus and put the car on the road.
+function enterGame() {
+  $('title').classList.add('hidden');
+  $('controls').classList.remove('hidden');
+  $('topbar').classList.remove('hidden');
+  running = true;
+  audio.start();
+  audio.setMuted(!settings.sound);
+  // Launched from the home-screen icon the game is already full screen (the manifest asks for it),
+  // so only ask the browser for full screen when playing in a normal tab.
+  const installed = matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches;
+  const el = document.documentElement;
+  if (!installed && el.requestFullscreen && !document.fullscreenElement) {
+    el.requestFullscreen({ navigationUI: 'hide' })
+      .then(() => screen.orientation?.lock?.('landscape').catch(() => {}))
+      .catch(() => {});
+  }
+  online?.onChange();
+}
+
+$('btn-drive').addEventListener('click', () => {
+  // Solo drive: free roam on the road you have picked.
+  settings.driveMode = 'free';
+  saveSettings(settings);
+  race?.abort();
+  enterGame();
+  resetCar();
+});
+$('btn-pause').addEventListener('click', () => setPaused(true));
+$('btn-resume').addEventListener('click', () => setPaused(false));
+$('btn-restart').addEventListener('click', () => {
+  race?.abort();
+  resetCar();
+  setPaused(false);
+});
+
+// ---------- The map: pick a road and teleport there ----------
+// The roads of the map each have their own start and finish line; -1 is the whole route.
+function stageRoadId() {
+  return mountain.stage >= 0 ? `${settings.map}:${mountain.stage}` : settings.map;
+}
+// Medal times for each road (and the full loop, under -1), worked out once the mountain is built.
+const medals = new Map();
+function setupMedals() {
+  const n = mountain.track.stages?.length ?? 0;
+  for (let k = -1; k < n; k++) {
+    const { start, finish } = mountain.stageRange(k);
+    medals.set(k, medalTimes(mountain.road, start, finish));
+  }
+}
+// Your best time and medal on a road (-1: the full loop).
+function bestOn(k) {
+  const id = k >= 0 ? `${settings.map}:${k}` : settings.map;
+  const best = race?.records[id]?.best ?? null;
+  return { best, medal: medalFor(medals.get(k), best) };
+}
+function selectStage(k) {
+  settings.stage = k;
+  saveSettings(settings);
+  race?.abort();
+  mountain.setStage(k);
+  race.roadId = stageRoadId();
+  race.par = medals.get(mountain.stage)?.gold ?? null;
+  run.best = race.record?.best ?? null;
+  updateTitleSub();
+  drawMaps();
+}
+const maps = [];
+function drawMaps() {
+  if (!mountain) return;
+  for (const b of document.querySelectorAll('.btn-loop')) {
+    const md = bestOn(-1).medal;
+    b.textContent = `WHOLE ROAD · ${(mountain.road.length / 1000).toFixed(0)} KM${md ? ` · ${md.name.toUpperCase()}` : ''}`;
+    b.classList.toggle('sel', mountain.stage < 0);
+  }
+  for (const m of maps) {
+    m.selected = mountain.stage;
+    // In the pause menu the pin is the car; on the title screen it is where you will start.
+    const p = running && vehicle ? vehicle.body.translation() : null;
+    const s = mountain.spawn.pos;
+    m.pin = p ? [p.x, p.z] : [s[0], s[2]];
+    m.draw();
+  }
+}
+function setupMaps() {
+  for (const c of document.querySelectorAll('canvas.map')) {
+    const m = new MapView(c, mountain, askTeleport);
+    m.medalOf = (k) => bestOn(k).medal;
+    maps.push(m);
+  }
+  for (const b of document.querySelectorAll('.btn-loop')) b.onclick = () => askTeleport(-1);
+  window.__maps = maps;
+  for (const el of document.querySelectorAll('.map-loading')) el.remove();
+  // Redraw once the pixel font has loaded so the names are measured in it.
+  document.fonts?.ready.then(() => {
+    for (const m of maps) m.base = null;
+    drawMaps();
+  });
+  drawMaps();
+}
+window.addEventListener('resize', () => setTimeout(drawMaps, 100));
+let teleportTo = -1;
+function askTeleport(k) {
+  const loop = k < 0;
+  const st = loop ? { name: 'the whole road', s0: 0, s1: mountain.road.length, blurb: `Start line to finish, the whole of ${mountain.track.name}` } : mountain.track.stages[k];
+  if (!st) return;
+  teleportTo = k;
+  const touge = settings.driveMode === 'touge';
+  const km = ((st.s1 - st.s0) / 1000).toFixed(1);
+  $('tp-title').textContent = touge ? `RACE ${st.name.toUpperCase()}?` : `TELEPORT TO ${st.name.toUpperCase()}?`;
+  const mt = medals.get(k);
+  const { best, medal } = bestOn(k);
+  const short = (t) => formatTime(t).replace(/\.\d+$/, '');
+  $('tp-info').textContent =
+    `${loop ? '' : `${k + 1} of ${mountain.track.stages.length} · `}${km} km · ${st.blurb}.` +
+    (mt ? ` Gold ${short(mt.gold)} · Silver ${short(mt.silver)} · Bronze ${short(mt.bronze)}.` : '') +
+    (best != null ? ` Your best: ${formatTime(best)}${medal ? ` (${medal.name})` : ''}.` : ' Not driven yet.');
+  $('btn-tp-go').textContent = touge ? 'RACE HERE' : 'TELEPORT';
+  for (const m of maps) {
+    m.selected = k;
+    m.draw();
+  }
+  $('teleport').classList.remove('hidden');
+}
+$('btn-tp-cancel').addEventListener('click', () => {
+  $('teleport').classList.add('hidden');
+  drawMaps();
+});
+$('btn-tp-go').addEventListener('click', () => {
+  $('teleport').classList.add('hidden');
+  selectStage(teleportTo);
+  if (settings.driveMode === 'touge') {
+    openRaceMenu();
+    return;
+  }
+  if (!running) enterGame();
+  resetCar();
+  setPaused(false);
+  // The road's banner shows as soon as the car is on it.
+  bannerStage = -1;
+  if (teleportTo < 0) toast(mountain.track.name.toUpperCase(), 2);
+});
+
+// ---------- Race menu and results ----------
+const raceChoice = { mode: 'attack', ghost: settings.ghost !== false };
+function renderRaceMenu() {
+  for (const b of document.querySelectorAll('#race-mode button')) b.classList.toggle('sel', b.dataset.mode === raceChoice.mode);
+  for (const b of document.querySelectorAll('#race-ghost button')) b.classList.toggle('sel', (b.dataset.ghost === 'on') === raceChoice.ghost);
+  $('race-ghost-field').classList.toggle('hidden', raceChoice.mode !== 'attack');
+  const rec = race?.record;
+  const pz = race?.prize;
+  const best = rec ? `Your best: ${formatTime(rec.best)}` : 'No time set yet';
+  $('race-info').textContent =
+    raceChoice.mode === 'attack'
+      ? `${best}. Pays up to ${money(Math.round(pz.base * 1.6))}, plus ${money(250)} for a new best.${rec ? '' : ' Your first run becomes the ghost.'}`
+      : `Race the black 325i to the bottom. Win ${money(pz.win)}, or take ${money(pz.lose)} for finishing.`;
+}
+function openRaceMenu() {
+  document.body.classList.add('in-menu');
+  $('title').classList.add('hidden');
+  setPaused(false);
+  renderRaceMenu();
+  $('race').classList.remove('hidden');
+}
+// Touge battle: race down the road, a rival by default (time attack is there too).
+$('btn-race').addEventListener('click', () => {
+  settings.driveMode = 'touge';
+  saveSettings(settings);
+  raceChoice.mode = 'battle';
+  openRaceMenu();
+});
+$('btn-race2').addEventListener('click', openRaceMenu);
+for (const b of document.querySelectorAll('#race-mode button'))
+  b.addEventListener('click', () => {
+    raceChoice.mode = b.dataset.mode;
+    renderRaceMenu();
+  });
+for (const b of document.querySelectorAll('#race-ghost button'))
+  b.addEventListener('click', () => {
+    raceChoice.ghost = b.dataset.ghost === 'on';
+    settings.ghost = raceChoice.ghost;
+    saveSettings(settings);
+    renderRaceMenu();
+  });
+$('btn-race-back').addEventListener('click', () => {
+  document.body.classList.remove('in-menu');
+  $('race').classList.add('hidden');
+  if (!running) $('title').classList.remove('hidden');
+});
+function startRace() {
+  document.body.classList.remove('in-menu');
+  $('race').classList.add('hidden');
+  $('results').classList.add('hidden');
+  enterGame();
+  run.phase = 'race';
+  run.time = 0;
+  drift.reset();
+  race.start(raceChoice.mode, raceChoice.ghost, (pose) => placeCar(pose));
+}
+$('btn-race-go').addEventListener('click', startRace);
+$('btn-res-retry').addEventListener('click', startRace);
+$('btn-res-free').addEventListener('click', () => {
+  $('results').classList.add('hidden');
+  race.abort();
+  resetCar();
+});
+function showResults(r) {
+  $('res-title').textContent = r.mode === 'battle' ? (r.won ? 'YOU WIN' : 'YOU LOSE') : r.pb ? 'NEW BEST' : 'FINISH';
+  $('res-time').textContent = formatTime(r.time);
+  $('res-detail').textContent =
+    r.mode === 'battle'
+      ? r.botTime !== null
+        ? `Rival: ${formatTime(r.botTime)}`
+        : 'The rival was still on the mountain.'
+      : (() => {
+          const m = medalFor(medals.get(mountain.stage), r.time);
+          const mt = medals.get(mountain.stage);
+          const medalText = m ? `${m.name.toUpperCase()} MEDAL. ` : mt ? `Bronze is ${formatTime(mt.bronze)}. ` : '';
+          return medalText + (r.pb ? 'Saved as your ghost.' : `Best: ${formatTime(r.best)} (+${(r.time - r.best).toFixed(3)})`);
+        })();
+  $('res-money').textContent = `+${money(r.earned)}`;
+  setTimeout(() => $('results').classList.remove('hidden'), 1200);
+}
+$('btn-home').addEventListener('click', goHome);
+// Camera adjustment in the settings: pick a camera (it becomes the one you drive with), then set
+// its field of view, tilt, centre and how close it sits. Each camera keeps its own.
+const CAM_SLIDERS = [
+  ['fov', 'Field of view', 40, 150, 1, (v) => `${v}\u00b0`],
+  ['tilt', 'Tilt', -20, 20, 1, (v) => (v === 0 ? 'Level' : `${v > 0 ? 'Up' : 'Down'} ${Math.abs(v)}\u00b0`)],
+  ['x', 'Centre', -100, 100, 5, (v) => (v === 0 ? 'Middle' : `${v > 0 ? 'Right' : 'Left'} ${Math.abs(v)}`)],
+  ['closer', 'Closer', -100, 100, 5, (v) => (v === 0 ? 'As set' : v > 0 ? `Closer ${v}` : `Further ${-v}`)],
+];
+const CAM_NAMES = [['chase', 'Chase'], ['cockpit', 'In car'], ['bumper', 'Bumper']];
+function renderCamAdjust() {
+  for (const box of document.querySelectorAll('.cam-adjust')) {
+    box.innerHTML = '';
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = 'Camera';
+    const pick = document.createElement('div');
+    pick.className = 'choices';
+    for (const [id, name] of CAM_NAMES) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = name;
+      if (settings.camera === id) b.classList.add('sel');
+      b.addEventListener('click', () => {
+        settings.camera = id;
+        saveSettings(settings);
+        applySettings();
+        renderChoices();
+      });
+      pick.append(b);
+    }
+    box.append(label, pick);
+    const cur = settings.cams[settings.camera] || settings.cams.chase;
+    for (const [key, name, min, max, step, show] of CAM_SLIDERS) {
+      const row = document.createElement('label');
+      row.className = 'cam-slider';
+      const t = document.createElement('span');
+      t.className = 'label';
+      t.textContent = name;
+      const val = document.createElement('b');
+      val.textContent = show(cur[key]);
+      t.append(val);
+      const input = document.createElement('input');
+      input.type = 'range';
+      input.min = String(min);
+      input.max = String(max);
+      input.step = String(step);
+      input.value = String(cur[key]);
+      input.addEventListener('input', () => {
+        cur[key] = Number(input.value);
+        val.textContent = show(cur[key]);
+        saveSettings(settings);
+        applySettings();
+      });
+      row.append(t, input);
+      box.append(row);
+    }
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.className = 'cam-reset';
+    reset.textContent = 'RESET THIS CAMERA';
+    reset.addEventListener('click', () => {
+      settings.cams[settings.camera] = { ...CAM_DEFAULTS[settings.camera] };
+      saveSettings(settings);
+      applySettings();
+      renderCamAdjust();
+    });
+    box.append(reset);
+  }
+}
+$('btn-recover').addEventListener('click', () => {
+  recoverCar();
+  setPaused(false);
+});
+$('btn-cam').addEventListener('click', () => {
+  settings.camera = { chase: 'cockpit', cockpit: 'bumper', bumper: 'chase' }[settings.camera] || 'chase';
+  saveSettings(settings);
+  applySettings();
+  renderChoices();
+});
+$('btn-tuning').addEventListener('click', () => tuning.toggle());
+// The music button while driving: Song 1, Song 2, the menu song, off (each fades into the next).
+$('btn-music').addEventListener('click', () => {
+  const ids = DRIVE_MUSIC.map(([id]) => id);
+  const next = ids[(ids.indexOf(settings.driveMusic) + 1) % ids.length];
+  settings.driveMusic = next;
+  saveSettings(settings);
+  applySettings();
+  renderChoices();
+  toast(`MUSIC: ${DRIVE_MUSIC.find(([id]) => id === next)[1].toUpperCase()}`);
+});
+const wallet = new Wallet(tune);
+const shop = new Shop($('shop'), tune, () => {
+  saveTuning(tune);
+  carModel?.applySetup(tune);
+  online?.sendLook(tune);
+  headlight.color.setHex(HEADLIGHTS.white[1]);
+}, wallet);
+wallet.onChange = () => {
+  for (const el of document.querySelectorAll('.title-money')) el.textContent = money(wallet.balance);
+};
+wallet.setUnlimited(settings.money === 'unlimited');
+shopRef = shop;
+shop.onCar = (id) => {
+  settings.car = id;
+  saveSettings(settings);
+  try {
+    sessionStorage.setItem('touge.openShop', '1');
+  } catch {
+    // Without storage the shop just doesn't reopen by itself.
+  }
+  location.reload();
+};
+// ---------- Replay: the last five minutes, as if filmed on camcorders ----------
+const recorder = new Recorder();
+const freeCam = new FreeCam();
+let director = null;
+const rp = { active: false, t: 0, playing: true, speed: 1, mode: 'vhs', view: 'free', lookAtCar: false, idle: 0, from: null, uiOff: false, fish: false };
+const rcar = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), wheels: [{}, {}, {}, {}] };
+const rprev = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), wheels: [{}, {}, {}, {}] };
+const rvel = new THREE.Vector3();
+const noWheels = { body: { linvel: () => rvel }, wheels: [] };
+const rWheels = { wheels: [] };
+const rVehicle = { engine: { rpm: 0, running: true, throttleApplied: 0, boost: 0, limiterCut: false, spec: CAR.engine }, trans: { gear: 0, grindTimer: 0, coupling: 1 }, throttlePedal: 0, brakePedal: 0, speed: 0, forwardSpeed: 0, wheels: [{ grounded: true, slipAngle: 0, slipRatio: 0, load: 2800 }] };
+const rExhaust = new ExhaustEvents();
+const tapeTime = (t) => `${Math.floor(t / 3600)}:${String(Math.floor(t / 60) % 60).padStart(2, '0')}:${String(Math.floor(t) % 60).padStart(2, '0')}`;
+
+function openReplay(from) {
+  if (recorder.count < HZ * 2) {
+    toast('NOTHING ON TAPE YET: GO FOR A DRIVE', 2.2);
+    return;
+  }
+  // The camera crew only stand where they can see the road: a ray from the lens to the road must
+  // not hit the scenery (signs, rails, rock, trees' solid parts, buildings) or the ground.
+  director ??= new Director(mountain.road, mountain.terrain, (from, to) => {
+    const d = new THREE.Vector3().subVectors(to, from);
+    const len = d.length();
+    if (len < 0.5) return true;
+    d.divideScalar(len);
+    const hit = world.castRay(new RAPIER.Ray(from, d), len - 0.6, true, undefined, undefined, undefined, vehicle.body);
+    if (hit) return false;
+    // Ground and scenery drawn but not solid: sample the terrain along the line too.
+    for (let f = 0.1; f < 0.95; f += 0.1) {
+      const p = from.clone().addScaledVector(d, len * f);
+      if (mountain.terrain.heightAt(p.x, p.z) > p.y - 0.15) return false;
+    }
+    return true;
+  });
+  rWheels.wheels = vehicle.wheels.map((w) => ({ x: w.x, z: w.z, front: w.front, compression: 0, steer: 0, angle: 0 }));
+  rp.active = true;
+  rp.from = from;
+  rp.t = 0;
+  rp.playing = true;
+  rp.idle = 0;
+  director.current = -1;
+  recorder.sample(0, rcar);
+  freeCam.placeBehind(rcar.pos, rcar.quat);
+  // Full picture for the replay, no shift for the touch controls.
+  setMenuQuality(false);
+  camera.clearViewOffset();
+  document.body.classList.add('in-replay');
+  $('replay').classList.remove('hidden');
+  const d = new Date();
+  const hour = { day: '2:14 PM', sunset: '6:47 PM', night: '11:08 PM', rain: '4:32 PM' }[settings.time] || '9:41 PM';
+  $('replay').querySelector('.osd-date').textContent = `${d.toLocaleString('en-US', { month: 'short' }).toUpperCase()}.${String(d.getDate()).padStart(2, '0')} ${d.getFullYear()}  ${hour}`;
+  $('replay').querySelector('.osd-road').textContent = `VOL.03 · ${(mountain.track.name || '').toUpperCase()}`;
+  audio.start();
+  audio.setMuted(!settings.sound);
+  audio.resume();
+  renderReplayUi();
+}
+
+function closeReplay() {
+  rp.active = false;
+  rp.uiOff = false;
+  rp.lastCam = null;
+  audio.setSpatial();
+  vhs.barrel = 0;
+  Object.assign(vhs.lens, { fish: 0, hood: 0, circle: 0, cy: 0.5 });
+  document.body.classList.remove('replay-ui-off');
+  $('replay').classList.add('hidden');
+  document.body.classList.remove('in-replay');
+  for (const k of Object.keys(freeCam.move)) freeCam.move[k] = 0;
+  resize();
+  applySettings();
+  // Back where you came from: the pause menu (or the results), the car as you left it.
+  if (rp.from === 'results') $('results').classList.remove('hidden');
+  pausedFrameDrawn = false;
+  if (paused) audio.suspend();
+}
+
+// What the lens dial is set to, in words.
+function lensLabel(v) {
+  const n = `${Math.round(v)}\u00b0`;
+  return v >= 149.5 ? `${n} CIRCULAR` : v > 120 ? `${n} FISHEYE + HOOD` : v > 20 ? `${n} FISHEYE` : n;
+}
+
+function renderReplayUi() {
+  const el = $('replay');
+  el.classList.toggle('no-osd', rp.mode !== 'vhs');
+  el.classList.toggle('ui-off', rp.uiOff);
+  document.body.classList.toggle('replay-ui-off', rp.uiOff);
+  $('rp-fov').value = String(freeCam.fov);
+  $('rp-fov-val').textContent = rp.fish ? 'FISHEYE' : lensLabel(freeCam.fov);
+  $('rp-fov').classList.toggle('hidden', rp.fish);
+  $('replay-edit').classList.toggle('hidden', rp.mode !== 'edit');
+  for (const b of document.querySelectorAll('#rp-mode button')) b.classList.toggle('sel', b.dataset.mode === rp.mode);
+  for (const b of document.querySelectorAll('#rp-view button')) b.classList.toggle('sel', b.dataset.view === rp.view);
+  $('rp-play').innerHTML = rp.playing ? '&#10074;&#10074;' : '&#9654;';
+  $('rp-speed').textContent = `${rp.speed}\u00d7`;
+  $('rp-look').classList.toggle('on', rp.lookAtCar);
+  $('rp-fish').classList.toggle('on', rp.fish);
+  $('rp-count').textContent = String(freeCam.shots.length);
+}
+
+function replayFrame(dt, now) {
+  const length = recorder.seconds;
+  if (rp.playing) {
+    rp.t += dt * rp.speed;
+    if (rp.t >= length) {
+      rp.t = length;
+      rp.playing = false;
+      renderReplayUi();
+    }
+  }
+  recorder.sample(rp.t, rcar);
+  // How fast it was going (for the smoke), from a moment before.
+  recorder.sample(Math.max(0, rp.t - 1 / HZ), rprev);
+  rvel.copy(rcar.pos).sub(rprev.pos).multiplyScalar(HZ);
+  // The car, as it was.
+  carModel.root.position.copy(rcar.pos);
+  carModel.root.quaternion.copy(rcar.quat);
+  rcar.wheels.forEach((w, k) => Object.assign(rWheels.wheels[k], w));
+  carModel.syncWheels(rWheels);
+  carModel.setLights(timePreset.lights, rcar.brake > 0.1);
+  carModel.updateFx(dt);
+  moon.target.position.copy(rcar.pos);
+  moon.position.copy(rcar.pos).addScaledVector(sunDir, 80);
+  headlight.position.copy(new THREE.Vector3(0, -0.05, 2.1).applyQuaternion(rcar.quat).add(rcar.pos));
+  headlight.target.position.copy(new THREE.Vector3(0, -1.3, 45).applyQuaternion(rcar.quat).add(rcar.pos));
+  // The camera.
+  let cam = 0;
+  let wide = false;
+  if (rp.mode === 'edit') {
+    const shot = rp.view === 'shots' ? freeCam.frameShots(camera, rcar) : -1;
+    // The 10 mm fisheye: your setting while flying, or what each placed camera was set to.
+    wide = shot >= 0 ? !!freeCam.shots[shot].fish : rp.fish;
+    if (shot < 0) freeCam.update(dt, camera, rp.lookAtCar ? new THREE.Vector3(rcar.pos.x, rcar.pos.y + 0.6, rcar.pos.z) : null);
+    cam = shot + 1;
+    // Fisheye is a fixed lens (the crowd's wide camcorder): it takes over from the dial.
+    if (wide) {
+      camera.fov = 104;
+      camera.updateProjectionMatrix();
+    }
+  } else {
+    const f = director.frame(dt, camera, rcar, rp.t);
+    cam = f.k + 1;
+    wide = f.wide;
+  }
+  // The 10 mm camcorder shots bend at the edges.
+  vhs.barrel = wide ? 0.55 : 0;
+  // Edit mode's lens dial: more and more fisheye as it turns up.
+  const lens = rp.mode === 'edit' && !wide ? lensFor(cam > 0 ? freeCam.lastFov : freeCam.fov) : null;
+  // (Pushed past a true fisheye, half as much again, so the bend is plain to see.)
+  vhs.lens.fish = (lens?.fish ?? 0) * 1.5;
+  vhs.lens.hood = lens?.hood ?? 0;
+  vhs.lens.circle = lens?.circle ?? 0;
+  vhs.lens.cy = 0.5;
+  // Tyre smoke from the wheels that were sliding, where they were.
+  if (rp.playing) {
+    const r = wheelSetup(tune).radius;
+    rcar.wheels.forEach((w, k) => {
+      const ww = rWheels.wheels[k];
+      const p = new THREE.Vector3(ww.x, CAR.wheelMountY - CAR.suspensionRest + w.compression - r, ww.z).applyQuaternion(rcar.quat).add(rcar.pos);
+      smoke.puff(k, p.x, p.y, p.z, w.smoke || 0, rvel, dt * rp.speed);
+    });
+  }
+  smoke.update(rp.playing ? dt * rp.speed : 0, noWheels);
+  // The engine, from the tape.
+  if (rp.playing) {
+    const e = rVehicle.engine;
+    e.rpm = rcar.rpm;
+    e.throttleApplied = rcar.throttle;
+    rVehicle.throttlePedal = rcar.throttle;
+    rVehicle.brakePedal = rcar.brake;
+    rVehicle.speed = rcar.speed;
+    rVehicle.trans.gear = rcar.gear;
+    rVehicle.wheels[0].slipAngle = Math.atan(0.1 + rcar.slip / 2.2);
+    // Heard from where the camera is: louder and clearer close by, panned left or right, and
+    // the pitch rising as the car comes at you and dropping as it goes past (Doppler).
+    const toCar = rcar.pos.clone().sub(camera.position);
+    const d = Math.max(0.5, toCar.length());
+    toCar.divideScalar(d);
+    const camVel = camera.position.clone().sub(rp.lastCam ?? camera.position).divideScalar(Math.max(dt, 1e-3));
+    rp.lastCam = camera.position.clone();
+    if (camVel.length() > 60) camVel.set(0, 0, 0); // a cut to another camera, not movement
+    const closing = -rvel.clone().sub(camVel).dot(toCar); // m/s toward the camera
+    const doppler = Math.max(0.7, Math.min(1.45, 343 / (343 - Math.max(-120, Math.min(120, closing)))));
+    e.rpm = rcar.rpm * doppler;
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    audio.setSpatial({
+      gain: Math.min(1, 9 / (d + 3)),
+      pan: toCar.dot(right) * 0.9,
+      cutoff: Math.max(700, 20000 * Math.exp(-d / 45)),
+    });
+    audio.update(rVehicle, dt, rExhaust.update(rVehicle, dt, tune.exhaust));
+  }
+  // The on-screen display and the bar (which hides itself while you watch, until you tap).
+  const el = $('replay');
+  el.querySelector('.osd-play').innerHTML = rp.playing ? '&#9654; PLAY' : '&#10074;&#10074; PAUSE';
+  el.querySelector('.osd-counter').textContent = tapeTime(rp.t);
+  el.querySelector('.osd-cam').textContent = rp.mode === 'edit' ? (cam > 0 ? `CAM ${cam}` : 'FREE') : `CAM ${cam}`;
+  const slider = $('rp-time');
+  if (document.activeElement !== slider) slider.value = String(length ? rp.t / length : 0);
+  $('rp-clock').textContent = `${Math.floor(rp.t / 60)}:${String(Math.floor(rp.t) % 60).padStart(2, '0')}`;
+  rp.idle += dt;
+  el.classList.toggle('bar-hidden', rp.mode !== 'edit' && rp.playing && rp.idle > 3);
+  // The world around the camera, and the picture through the tape.
+  sky.update(camera);
+  mountain.update(camera.position, timePreset.detailRange, timePreset.groundRange, dt);
+  wildlife.update(dt, camera, Math.round(rcar.index));
+  updateWeatherFx(dt);
+  vhs.strength = settings.vhs || rp.mode !== 'edit' ? 1 : 0;
+  vhs.render(scene, camera, now / 1000);
+  flare.draw(dt, camera, sunDir, 0, timePreset.flareTint, false);
+}
+
+// Replay controls.
+$('btn-replay').addEventListener('click', () => openReplay('pause'));
+$('btn-res-replay').addEventListener('click', () => {
+  $('results').classList.add('hidden');
+  openReplay('results');
+});
+$('rp-exit').addEventListener('click', closeReplay);
+$('rp-restart').addEventListener('click', () => {
+  rp.t = 0;
+  rp.playing = true;
+  renderReplayUi();
+});
+$('rp-play').addEventListener('click', () => {
+  if (!rp.playing && rp.t >= recorder.seconds - 0.05) rp.t = 0;
+  rp.playing = !rp.playing;
+  if (rp.playing) audio.resume();
+  else audio.suspend();
+  renderReplayUi();
+});
+$('rp-speed').addEventListener('click', () => {
+  rp.speed = { 1: 2, 2: 0.25, 0.25: 0.5, 0.5: 1 }[rp.speed] ?? 1;
+  renderReplayUi();
+});
+$('rp-time').addEventListener('input', () => {
+  rp.t = Number($('rp-time').value) * recorder.seconds;
+  director.current = -1;
+});
+for (const b of document.querySelectorAll('#rp-mode button'))
+  b.addEventListener('click', () => {
+    rp.mode = b.dataset.mode;
+    if (rp.mode === 'edit') freeCam.placeBehind(rcar.pos, rcar.quat);
+    director.current = -1;
+    renderReplayUi();
+  });
+for (const b of document.querySelectorAll('#rp-view button'))
+  b.addEventListener('click', () => {
+    rp.view = b.dataset.view;
+    if (rp.view === 'shots' && !freeCam.shots.length) toast('PLACE A CAMERA FIRST', 1.6);
+    renderReplayUi();
+  });
+$('rp-add').addEventListener('click', () => {
+  freeCam.addShot();
+  freeCam.shots[freeCam.shots.length - 1].fish = rp.fish;
+  renderReplayUi();
+});
+$('rp-clear').addEventListener('click', () => {
+  freeCam.shots.length = 0;
+  rp.view = 'free';
+  renderReplayUi();
+});
+$('rp-hide').addEventListener('click', () => {
+  rp.uiOff = true;
+  renderReplayUi();
+});
+$('rp-fov').addEventListener('input', () => {
+  freeCam.fov = Number($('rp-fov').value);
+  $('rp-fov-val').textContent = lensLabel(freeCam.fov);
+});
+$('rp-fish').addEventListener('click', () => {
+  rp.fish = !rp.fish;
+  renderReplayUi();
+});
+$('rp-look').addEventListener('click', () => {
+  rp.lookAtCar = !rp.lookAtCar;
+  renderReplayUi();
+});
+// Fly buttons: held down to move.
+for (const b of document.querySelectorAll('.replay-pad button')) {
+  const on = (e) => {
+    e.preventDefault();
+    b.setPointerCapture?.(e.pointerId);
+    freeCam.move[b.dataset.move] = Number(b.dataset.dir);
+    b.classList.add('on');
+  };
+  const off = () => {
+    freeCam.move[b.dataset.move] = 0;
+    b.classList.remove('on');
+  };
+  b.addEventListener('pointerdown', on);
+  b.addEventListener('pointerup', off);
+  b.addEventListener('pointercancel', off);
+  b.addEventListener('lostpointercapture', off);
+}
+// The picture: tap to bring the bar back; in edit mode, drag to look around.
+{
+  const stage = $('replay-stage');
+  let last = null;
+  let downAt = null;
+  stage.addEventListener('pointerdown', (e) => {
+    rp.idle = 0;
+    last = [e.clientX, e.clientY];
+    downAt = [e.clientX, e.clientY];
+    stage.setPointerCapture(e.pointerId);
+  });
+  // A tap (not a drag) on the picture brings hidden controls back.
+  stage.addEventListener('pointerup', (e) => {
+    if (rp.uiOff && downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 10) {
+      rp.uiOff = false;
+      renderReplayUi();
+    }
+    downAt = null;
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (!last || rp.mode !== 'edit') return;
+    freeCam.yaw -= (e.clientX - last[0]) * 0.005;
+    freeCam.pitch = Math.max(-1.4, Math.min(1.4, freeCam.pitch - (e.clientY - last[1]) * 0.005));
+    rp.lookAtCar = false;
+    last = [e.clientX, e.clientY];
+  });
+  stage.addEventListener('pointerup', () => (last = null));
+  stage.addEventListener('pointercancel', () => (last = null));
+  $('replay-bar').addEventListener('pointerdown', () => (rp.idle = 0));
+  window.addEventListener('keydown', (e) => {
+    if (!rp.active || rp.mode !== 'edit' || e.repeat) return;
+    const k = { w: ['f', 1], s: ['f', -1], a: ['s', -1], d: ['s', 1], e: ['u', 1], q: ['u', -1] }[e.key.toLowerCase()];
+    if (k) freeCam.move[k[0]] = k[1];
+  });
+  window.addEventListener('keyup', (e) => {
+    const k = { w: 'f', s: 'f', a: 's', d: 's', e: 'u', q: 'u' }[e.key.toLowerCase()];
+    if (k) freeCam.move[k] = 0;
+  });
+}
+
+// ---------- Your place: drive into the workshop ----------
+// Drive through the open workshop door at your cabin and you are in the workshop (the tuning shop);
+// tap Done and you are back on the drive, facing the road.
+let enteredHome = false;
+let homeArmed = true;
+function checkHome() {
+  const h = mountain.home;
+  if (!h || race?.active) return;
+  const p = vehicle.body.translation();
+  const d = Math.hypot(p.x - h.door.x, p.z - h.door.z);
+  if (d > 8) homeArmed = true;
+  if (homeArmed && d < 3.6) {
+    homeArmed = false;
+    enteredHome = true;
+    setPaused(true);
+    shop.open();
+  }
+}
+function goHome() {
+  if (!mountain.home) return;
+  race?.abort();
+  placeCar(mountain.home.exit);
+  homeArmed = false;
+  setPaused(false);
+  toast('HOME', 1.6);
+}
+
+// ---------- Revving the car in the workshop ----------
+// The car's engine on its own (out of gear), driven by the rev button and heard through the same
+// Tuned ECU pops for the sound ({ count, speed }), or null on the stock map.
+function ecuPops(t) {
+  return t.ecu === 'tuned' ? { count: Math.max(0, Math.round(t.popAmount ?? 4)), speed: Math.max(1, Math.min(10, t.popSpeed ?? 5)) } : null;
+}
+// Flames from the tailpipe. Stock map: the race exhaust spits a little off the limiter, on shifts
+// and on lift-off. Tuned ECU: only if flames are switched on, one with each pop after a lift-off,
+// coming as fast as the pops do.
+const roadFlames = { queue: [] };
+const shopFlames = { queue: [] };
+function exhaustFlames(model, ev, dt, st) {
+  const t = tune;
+  if (t.ecu === 'tuned') {
+    if (ev.lift && t.flames) {
+      const p = ecuPops(t);
+      const gap = 0.9 / p.speed; // seconds between pops, roughly as the sound spaces them
+      st.queue = [];
+      let at = 0.25;
+      for (let i = 0; i < p.count; i++) {
+        st.queue.push(at);
+        at += gap * (0.6 + 0.8 * Math.random());
+      }
+    }
+    if (!t.flames) st.queue = [];
+    for (let i = st.queue.length - 1; i >= 0; i--) {
+      st.queue[i] -= dt;
+      if (st.queue[i] <= 0) {
+        model.flame(0.55 + 0.45 * Math.random());
+        st.queue.splice(i, 1);
+      }
+    }
+    if (ev.limiter && t.flames) model.flame(0.6);
+    return;
+  }
+  st.queue = [];
+  if (t.exhaust !== 'race') return;
+  if (ev.lift) model.flame(1);
+  if (ev.shift) model.flame(0.8);
+  if (ev.limiter) model.flame(0.6);
+}
+
+// engine sound as on the road, with whatever intake, turbo and exhaust are fitted.
+let revCar = null;
+const revExhaust = new ExhaustEvents();
+shop.onRev = () => {
+  if (!revCar) {
+    const engine = new Engine(CAR.engine);
+    revCar = { engine, trans: { gear: 0, grindTimer: 0, coupling: 0 }, throttlePedal: 0, brakePedal: 0, speed: 0, forwardSpeed: 0, wheels: [] };
+  }
+  const p = partsSetup(tune);
+  revCar.engine.turbo = p.turbo;
+  revCar.engine.intake = p.intake;
+  audio.start();
+  audio.setMuted(!settings.sound);
+  audio.resume();
+};
+function shopEngine(dt) {
+  if (!revCar) return;
+  const e = revCar.engine;
+  const thr = shop.revHeld ? 1 : 0;
+  revCar.throttlePedal = thr;
+  const n = Math.max(1, Math.ceil(dt * 240));
+  for (let k = 0; k < n; k++) {
+    const h = dt / n;
+    e.updateBoost(h, thr);
+    e.integrate(e.torque(thr), h);
+    e.checkStall(false);
+  }
+  revCar.engine.revExtra = revExtra(tune);
+  const ev = revExhaust.update(revCar, dt, tune.exhaust);
+  audio.setExhaust(tune.exhaust || 'stock');
+  audio.setParts(tune.intake || 'stock', tune.turbo || 'none');
+  audio.setEcuPops(ecuPops(tune));
+  audio.update(revCar, dt, ev);
+  exhaustFlames(shop.car, ev, dt, shopFlames);
+}
+shop.onClose = () => {
+  // Leaving the workshop: the engine you were revving falls quiet.
+  revCar = null;
+  shop.revHeld = false;
+  // Came in by driving through the door: back out onto the drive, facing the road.
+  if (enteredHome) {
+    enteredHome = false;
+    placeCar(mountain.home.exit);
+    setPaused(false);
+  }
+  if (!running || paused) audio.suspend();
+};
+
+// An engine swap changes the car's engine for the whole session: reload, straight back into the shop.
+shop.onEngine = () => {
+  saveTuning(tune);
+  try {
+    sessionStorage.setItem('touge.openShop', '1');
+    sessionStorage.setItem('touge.shopTab', 'engine');
+  } catch {
+    // Without storage the shop just doesn't reopen by itself.
+  }
+  location.reload();
+};
+shop.resize(window.innerWidth, window.innerHeight);
+$('btn-shop2').addEventListener('click', () => shop.open());
+$('btn-shop-home').addEventListener('click', () => shop.open());
+window.addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLInputElement) return; // typing a build name
+  if (!running) {
+    if (e.code === 'Enter') $('btn-drive').click();
+    return;
+  }
+  if (e.code === 'Escape') setPaused(!paused);
+  if (e.code === 'Backspace') resetCar();
+  if (e.code === 'KeyT') recoverCar();
+  if (e.code === 'KeyC') $('btn-cam').click();
+  if (e.code === 'Backquote') tuning.toggle();
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && running) setPaused(true);
+});
+
+// ---------- Driving events ----------
+function handleEvents(events) {
+  const tr = vehicle.trans;
+  for (const ev of events) {
+    if (ev.type === 'gear' && tr.mode !== 'auto') {
+      if (tr.requestGear(ev.gear, vehicle.forwardSpeed)) shifter.setGear(ev.gear);
+    } else if (ev.type === 'drive') {
+      tr.setDrive(ev.drive, vehicle.forwardSpeed);
+    } else if (ev.type === 'start') {
+      if (vehicle.engine.running) continue;
+      if (tr.mode === 'manual' && tr.gear !== 0 && tr.pedal < 0.8) {
+        toast('CLUTCH IN OR NEUTRAL TO START');
+        continue;
+      }
+      vehicle.engine.start();
+    }
+  }
+}
+
+function capturePose() {
+  prevPos.copy(curPos);
+  prevQuat.copy(curQuat);
+  const p = vehicle.body.translation();
+  const q = vehicle.body.rotation();
+  curPos.set(p.x, p.y, p.z);
+  curQuat.set(q.x, q.y, q.z, q.w);
+}
+
+// ---------- Downhill time attack: start line to finish line ----------
+// ---------- Which road the car is on: the loop, or one of the link roads ----------
+// onRoad.link: -1 on the loop, else which link; onRoad.hint: last sample on that link.
+const onRoad = { link: -1, hint: 0 };
+const linkQ = {};
+function locate() {
+  const p = vehicle.body.translation();
+  const keep = run.hint;
+  mountain.road.query(p.x, p.z, run.hint, roadQ);
+  const links = mountain.links;
+  const r = mountain.road;
+  if (onRoad.link >= 0) {
+    // On a link: back onto the loop once the loop is the nearer road.
+    const l = links[onRoad.link];
+    l.road.query(p.x, p.z, onRoad.hint, linkQ);
+    onRoad.hint = linkQ.index;
+    const atEnd = linkQ.index <= 2 || linkQ.index >= l.road.count - 3;
+    if (atEnd && Math.abs(roadQ.lateral) < Math.abs(linkQ.lateral) + 2 && Math.abs(roadQ.lateral) < r.w.PAVED + 1.5) {
+      onRoad.link = -1;
+      bannerStage = -1; // show the road you come out on
+    } else {
+      run.hint = keep;
+      return;
+    }
+  } else if (Math.abs(roadQ.lateral) > r.w.PAVED) {
+    // Off the side of the loop: turning onto a link?
+    for (let k = 0; k < links.length; k++) {
+      const l = links[k];
+      for (const [i, end] of [
+        [l.a, 0],
+        [l.b, l.road.count - 1],
+      ]) {
+        if (Math.min(Math.abs(roadQ.index - i), r.count - Math.abs(roadQ.index - i)) > 20) continue;
+        l.road.query(p.x, p.z, end, linkQ);
+        if (Math.abs(linkQ.lateral) < Math.abs(roadQ.lateral) && Math.abs(linkQ.lateral) < l.road.w.PAVED + 1) {
+          onRoad.link = k;
+          onRoad.hint = linkQ.index;
+          linkBanner(l, end === 0);
+          // A timed run or race follows the loop: turning off ends it.
+          if (race?.active) {
+            race.abort();
+            toast('OFF COURSE: RACE OVER', 2.5);
+          } else if (run.phase === 'running') {
+            run.phase = 'ready';
+            run.time = 0;
+            toast('OFF COURSE: RUN CANCELLED', 2);
+          }
+          run.hint = keep;
+          return;
+        }
+      }
+    }
+  }
+  run.hint = roadQ.index;
+}
+
+function updateRun(dt) {
+  if (onRoad.link >= 0) return;
+  const r = mountain.road;
+  const start = r.startIndex * 2;
+  const finish = r.finishIndex * 2;
+  roadBanner(roadQ.s);
+  if (run.phase === 'ready' && roadQ.s >= start && roadQ.s < start + 20) {
+    run.phase = 'running';
+    run.time = 0;
+    toast('GO!', 1);
+  } else if (run.phase === 'running') {
+    run.time += dt;
+    if (roadQ.s >= finish) {
+      run.phase = 'finished';
+      const best = run.best == null || run.time < run.best;
+      if (best) run.best = run.time;
+      toast(`${best ? 'NEW BEST ' : 'FINISH '}${formatTime(run.time)}`, 4);
+    }
+  }
+}
+
+// ---------- Weather: mist over the lakes at night, and rain ----------
+let rain = null;
+let mist = 0;
+const mistColor = new THREE.Color(0x5a6a8a);
+function updateWeather(dt) {
+  const p = timePreset;
+  rain ??= new Rain(scene);
+  // At night a mist rolls in along the Lakeside road and over any water you pass.
+  let want = 0;
+  if (settings.time === 'night') {
+    const pos = vehicle.body.translation();
+    if (mountain.track.stages?.[mountain.track.stageAt(roadQ.s ?? 0)]?.name === 'Lakeside') want = 1;
+    else if (mountain.terrain.inLake(pos.x, pos.z, 90)) want = 0.6;
+  }
+  mist += (want - mist) * Math.min(1, dt * 0.4);
+  const swirl = 1 + 0.18 * Math.sin(performance.now() / 3200);
+  scene.fog.density = p.fogDensity * (1 + mist * 5 * swirl);
+  scene.fog.color.setHex(p.fog).lerp(mistColor, mist * 0.75);
+  scene.background.copy(scene.fog.color);
+  rain.update(dt, !!p.rain, camera, vehicle.body.linvel());
+  // A wet road has about four fifths of the grip.
+  vehicle.weatherGrip = p.rain ? 0.8 : 1;
+}
+
+// In a replay: rain still falls round the camera (the car itself is only a recording).
+const still = { x: 0, y: 0, z: 0 };
+function updateWeatherFx(dt) {
+  rain?.update(dt, !!timePreset.rain, camera, still);
+}
+
+// ---------- The name of each road as you drive onto it ----------
+let bannerStage = -2;
+let bannerTimer = 0;
+function roadBanner(s) {
+  const stages = mountain.track.stages;
+  if (!stages) return;
+  const k = mountain.track.stageAt(s);
+  if (k === bannerStage) return;
+  const first = bannerStage === -2;
+  bannerStage = k;
+  if (first) return;
+  const st = stages[k];
+  const el = $('road-banner');
+  const { best, medal } = bestOn(k);
+  el.querySelector('small').textContent = `ROAD ${k + 1} OF ${stages.length}`;
+  el.querySelector('b').textContent = st.name.toUpperCase();
+  el.querySelector('span').textContent = `${((st.s1 - st.s0) / 1000).toFixed(1)} km${best != null ? ` · best ${formatTime(best)}${medal ? ` · ${medal.name}` : ''}` : ''}`;
+  el.classList.add('show');
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+// Turning onto a link road: where it goes.
+function linkBanner(l, fromA) {
+  const stages = mountain.track.stages || [];
+  const to = stages[fromA ? l.to : l.from];
+  const el = $('road-banner');
+  el.querySelector('small').textContent = 'JUNCTION';
+  el.querySelector('b').textContent = 'LINK ROAD';
+  el.querySelector('span').textContent = `${Math.round(l.road.length)} m to ${to?.name ?? 'the loop'}`;
+  el.classList.add('show');
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ---------- Pass-by whooshes: rail posts and roadside posts rushing past ----------
+function passBy() {
+  const i = run.hint;
+  const speed = vehicle.speed;
+  if (passIndex < 0 || Math.abs(i - passIndex) > 6) passIndex = i;
+  const rail = mountain.layout.rail;
+  while (passIndex < i) {
+    passIndex++;
+    if (speed < 15) continue;
+    for (const side of [1, -1]) {
+      const post = rail[side][passIndex] ? passIndex % 3 === 0 : passIndex % 5 === 0 && !mountain.inZone(passIndex, side);
+      if (!post) continue;
+      // Louder for the near side of the road (you drive on the left).
+      const near = side > 0 ? 1 : 0.55;
+      audio.whoosh(((speed - 15) / 30) * near, -side * 0.7);
+    }
+  }
+}
+
+// ---------- Sparks: rails, walls and bottoming out ----------
+function throwSparks() {
+  const v = vehicle.body.linvel();
+  const speed = Math.hypot(v.x, v.z);
+  let scrape = 0;
+  if (speed < 2.5) {
+    audio.setScrape(0, speed);
+    return;
+  }
+  const n = Math.min(6, 1 + Math.floor(speed / 6));
+  // Against a guardrail: sparks spray back along the rail from each contact.
+  for (const c of barrier.contacts) {
+    sparkP.set(c.x, c.y - 0.15, c.z);
+    sparkPush.set(c.nx, 0, c.nz);
+    sparks.emit(sparkP, v, sparkPush, n);
+    scrape = Math.max(scrape, 0.5 + c.f / 30000);
+  }
+  // Body against a wall, a rock face or the ground (Rapier contacts).
+  for (const col of [vehicle.collider, vehicle.cabinCollider]) {
+    world.contactPairsWith(col, (other) => {
+      world.contactPair(col, other, (m) => {
+        for (let i = 0; i < m.numSolverContacts(); i++) {
+          const p = m.solverContactPoint(i);
+          sparkP.set(p.x, p.y, p.z);
+          sparkPush.set(0, 0, 0);
+          sparks.emit(sparkP, v, sparkPush, n);
+          scrape = Math.max(scrape, 0.8);
+        }
+      });
+    });
+  }
+  // Bottoming out: sparks from under the sills.
+  for (const w of vehicle.wheels) {
+    if (!(w.scrape > 0)) continue;
+    sparkP.set(w.x * 0.85, -0.6, w.z * 0.75);
+    carModel.root.localToWorld(sparkP);
+    sparkPush.set(0, 0, 0);
+    sparks.emit(sparkP, v, sparkPush, Math.max(1, Math.round(n * Math.min(1, w.scrape * 30))));
+    scrape = Math.max(scrape, 0.3 + w.scrape * 15);
+  }
+  audio.setScrape(scrape, speed);
+}
+
+// ---------- Online play ----------
+// Host a room from this game (you pick the road and time; friends join with the code), join one by
+// code, or connect to your own server (server/server.js).
+const STATUS_TEXT = { offline: 'Offline', connecting: 'Connecting…' };
+const PENDING_KEY = 'touge.netPending';
+function driverName() {
+  return settings.netName || 'Driver';
+}
+function hostGame(code = makeCode()) {
+  online.host(code, driverName(), settings.map, settings.time, tune);
+}
+function joinGame(code) {
+  code = cleanCode(code);
+  if (code.length !== 5) {
+    toast('ENTER THE 5-CHARACTER CODE');
+    return;
+  }
+  online.join(code, driverName(), settings.map, tune);
+}
+// A road change needs a reload; remember to get back into the room afterwards.
+function reloadInto(pending) {
+  try {
+    sessionStorage.setItem(PENDING_KEY, JSON.stringify(pending));
+  } catch {
+    // Without storage you just reconnect by hand.
+  }
+  location.reload();
+}
+function setupOnline() {
+  const all = (sel) => document.querySelectorAll(sel);
+  for (const el of all('.net-name')) {
+    el.value = settings.netName;
+    el.addEventListener('change', () => {
+      settings.netName = el.value.trim().slice(0, 16);
+      for (const o of all('.net-name')) o.value = settings.netName;
+      saveSettings(settings);
+    });
+  }
+  for (const el of all('.net-code'))
+    el.addEventListener('input', () => {
+      const v = cleanCode(el.value);
+      if (el.value !== v) el.value = v;
+    });
+  for (const el of all('.net-server')) {
+    el.value = settings.netServer;
+    el.addEventListener('change', () => {
+      settings.netServer = el.value.trim();
+      for (const o of all('.net-server')) o.value = settings.netServer;
+      saveSettings(settings);
+    });
+  }
+  const busy = () => online.status === 'online' || online.status === 'connecting';
+  for (const b of all('.net-host'))
+    b.addEventListener('click', () => {
+      if (busy()) online.disconnect();
+      else hostGame();
+    });
+  for (const b of all('.net-join'))
+    b.addEventListener('click', () => {
+      if (busy()) online.disconnect();
+      else joinGame(b.parentElement.querySelector('.net-code').value);
+    });
+  for (const b of all('.net-connect'))
+    b.addEventListener('click', () => {
+      if (busy()) return online.disconnect();
+      if (!settings.netServer) return toast('ENTER A SERVER ADDRESS');
+      online.connect(settings.netServer, driverName(), settings.map, tune);
+    });
+  // The room decides the road and time for everyone in it.
+  online.onRoom = (room) => {
+    if (room.time && room.time !== settings.time && ['day', 'sunset', 'night'].includes(room.time)) {
+      settings.time = room.time;
+      saveSettings(settings);
+      applySettings();
+      renderChoices();
+    }
+    if (room.road && room.road !== settings.map && TRACKS[room.road] && !online.room) {
+      settings.map = room.road;
+      saveSettings(settings);
+      toast(`MOVING TO ${TRACKS[room.road].name.toUpperCase()}`, 2);
+      setTimeout(() => reloadInto({ join: room.code || online.roomInfo?.code, server: room.code ? null : settings.netServer }), 900);
+    }
+  };
+  online.onChange = () => {
+    const on = online.status === 'online';
+    const code = online.roomInfo?.code;
+    let text = STATUS_TEXT[online.status] || online.error || '';
+    if (on) text = `${online.room ? 'Hosting' : 'In'} ${code ? `room ${code}` : online.serverName} · ${online.count + 1} driver${online.count ? 's' : ''} · ${TRACKS[settings.map]?.name || ''}`;
+    for (const el of all('.net-status')) {
+      el.textContent = text;
+      el.classList.toggle('on', on);
+      el.classList.toggle('bad', online.status === 'error' || online.status === 'full');
+    }
+    for (const b of all('.net-host')) b.textContent = busy() && online.kind === 'host' ? 'END GAME' : 'HOST GAME';
+    for (const b of all('.net-join')) b.textContent = busy() && online.kind === 'join' ? 'LEAVE' : 'JOIN';
+    for (const b of all('.net-connect')) b.textContent = busy() && online.kind === 'server' ? 'DISCONNECT' : 'CONNECT';
+    for (const el of all('.net-code')) if (on && code) el.value = code;
+    $('chat-room').textContent = on ? (code ? `ROOM ${code}` : online.serverName) : '';
+    $('chat').classList.toggle('hidden', !on || !running);
+  };
+  const log = $('chat-log');
+  online.onChat = (name, text) => {
+    const line = document.createElement('div');
+    const who = document.createElement('b');
+    who.textContent = `${name}: `;
+    line.append(who, text);
+    log.append(line);
+    while (log.children.length > 5) log.firstChild.remove();
+    setTimeout(() => line.remove(), 12000);
+  };
+  $('chat-input').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    online.chat(e.target.value);
+    e.target.value = '';
+    e.target.blur();
+  });
+  online.onChange();
+  // Coming back from a road change: rejoin (or re-host) the room. The old connection takes a few
+  // seconds to clear, so keep trying for a while.
+  let pending = null;
+  try {
+    pending = JSON.parse(sessionStorage.getItem(PENDING_KEY));
+    sessionStorage.removeItem(PENDING_KEY);
+  } catch {
+    pending = null;
+  }
+  if (pending) {
+    let tries = 0;
+    const attempt = () => {
+      if (online.status === 'online' || tries++ > 12) return;
+      if (pending.host) hostGame(pending.host);
+      else if (pending.join) joinGame(pending.join);
+      else if (pending.server) online.connect(pending.server, driverName(), settings.map, tune);
+      setTimeout(() => online.status !== 'online' && attempt(), 3000);
+    };
+    attempt();
+  }
+}
+
+// ---------- Title screen: a slow flight along the pass ----------
+let titleS = 0;
+const titleLook = new THREE.Vector3();
+function titleCamera(dt) {
+  const r = mountain.road;
+  titleS = (titleS + dt * 14) % ((r.count - 80) * 2);
+  const f = 20 + titleS / 2;
+  const i = Math.floor(f);
+  const k = f - i;
+  const lerp = (arr, j) => arr[j] + (arr[j + 1] - arr[j]) * k;
+  // Smooth the path by averaging a stretch of road, so the camera glides instead of following
+  // every corner.
+  const avg = (arr, j, span) => {
+    let sum = 0;
+    for (let n = -span; n <= span; n++) sum += arr[Math.max(0, Math.min(r.count - 1, j + n))];
+    return sum / (2 * span + 1);
+  };
+  const x = avg(r.x, i, 30);
+  const z = avg(r.z, i, 30);
+  const y = Math.max(lerp(r.y, i), avg(r.y, i, 30)) + 24;
+  const a = Math.min(r.count - 1, i + 70);
+  camera.position.set(x, y, z);
+  titleLook.set(avg(r.x, a, 20), avg(r.y, a, 20) + 4, avg(r.z, a, 20));
+  camera.lookAt(titleLook);
+}
+
+function updateTitleSub() {
+  const t = TRACKS[settings.map] || TRACKS.dragon;
+  $('home-road-name').textContent = t.name;
+  $('home-road-blurb').textContent = t.blurb;
+  const time = TIMES[settings.time] || TIMES.night;
+  $('title-sub').innerHTML = '';
+  const b = document.createElement('b');
+  b.textContent = t.name;
+  const st = t.stages && (settings.stage ?? -1) >= 0 ? t.stages[settings.stage] : null;
+  // (The road and its description are in the panel; here just your car and the light.)
+  $('title-sub').append(`${CAR.name} · ${time.name}`);
+  for (const f of document.querySelectorAll('.stage-field')) f.classList.toggle('hidden', !t.stages);
+}
+
+// ---------- Settings and roads screens ----------
+function showScreen(id, on) {
+  $(id).classList.toggle('hidden', !on);
+  $('title').classList.toggle('hidden', on);
+  document.body.classList.toggle('in-menu', on);
+}
+$('btn-settings').addEventListener('click', () => {
+  renderChoices();
+  applySettings();
+  showScreen('settings', true);
+});
+$('btn-settings-back').addEventListener('click', () => showScreen('settings', false));
+
+// Every road, with its description and a drone clip flying along it. Tap one to drive it.
+function renderRoads() {
+  const grid = $('roads-grid');
+  grid.innerHTML = '';
+  for (const [id, t] of Object.entries(TRACKS)) {
+    if (t.hidden) continue;
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'road-card' + (id === settings.map ? ' sel' : '');
+    card.innerHTML = '<div class="road-clip"><video muted loop playsinline preload="metadata"></video><span class="road-tag"></span></div><div class="road-info"><span class="road-region"></span><strong></strong><p></p></div>';
+    const v = card.querySelector('video');
+    for (const [ext, type] of [['webm', 'video/webm'], ['mp4', 'video/mp4']]) {
+      const src = document.createElement('source');
+      src.src = `./drone/${id}.${ext}`;
+      src.type = type;
+      v.append(src);
+    }
+    v.poster = `./drone/${id}.jpg`;
+    card.querySelector('.road-tag').textContent = id === settings.map ? 'SELECTED' : 'DRONE';
+    card.querySelector('.road-region').textContent = t.region || '';
+    card.querySelector('strong').textContent = t.name;
+    card.querySelector('p').textContent = t.desc || t.blurb;
+    card.addEventListener('click', () => chooseRoad(id));
+    grid.append(card);
+  }
+  // Clips play while they are on screen.
+  roadClips?.disconnect();
+  roadClips = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) e.target.play().catch(() => {});
+      else e.target.pause();
+    }
+  }, { root: grid, threshold: 0.3 });
+  for (const v of grid.querySelectorAll('video')) roadClips.observe(v);
+}
+let roadClips = null;
+function chooseRoad(id) {
+  if (id === settings.map) {
+    closeRoads();
+    return;
+  }
+  if (online?.status === 'online' && !online.room && online.roomInfo) {
+    toast('THE HOST PICKS THE ROAD', 1.6);
+    return;
+  }
+  settings.map = id;
+  settings.stage = -1;
+  saveSettings(settings);
+  if (online?.hosting) {
+    const code = online.room.code;
+    online.setRoom({ road: id });
+    setTimeout(() => {
+      online.disconnect();
+      reloadInto({ host: code });
+    }, 400);
+    return;
+  }
+  location.reload();
+}
+function openRoads() {
+  renderRoads();
+  showScreen('roads', true);
+}
+function closeRoads() {
+  roadClips?.disconnect();
+  for (const v of document.querySelectorAll('#roads-grid video')) v.pause();
+  showScreen('roads', false);
+}
+$('btn-roads').addEventListener('click', openRoads);
+$('btn-roads-cur').addEventListener('click', openRoads);
+$('btn-roads-back').addEventListener('click', closeRoads);
+
+// ---------- Main loop ----------
+// ---------- Lighter rendering behind the menus ----------
+function isMenuOpen() {
+  if (!running || paused) return true;
+  for (const id of ['race', 'teleport', 'results']) if (!$(id).classList.contains('hidden')) return true;
+  return false;
+}
+function setMenuQuality(on) {
+  if (on === menuQuality) return;
+  menuQuality = on;
+  // Half resolution and on-demand shadows while a menu is up; full quality while driving.
+  vhs.pixelSize = on ? 2 : settings.picture === 'retro' ? 2 : 1;
+  vhs.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.autoUpdate = !on;
+  renderer.shadowMap.needsUpdate = true;
+}
+
+// Drone footage for the Roads screen (made offline by scripts/drone.mjs): a drone flying along
+// the road, high and looking down the road ahead. droneFrame(s) draws one frame at s metres.
+let dronePause = false;
+function droneFrame(s) {
+  const r = mountain.road;
+  const avg = (arr, j, span) => {
+    let sum = 0;
+    for (let n = -span; n <= span; n++) sum += arr[Math.max(0, Math.min(r.count - 1, j + n))];
+    return sum / (2 * span + 1);
+  };
+  const f = s / 2;
+  const i = Math.max(0, Math.min(r.count - 2, Math.floor(f)));
+  const k = f - i;
+  const at = (arr, j, span) => avg(arr, j, span) + (avg(arr, j + 1, span) - avg(arr, j, span)) * k;
+  const a = Math.min(r.count - 2, i + 55);
+  camera.position.set(at(r.x, i, 40), Math.max(at(r.y, i, 40), r.y[i]) + 34, at(r.z, i, 40));
+  camera.lookAt(at(r.x, a, 15), at(r.y, a, 15) + 2, at(r.z, a, 15));
+  camera.fov = 58;
+  camera.updateProjectionMatrix();
+  sky.update(camera);
+  mountain.update(camera.position, timePreset.detailRange, timePreset.groundRange, 1 / 24);
+  renderer.shadowMap.needsUpdate = true;
+  vhs.barrel = 0;
+  Object.assign(vhs.lens, { fish: 0, hood: 0, circle: 0, cy: 0.5 });
+  vhs.render(scene, camera, s / 10);
+  return renderer.domElement.toDataURL('image/jpeg', 0.86);
+}
+function droneStart() {
+  dronePause = true;
+  vhs.pixelSize = 1;
+  vhs.strength = 0.25;
+  camera.clearViewOffset();
+  vhs.setSize(window.innerWidth, window.innerHeight);
+  for (const id of ['title', 'vhs', 'loading']) $(id)?.classList.add('hidden');
+}
+
+// The camcorder's display: a tape counter running while you drive, and the date and time stamp.
+let osdTape = 0;
+let osdShown = '';
+function updateOsd(dt) {
+  if (!settings.vhs || $('vhs').classList.contains('hidden')) return;
+  osdTape += dt;
+  const t = Math.floor(osdTape);
+  const d = new Date();
+  const h = d.getHours();
+  const text = `${Math.floor(t / 3600)}:${String(Math.floor(t / 60) % 60).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}|${d.toLocaleString('en-US', { month: 'short' }).toUpperCase()}. ${d.getDate()} ${d.getFullYear()}|${(h % 12) || 12}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+  if (text === osdShown) return;
+  osdShown = text;
+  const [tc, date, clock] = text.split('|');
+  $('vhs-tc').textContent = tc;
+  $('vhs-date').innerHTML = `${clock}<br>${date}`;
+}
+let osdLast = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  menuAudio.update();
+  updateOsd(Math.min(0.1, Math.max(0, (now - osdLast) / 1000)));
+  osdLast = now;
+  if (dronePause) return;
+  let dt = (now - last) / 1000;
+  last = now;
+  if (!(dt > 0)) dt = 0;
+  dt = Math.min(dt, 0.1);
+  fps += (1 / Math.max(dt, 1e-3) - fps) * 0.05;
+  if (!vehicle) return;
+  if (rp.active) {
+    replayFrame(dt, now);
+    return;
+  }
+
+  const portrait = window.innerHeight > window.innerWidth && matchMedia('(pointer: coarse)').matches;
+  const active = running && !paused && !portrait;
+  const controls = input.poll(dt);
+  if (active) {
+    handleEvents(controls.events);
+    accumulator += dt;
+    let steps = 0;
+    const drive = race.filter(controls);
+    while (accumulator >= DT && steps < MAX_STEPS) {
+      vehicle.step(DT, drive);
+      barrier.apply(vehicle.body);
+      race.step(DT, vehicle, run.hint);
+      world.step();
+      race.afterStep();
+      capturePose();
+      accumulator -= DT;
+      steps++;
+    }
+    if (steps === MAX_STEPS) accumulator = 0;
+    locate();
+    recorder.record(dt, vehicle, run.hint);
+    if (race.active) {
+      if (onRoad.link < 0) roadBanner(roadQ.s);
+    } else updateRun(dt);
+    {
+      const p = vehicle.body.translation();
+      const q = vehicle.body.rotation();
+      miniMap?.update(p.x, p.z, Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.x * q.x)));
+    }
+    updateWeather(dt);
+    checkHome();
+    throwSparks();
+    passBy();
+    deer.update(dt, run.hint, Math.max(0, vehicle.forwardSpeed));
+    drift.update(dt, vehicle, barrier.touching && barrier.impact > 9000);
+    const tr = vehicle.trans;
+    if (tr.messageTimer > 0 && tr.message) {
+      toast(tr.message, tr.messageTimer);
+      tr.message = '';
+    }
+  }
+  if (toastTimer > 0) {
+    toastTimer -= dt;
+    if (toastTimer <= 0) $('toast').classList.remove('show');
+  }
+  if (active) {
+    const ev = exhaustEvents.update(vehicle, dt, tune.exhaust);
+    audio.setExhaust(tune.exhaust || 'stock');
+    audio.setParts(tune.intake || 'stock', tune.turbo || 'none');
+    audio.setBigBrakes(tune.brakes === 'bbk');
+    audio.setEcuPops(ecuPops(tune));
+    audio.update(vehicle, dt, ev);
+    exhaustFlames(carModel, ev, dt, roadFlames);
+  }
+  carModel.updateFx(dt);
+  online.update(dt, vehicle, controls, timePreset.lights);
+  sparks.update(dt);
+  wildlife.update(dt, camera, run.hint);
+  if (active || !running) smoke.update(active ? dt : 0, vehicle);
+  if (active) ambience.update(dt, settings.time);
+  // In-car view: cockpit on, arms follow the wheel, the shifter and the handbrake.
+  carModel.setInterior(running && rig.mode === 'cockpit' && !window.__touge?.debugCam);
+  if (vehicle.trans.gear !== lastGear) {
+    if (lastGear !== null) carModel.cockpit.shift();
+    lastGear = vehicle.trans.gear;
+  }
+  carModel.cockpit.update(dt, vehicle, controls.handbrake);
+  rig.headSway = 1;
+  audio.setInterior?.(running && rig.mode === 'cockpit');
+  $('start').classList.toggle('hidden', vehicle.engine.running);
+  $('clutch').style.setProperty('--engaged', `${Math.round((1 - vehicle.trans.coupling) * 100)}%`);
+
+  // Menus open: the road behind them is only backdrop, so spend as little on it as possible and
+  // keep the phone free to respond to taps. Paused, the picture is frozen; on the title and race
+  // screens it is drawn about 20 times a second at half resolution, shadows refreshed now and then.
+  const menu = isMenuOpen();
+  document.body.classList.toggle('menu-open', menu);
+  setMenuQuality(menu && !shop.isOpen);
+  if (menu && !shop.isOpen) {
+    if (paused && pausedFrameDrawn) return;
+    if (!paused && now - lastMenuDraw < 50) return;
+    lastMenuDraw = now;
+    renderer.shadowMap.needsUpdate = menuFrames++ % 6 === 0;
+  }
+
+  // The tuning shop has the screen: draw the garage and the turntable instead of the road.
+  if (shop.isOpen) {
+    shop.update(dt);
+    shopEngine(dt);
+    Object.assign(vhs.lens, { fish: 0, hood: 0, circle: 0, cy: 0.5 }); // the workshop: a plain lens
+    vhs.render(shop.scene, shop.camera, now / 1000);
+    flare.draw(dt, camera, sunDir, 0, [0, 0, 0], false);
+    hud.draw(null);
+    return;
+  }
+
+  // Interpolate the car between physics steps for smooth motion on any refresh rate.
+  const alpha = active ? accumulator / DT : 1;
+  carModel.root.position.lerpVectors(prevPos, curPos, alpha);
+  carModel.root.quaternion.slerpQuaternions(prevQuat, curQuat, alpha);
+  carModel.syncWheels(vehicle);
+  race.render(dt, alpha, timePreset.lights);
+  // The sun's shadow box follows the car.
+  moon.target.position.copy(carModel.root.position);
+  moon.position.copy(carModel.root.position).addScaledVector(sunDir, 80);
+  carModel.setLights(timePreset.lights, controls.brake > 0);
+  const nose = new THREE.Vector3(0, -0.05, 2.1).applyQuaternion(carModel.root.quaternion).add(carModel.root.position);
+  headlight.position.copy(nose);
+  headlight.target.position.copy(new THREE.Vector3(0, -1.3, 45).applyQuaternion(carModel.root.quaternion).add(carModel.root.position));
+  if (window.__touge?.debugCam) window.__touge.debugCam(camera, carModel.root);
+  else if (!running) titleCamera(dt);
+  else rig.update(dt, carModel.root, vehicle.body.linvel());
+  sky.update(camera);
+  mountain.update(camera.position, timePreset.detailRange, timePreset.groundRange, dt);
+  // Dust streaks in the air from 50 mph.
+  speedLines.update(camera, vehicle.body.linvel(), glintTint.setRGB(...timePreset.flareTint.map((c) => c / 255)));
+  // Driving: the field of view setting bends the lens like the replay dial does (the same amount
+  // up to 120, held there beyond), but never a lens hood or a round picture.
+  {
+    // (The picture is shifted up 20% for the touch controls, so the lens centre sits higher too.)
+    Object.assign(vhs.lens, { fish: drivingLens(rig.userFov ?? 60).fish, hood: 0, circle: 0, cy: 0.7 });
+    // In the car: an action camera's wide, bowed lens.
+    vhs.barrel = running && rig.mode === 'cockpit' ? 0.5 : 0;
+  }
+  vhs.render(scene, camera, now / 1000);
+  // Lens flare when facing the sun, unless the mountain is in the way.
+  let sunVisible = false;
+  if (timePreset.flare > 0) {
+    const ray = new RAPIER.Ray(camera.position, sunDir);
+    sunVisible = !world.castRay(ray, 900, true, undefined, undefined, undefined, vehicle.body) && !behindRange(camera.position);
+  }
+  flare.draw(dt, camera, sunDir, timePreset.flare, timePreset.flareTint, sunVisible);
+  if (paused) pausedFrameDrawn = true;
+  // The sun glinting off the paint (needs the sun in the sky and not hidden by the mountain).
+  glintTint.setRGB(...timePreset.flareTint.map((c) => c / 255));
+  let sunOnCar = false;
+  if (timePreset.flare > 0) {
+    const from = carModel.root.position;
+    sunOnCar = !world.castRay(new RAPIER.Ray({ x: from.x, y: from.y + 1.2, z: from.z }, sunDir), 900, true, undefined, undefined, undefined, vehicle.body) && !behindRange(from);
+  }
+  glints.update(camera, sunDir, sunOnCar ? timePreset.flare : 0, glintTint);
+
+  const tr = vehicle.trans;
+  hud.draw(
+    running
+      ? {
+          rpm: vehicle.rpm,
+          redline: CAR.engine.redline + revExtra(tune),
+          speedMph: vehicle.forwardSpeed * 2.23694,
+          gear: tr.label,
+          showGear: tr.mode === 'auto',
+          running: vehicle.engine.running,
+          needClutchToStart: tr.mode === 'manual' && tr.gear !== 0,
+          lapTime: race.active ? race.hud().time : run.time,
+          bestTime: race.active ? race.record?.best ?? null : run.best,
+          race: race.hud(),
+          boost: tune.turbo && tune.turbo !== 'none' ? vehicle.engine.boost : null,
+          drift: drift.display,
+          fps,
+        }
+      : null,
+  );
+}
+
+// ---------- Start-up ----------
+async function boot() {
+  await RAPIER.init();
+  world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+  world.timestep = DT;
+  $('loading').textContent = 'Building the mountain…';
+  await new Promise((r) => setTimeout(r, 30));
+  mountain = new Mountain(world, scene, settings.map, settings.stage ?? -1);
+  vehicle = new Vehicle(world, CAR, tune, settings.mode);
+  vehicle.surfaceOf = mountain.layout.surfaceOf;
+  // Guardrails are a cushion, not a wall: see physics/barrier.js.
+  const railQ = {};
+  barrier = new SoftBarrier((x, z, out) => {
+    if (onRoad.link >= 0) return false; // link roads have no rails
+    const r = mountain.road;
+    r.query(x, z, run.hint, railQ);
+    const side = railQ.lateral > 0 ? 1 : -1;
+    if (!mountain.layout.rail[side][railQ.index]) return false;
+    const pen = Math.abs(railQ.lateral) - (r.w.RAIL - 0.45);
+    if (pen <= 0 || pen > 1.5) return false;
+    out.pen = pen;
+    out.nx = -side * Math.cos(railQ.heading);
+    out.nz = side * Math.sin(railQ.heading);
+    return true;
+  });
+  carModel = new CarModel(CAR);
+  carModel.applySetup(tune);
+  headlight.color.setHex(HEADLIGHTS.white[1]);
+  scene.add(carModel.root);
+  sparks = new Sparks(scene);
+  glints = new Glints(carModel.root);
+  smoke = new TyreSmoke(scene);
+  speedLines = new SpeedLines(scene);
+  carModel.root.traverse((o) => {
+    if (o.isMesh) o.castShadow = true;
+  });
+  deer = new Deer(scene, mountain.road, mountain.terrain);
+  wildlife = new Wildlife(scene, mountain.road, mountain.terrain);
+  wildlife.setTime(timePreset);
+  online = new Online(scene, world, RAPIER);
+  race = new Race({ scene, world, mountain, roadId: stageRoadId(), wallet, toast, look: () => lookOf(tune) });
+  race.onFinish = showResults;
+  run.best = race.record?.best ?? null;
+  setupOnline();
+  // Blob shadow rides under the car, at ground level in the car's own frame.
+  shadow = blobShadow();
+  shadow.position.y = -0.6;
+  carModel.root.add(shadow);
+  shifter = new Shifter(
+    $('shifter'),
+    (gear) => vehicle.trans.requestGear(gear, vehicle.forwardSpeed),
+    () => vehicle.trans.gears.length,
+  );
+  shifter.setMode(settings.shifter);
+  tuning = new TuningPanel($('tuning'), tune, () => saveTuning(tune));
+  tuning.toggle(false);
+  resetCar();
+  applySettings();
+  renderChoices();
+  setupMedals();
+  race.par = medals.get(mountain.stage)?.gold ?? null;
+  setupMaps();
+  miniMap = new MiniMap($('minimap'), mountain);
+  $('loading').textContent = '';
+  try {
+    if (sessionStorage.getItem('touge.openShop')) {
+      sessionStorage.removeItem('touge.openShop');
+      const tab = sessionStorage.getItem('touge.shopTab');
+      sessionStorage.removeItem('touge.shopTab');
+      if (tab) shop.tab = tab;
+      shop.open();
+    }
+  } catch {
+    // Fine: the title screen shows instead.
+  }
+  $('btn-drive').disabled = false;
+  // Testing hook for automated browser checks.
+  window.__touge = { get smokeDbg() { return smoke; }, THREE, get directorDbg() { return director; }, droneFrame, droneStart, recorder, freeCam, replayState: rp, get recorderSeconds() { return recorder.seconds; }, get revCar() { return revCar; }, get onRoad() { return onRoad; }, get wildlifeDbg() { return wildlife; }, get raceDbg() { return race; }, get barrierDbg() { return barrier; }, get online() { return online; }, get sparksDbg() { return sparks; }, get deerDbg() { return deer; }, drift, shop, audio, sunDir, flare, camera, RAPIER, applySettings: () => applySettings(), vehicle, world, settings, tune, input, shifter, resetCar, recoverCar, mountain, run, scene, carModel, headlight, menuAudio, renderer };
+}
+
+$('btn-drive').disabled = true;
+renderChoices();
+boot().catch((err) => {
+  console.error(err);
+  $('loading').textContent = `Could not start the physics engine: ${err.message}`;
+});
+requestAnimationFrame(frame);

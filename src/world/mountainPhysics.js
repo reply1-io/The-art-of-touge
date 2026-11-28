@@ -1,0 +1,206 @@
+// Physics colliders for the mountain: the road surface (with gutters), the terrain, guardrails and
+// the invisible walls. Rapier only, so it can be tested in Node.
+import RAPIER from '@dimforge/rapier3d-compat';
+import { crossSection, barrierLayout, RAIL, GUTTER_OUT, SHOULDER, JUNCTION } from './road.js';
+import { ZONE_INNER, stationLayout, showLayout, homeLayout, lotLayout } from './stops.js';
+
+function yawQuat(yaw) {
+  return { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) };
+}
+
+// Straight box colliders along a run of points [x, y, z] (one every `every` samples).
+function boxRun(world, pts, halfWidth, height, yOffset, friction) {
+  for (let k = 0; k < pts.length - 1; k++) {
+    const [ax, ay, az] = pts[k];
+    const [bx, by, bz] = pts[k + 1];
+    const len = Math.hypot(bx - ax, bz - az);
+    if (len < 0.2) continue;
+    const yaw = Math.atan2(bx - ax, bz - az);
+    world.createCollider(
+      RAPIER.ColliderDesc.cuboid(halfWidth, height / 2, len / 2 + 0.05)
+        .setTranslation((ax + bx) / 2, (ay + by) / 2 + yOffset + height / 2, (az + bz) / 2)
+        .setRotation(yawQuat(yaw))
+        .setFriction(friction),
+    );
+  }
+}
+
+// The road surface: one triangle mesh per surface kind across the full cross-section.
+function roadSurface(world, road, byHandle) {
+  const cols = crossSection(road, 0).length;
+  const verts = new Float32Array(road.count * cols * 3);
+  for (let i = 0; i < road.count; i++) {
+    crossSection(road, i).forEach(([l, dy], c) => {
+      const p = road.pointAt(i, l, dy);
+      verts.set(p, (i * cols + c) * 3);
+    });
+  }
+  // One triangle mesh per surface, so the tyres can tell asphalt from gravel and grass.
+  const kinds = crossSection(road, 0).map(([, , kind]) => (kind === 'asphalt' || kind === 'gutter' ? 'asphalt' : kind === 'shoulder' ? 'gravel' : 'grass'));
+  // Columns between the gutter lips count as asphalt (the gutter is concrete).
+  const surfaceOfColumn = (c) => {
+    const a = kinds[c];
+    const b = kinds[c + 1];
+    if (a === 'asphalt' && b === 'asphalt') return 'asphalt';
+    const off = Math.abs(crossSection(road, 0)[c][0]) + Math.abs(crossSection(road, 0)[c + 1][0]);
+    return off / 2 < road.w.GUTTER_OUT + 0.03 ? 'asphalt' : off / 2 < road.w.SHOULDER + 0.1 ? 'gravel' : 'grass';
+  };
+  for (const surface of ['asphalt', 'gravel', 'grass']) {
+    const idx = [];
+    for (let i = 0; i < road.count - 1; i++) {
+      for (let c = 0; c < cols - 1; c++) {
+        if (surfaceOfColumn(c) !== surface) continue;
+        const a = i * cols + c;
+        const b = a + 1;
+        const d = a + cols;
+        const e = d + 1;
+        idx.push(a, d, b, b, d, e);
+      }
+    }
+    const col = world.createCollider(RAPIER.ColliderDesc.trimesh(verts, new Uint32Array(idx)).setFriction(1.0));
+    byHandle.set(col.handle, surface);
+  }
+}
+
+// People at the roadside and the cars they came in: solid, so you stop if you hit them.
+export function addCrowdColliders(world, { people, cars }) {
+  for (const p of people) world.createCollider(RAPIER.ColliderDesc.cuboid(0.28, 0.9, 0.22).setTranslation(p.x, p.y + 0.9, p.z).setRotation(yawQuat(p.yaw)));
+  for (const c of cars) world.createCollider(RAPIER.ColliderDesc.cuboid(0.85, 0.7, 2.1).setTranslation(c.x, c.y + 0.7, c.z).setRotation(yawQuat(c.yaw)));
+}
+
+// links: link roads off the loop ([{ road, a, b, sideA, sideB }]): their surfaces, and gaps in the
+// loop's rails and walls where they join.
+export function buildMountainPhysics(world, road, terrain, links = [], { rails = true } = {}) {
+  const byHandle = new Map();
+  roadSurface(world, road, byHandle);
+  for (const l of links) roadSurface(world, l.road, byHandle);
+
+  // Terrain heightfield (Rapier: rows along z, columns along x, column-major).
+  const { nx, nz, cell, heights } = terrain;
+  const hf = new Float32Array(nx * nz);
+  for (let iz = 0; iz < nz; iz++) for (let ix = 0; ix < nx; ix++) hf[iz + ix * nz] = heights[iz * nx + ix];
+  const sx = (nx - 1) * cell;
+  const sz = (nz - 1) * cell;
+  const ground = world.createCollider(
+    RAPIER.ColliderDesc.heightfield(nz - 1, nx - 1, hf, { x: sx, y: 1, z: sz })
+      .setTranslation(terrain.x0 + sx / 2, 0, terrain.z0 + sz / 2)
+      .setFriction(0.8),
+  );
+  byHandle.set(ground.handle, 'grass');
+
+  // Guardrails and invisible walls.
+  const layout = barrierLayout(road, terrain);
+  // A road with no guardrails (the redwoods of Tunitas Creek): just the trees. Bridges keep theirs.
+  if (!rails) for (const side of [1, -1]) for (let i = 0; i < road.count; i++) if (!terrain.bridgeAt?.(i)) layout.rail[side][i] = 0;
+  // Pull-offs and lots: no rail between them and the road, the invisible wall moved out past them,
+  // a drivable asphalt surface, a rail round the outer edge, and solid pumps and buildings.
+  const zones = terrain.zones || [];
+  for (const z of zones) {
+    for (let j = z.i0; j <= z.i1; j++) {
+      layout.rail[z.side][j] = 0;
+      layout.wall[z.side][j] = Math.max(layout.wall[z.side][j], z.outerAt(j) + 1.6);
+    }
+    const cols = 7;
+    const zv = [];
+    const zi = [];
+    for (let j = z.i0; j <= z.i1; j++) {
+      const outer = Math.max(z.outerAt(j), z.inner + 0.3);
+      for (let c = 0; c < cols; c++) {
+        const l = z.inner + ((outer - z.inner) * c) / (cols - 1);
+        const p = road.pointAt(j, z.side * l);
+        zv.push(p[0], z.heightAt(road, j, l), p[2]);
+      }
+    }
+    for (let r = 0; r < z.i1 - z.i0; r++) {
+      for (let c = 0; c < cols - 1; c++) {
+        const a = r * cols + c;
+        zi.push(a, a + cols, a + 1, a + 1, a + cols, a + cols + 1);
+      }
+    }
+    const col = world.createCollider(RAPIER.ColliderDesc.trimesh(new Float32Array(zv), new Uint32Array(zi)).setFriction(1.0));
+    byHandle.set(col.handle, 'asphalt');
+    const edge = [];
+    for (let j = z.i0; j <= z.i1; j += 2) {
+      const l = z.outerAt(j) + 0.3;
+      const p = road.pointAt(j, z.side * l);
+      edge.push([p[0], z.heightAt(road, j, l), p[2]]);
+    }
+    boxRun(world, edge, 0.08, 0.85, 0, 0.15);
+    const solid = (pt, hx, hy, hz) =>
+      world.createCollider(RAPIER.ColliderDesc.cuboid(hx, hy, hz).setTranslation(pt.x, pt.y + hy, pt.z).setRotation(yawQuat(pt.yaw)));
+    if (z.kind === 'station') {
+      const st = stationLayout(road, z);
+      for (const p of st.pumps) solid(p, 0.45, 0.9, 0.35);
+      for (const p of st.pillars) solid(p, 0.2, 2.5, 0.2);
+      solid(st.kiosk, 2.6, 1.6, 4.2);
+      solid(st.truck, 1.25, 1.6, 3.6);
+      solid(st.pylon, 0.25, 3, 0.25);
+      solid(st.air, 0.3, 0.7, 0.3);
+    } else if (z.kind === 'show') {
+      solid(showLayout(road, z).cabin, 3.2, 1.8, 2.6);
+    } else if (z.kind === 'lot') {
+      const lay = lotLayout(road, z);
+      for (const c of lay.cars) solid({ ...c, yaw: c.yaw + Math.PI / 2 }, 0.85, 0.7, 2.1);
+      if (z.lot?.label) solid(lay.sign, 1.6, 1.2, 0.15);
+    } else if (z.kind === 'home') {
+      const h = homeLayout(road, z);
+      solid(h.cabin, 3.2, 1.8, 2.6);
+      // The workshop: solid, but you are taken inside before you reach the door.
+      solid(h.shop, 4, 2, 3.5);
+    }
+  }
+  layout.zones = zones;
+  // Junctions: no rail and no wall across the mouth of a link road.
+  const gap = { 1: new Uint8Array(road.count), [-1]: new Uint8Array(road.count) };
+  for (const l of links) {
+    for (const [i, side] of [
+      [l.a, l.sideA],
+      [l.b, l.sideB],
+    ]) {
+      for (let j = Math.max(0, i - JUNCTION); j <= Math.min(road.count - 1, i + JUNCTION); j++) {
+        layout.rail[side][j] = 0;
+        gap[side][j] = 1;
+      }
+    }
+  }
+  layout.gap = gap;
+  for (const side of [1, -1]) {
+    let run = [];
+    const flush = () => {
+      if (run.length > 1) boxRun(world, run, 0.08, 0.85, 0, 0.15);
+      run = [];
+    };
+    for (let i = 0; i < road.count; i++) {
+      if (layout.rail[side][i]) {
+        if (i % 3 === 0 || !layout.rail[side][i + 1]) run.push(road.pointAt(i, side * (road.w.RAIL + 0.1)));
+      } else flush();
+    }
+    flush();
+    // The invisible wall, broken at junctions.
+    let wallPts = [];
+    for (let i = 0; i < road.count; i++) {
+      if (gap[side][i]) {
+        if (wallPts.length > 1) boxRun(world, wallPts, 0.3, 6, 0, 0.1);
+        wallPts = [];
+        continue;
+      }
+      if (i % 3 === 0 || i === road.count - 1 || gap[side][i + 1]) wallPts.push(road.pointAt(i, side * layout.wall[side][i], -1));
+    }
+    if (wallPts.length > 1) boxRun(world, wallPts, 0.3, 6, 0, 0.1);
+  }
+  // Barriers across both ends of the road (a loop has no ends).
+  for (const [i, dir] of road.loop ? [] : [
+    [0, -1],
+    [road.count - 1, 1],
+  ]) {
+    const h = road.heading[i];
+    const p = road.pointAt(i, 0);
+    world.createCollider(
+      RAPIER.ColliderDesc.cuboid(12, 3, 0.5)
+        .setTranslation(p[0] + Math.sin(h) * dir * 2, p[1] + 2, p[2] + Math.cos(h) * dir * 2)
+        .setRotation(yawQuat(h)),
+    );
+  }
+  layout.surfaceOf = (handle) => byHandle.get(handle) || 'asphalt';
+  return layout;
+}

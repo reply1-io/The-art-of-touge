@@ -1,0 +1,185 @@
+// M20EngineSound - procedural engine audio: the E30 325i's BMW M20B25 straight-six and the
+// swap engines (engine.setEngine(name)). No samples: the sound is synthesized by M20Dsp
+// (m20-dsp.js). The class keeps its M20 name so existing code keeps working.
+//
+//   const engine = await M20EngineSound.create(audioCtx);
+//   engine.connect(audioCtx.destination);
+//   await engine.startWithCrank();   // or engine.start()
+//   // every frame from your car sim:
+//   engine.setRpm(car.rpm);
+//   engine.setThrottle(car.throttle);  // 0..1; 0 above idle = overrun (fuel cut)
+//   engine.setTurbo(true);             // 48 mm turbo: whistle, spool, flutter on lift-off
+//   engine.setExhaust('street');       // 'stock' | 'street' | 'race'
+//   engine.setIntake('itb');           // individual throttle bodies
+//   engine.stop();
+//
+// Where it runs: an AudioWorklet built from the DSP code in memory (no extra file
+// to fetch, so it also works in sandboxed pages), or, if the browser refuses that,
+// a ScriptProcessor on the main thread. `engine.backend` says which.
+//
+// Browser rule: create/resume the AudioContext inside the click/tap handler,
+// before any await, or phones keep it silent.
+
+import { M20Dsp, Biquad, Delay, randn, crankRpm, exhaustName, CRANK_SECONDS, IDLE_RPM, ENGINES, EXHAUSTS, TURBOS, ITB, ITB_UNEVEN, TAU } from './m20-dsp.js';
+export { crankRpm, CRANK_SECONDS, IDLE_RPM, ENGINES, EXHAUSTS };
+
+export function workletSource(dspSource) {
+  // Best: the original m20-dsp.js text (bundlers rename things when minifying, which breaks
+  // rebuilding it from function text). Otherwise rebuild it from the live classes.
+  const dsp = dspSource
+    ? dspSource.replace(/^export /gm, '')
+    : [
+        `const TAU = ${TAU};`,
+        `const ENGINES = ${JSON.stringify(ENGINES)};`,
+        `const EXHAUSTS = ${JSON.stringify(EXHAUSTS)};`,
+        `const TURBOS = ${JSON.stringify(TURBOS)};`,
+        `const ITB = ${JSON.stringify(ITB)};`,
+        `const ITB_UNEVEN = ${JSON.stringify(ITB_UNEVEN)};`,
+        `const IDLE_RPM = ${IDLE_RPM};`,
+        `const CRANK_SECONDS = ${CRANK_SECONDS};`,
+        randn, crankRpm, exhaustName, Biquad, Delay, M20Dsp,
+      ].map(String).join('\n');
+  return [
+    dsp,
+    `class M20Processor extends AudioWorkletProcessor {
+      constructor() {
+        super();
+        this.d = new M20Dsp(sampleRate);
+        this.d.onCycle = (s, boost) => this.port.postMessage({ cycle: s, boost }, [s.buffer]);
+        this.port.onmessage = (e) => {
+          const m = e.data;
+          if (m.set) this.d.set(m.set);
+          if (m.cmd) this.d.command(m.cmd);
+        };
+      }
+      process(_i, outputs) { this.d.process(outputs[0][0]); return true; }
+    }
+    registerProcessor('m20-engine', M20Processor);`,
+  ].map(String).join('\n');
+}
+
+const timeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+
+export class M20EngineSound {
+  /**
+   * @param {AudioContext} ctx
+   * @param {{ dspSource?: string, engine?: string }} [opts] dspSource: the text of
+   *   m20-dsp.js. Pass it when the code is minified by a bundler (with Vite:
+   *   import dspSource from './m20-dsp.js?raw'). engine: which engine to start with.
+   */
+  static async create(ctx, { dspSource, engine = 'm20' } = {}) {
+    const e = new M20EngineSound(ctx);
+    if (ctx.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
+      try {
+        const url = URL.createObjectURL(new Blob([workletSource(dspSource)], { type: 'text/javascript' }));
+        await timeout(ctx.audioWorklet.addModule(url), 4000);
+        const node = new AudioWorkletNode(ctx, 'm20-engine', {
+          numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
+        });
+        node.port.onmessage = (m) => { if (m.data.boost !== undefined) e.boost = m.data.boost; if (m.data.cycle) e.onCycle?.(m.data.cycle); };
+        e._send = (m) => node.port.postMessage(m);
+        e.node = node;
+        e.backend = 'worklet';
+      } catch (err) {
+        e.workletError = err;
+      }
+    }
+    if (!e.node) {
+      const dsp = new M20Dsp(ctx.sampleRate);
+      dsp.onCycle = (s, boost) => { e.boost = boost; e.onCycle?.(s); };
+      const node = ctx.createScriptProcessor(1024, 1, 1);
+      node.onaudioprocess = (ev) => dsp.process(ev.outputBuffer.getChannelData(0));
+      e._send = (m) => { if (m.set) dsp.set(m.set); if (m.cmd) dsp.command(m.cmd); };
+      e.node = node;
+      e.backend = 'main-thread';
+    }
+    e.node.connect(e.output);
+    e.setEngine(engine);
+    return e;
+  }
+
+  constructor(ctx) {
+    this.ctx = ctx;
+    this.output = ctx.createGain();
+    this.output.gain.value = 0;
+    this.cranking = false;
+    this.running = false;
+    this.onCycle = null;
+    this.boost = 0; // 0..1, turbo boost read back from the synth // (Float32Array: one engine cycle of output) => void
+  }
+
+  connect(dest) { this.output.connect(dest); return this; }
+  disconnect() { this.output.disconnect(); }
+
+  setRpm(rpm) { if (!this.cranking) this._send({ set: { rpm } }); }
+  setThrottle(t) { this._send({ set: { throttle: Math.min(1, Math.max(0, t)) } }); }
+  /** 'stock' | 'street' | 'race'. Street and race are rowdier and lope at idle. */
+  setExhaust(x) { this._send({ set: { exhaust: exhaustName(x) } }); }
+  /** 'stock' | 'itb'. ITBs: individual throttle bodies, the stacks' howl and induction air. */
+  setIntake(x) { this._send({ set: { intake: x === 'itb' ? 'itb' : 'stock' } }); }
+
+  /**
+   * Turbo: whistle, air rush and compressor flutter on lift-off (no blow-off valve).
+   * size: 'small' (48 mm) or 'big' (T3-size: deeper whistle, slower spool and flutter).
+   * Boost (0..1) is modelled here unless you pass your own each frame with
+   * setState({ boost }). engine.boost reads it back.
+   */
+  setTurbo(on, size = 'small') { this._send({ set: { turbo: on ? 1 : 0, turboSize: size } }); }
+
+  /** An engine profile name ('m20', or a swap). Switches instantly, even while running. */
+  setEngine(name) {
+    if (!ENGINES[name]) throw new Error(`unknown engine ${name}`);
+    this.engine = name;
+    this._send({ set: { engine: name, idleRpm: ENGINES[name].idleRpm } });
+  }
+
+  /** A whole engine profile (as built by enginePhysics.buildProfile): installed and used at once. */
+  setProfile(profile) {
+    this.engine = 'custom';
+    ENGINES.custom = profile;
+    this._send({ set: { profile, idleRpm: profile.idleRpm } });
+  }
+
+  start() {
+    this.running = true;
+    this._send({ cmd: 'start' });
+    this._fade(1, 0.2);
+  }
+
+  /** Starter motor, catch, flare, settle to idle. Resolves when it is idling. */
+  startWithCrank() {
+    this.cranking = true;
+    this.running = true;
+    this._send({ cmd: 'crank' });
+    this._fade(1, 0.05);
+    return new Promise((res) => setTimeout(() => { this.cranking = false; res(); }, (CRANK_SECONDS + 0.05) * 1000));
+  }
+
+  /**
+   * Let your own engine model drive everything: call this once, then every frame
+   * engine.setState({ rpm, throttle, ignition: running ? 1 : 0, starter: cranking ? 1 : 0 }).
+   * Stalls, run-downs and restarts then sound right without the built-in scripts.
+   */
+  direct({ idleRpm = ENGINES[this.engine]?.idleRpm ?? IDLE_RPM } = {}) {
+    this.running = true;
+    this._send({ set: { idleRpm } });
+    this._send({ cmd: 'direct' });
+    this._fade(1, 0.05);
+  }
+
+  setState(v) { this._send({ set: v }); }
+
+  /** Key off: ignition cut, engine runs down and stops. */
+  stop() {
+    this.running = false;
+    this._send({ cmd: 'stop' });
+    this._fade(0, 1.2);
+  }
+
+  _fade(v, s) {
+    const g = this.output.gain, now = this.ctx.currentTime;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(v, now + s);
+  }
+}
