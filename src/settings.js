@@ -28,6 +28,7 @@ const DEFAULTS = {
   money: 'unlimited', // 'career' | 'unlimited'
   fov: 60, // (old: one field of view for every camera; now per camera in cams)
   driveMode: 'free', // 'free' (Free Roam) | 'touge' (races)
+  driveMusic: 'song1', // music while driving: 'song1' | 'song2' | 'menu' | 'off'
   netName: '',
   netServer: '',
 };

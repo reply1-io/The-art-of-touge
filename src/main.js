@@ -41,7 +41,7 @@ import { Rain } from './render/rain.js';
 import { Recorder, Director, FreeCam, HZ, lensFor, drivingLens } from './game/replay.js';
 import { medalTimes, medalFor } from './game/medals.js';
 import { loadSettings, saveSettings, loadTuning, saveTuning, CAM_DEFAULTS } from './settings.js';
-import { MenuAudio } from './audio/menuAudio.js';
+import { MenuAudio, DRIVE_MUSIC } from './audio/menuAudio.js';
 
 const DT = 1 / 60; // fixed physics step
 const MAX_STEPS = 5;
@@ -297,6 +297,8 @@ function renderChoices() {
             ? [[-1, 'Full route'], ...(TRACKS[settings.map]?.stages || []).map((st, k) => [k, `${k + 1}. ${st.name}`])]
             : key === 'money'
             ? [['career', 'Earn it'], ['unlimited', 'Unlimited']]
+            : key === 'driveMusic'
+            ? DRIVE_MUSIC
             : key === 'shifter'
               ? [['drag', 'Drag knob'], ['tap', 'Tap gears']]
               : [['chase', 'Chase'], ['cockpit', 'In car'], ['bumper', 'Bumper']];
@@ -344,6 +346,7 @@ function applySettings() {
   updateTitleSub();
   rig.mode = settings.camera;
   rig.adjust = settings.cams?.[rig.mode] || rig.adjust;
+  menuAudio?.setDriveSong(settings.driveMusic || 'song1');
   rig.userFov = rig.mode === 'chase' ? 60 : Math.max(50, Math.min(150, rig.adjust.fov ?? 60)); // (the chase camera's size keeps to 60; its own FOV is in adjust)
   audio.setMuted(!settings.sound);
   // The camcorder look: heavy while driving (a filmed run), off for a clean picture.
@@ -733,6 +736,16 @@ $('btn-cam').addEventListener('click', () => {
   renderChoices();
 });
 $('btn-tuning').addEventListener('click', () => tuning.toggle());
+// The music button while driving: Song 1, Song 2, the menu song, off (each fades into the next).
+$('btn-music').addEventListener('click', () => {
+  const ids = DRIVE_MUSIC.map(([id]) => id);
+  const next = ids[(ids.indexOf(settings.driveMusic) + 1) % ids.length];
+  settings.driveMusic = next;
+  saveSettings(settings);
+  applySettings();
+  renderChoices();
+  toast(`MUSIC: ${DRIVE_MUSIC.find(([id]) => id === next)[1].toUpperCase()}`);
+});
 const wallet = new Wallet(tune);
 const shop = new Shop($('shop'), tune, () => {
   saveTuning(tune);

@@ -49,6 +49,9 @@
       <button type="button" id="btn-cam" aria-label="Change camera">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 2h3v2h-3zM2 4h12v1H2zM1 5h1v8H1zM14 5h1v8h-1zM2 13h12v1H2zM7 6h2v1H7zM6 7h1v1H6zM9 7h1v1H9zM5 8h1v2H5zM10 8h1v2h-1zM6 10h1v1H6zM9 10h1v1H9zM7 11h2v1H7z" /></svg>
       </button>
+      <button type="button" id="btn-music" aria-label="Change music">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2h8v1H6zM6 3h1v8H6zM13 3h1v7h-1zM7 4h6v1H7zM3 10h3v1H3zM2 11h1v2H2zM6 11h1v2H6zM3 13h3v1H3zM10 9h3v1h-3zM9 10h1v2H9zM13 10h1v2h-1zM10 12h3v1h-3z" /></svg>
+      </button>
       <canvas id="minimap" aria-label="Map around the car"></canvas>
     </div>
 
@@ -98,6 +101,10 @@
           <div class="choices" data-setting="mode"></div>
         </div>
         <div class="field cam-adjust"></div>
+        <div class="field">
+          <span class="label">Music while driving</span>
+          <div class="choices" data-setting="driveMusic"></div>
+        </div>
         <div class="field">
           <span class="label">Steering</span>
           <div class="choices" data-setting="steering"></div>
@@ -162,6 +169,10 @@
           <div class="choices" data-setting="mode"></div>
         </div>
         <div class="field cam-adjust"></div>
+        <div class="field">
+          <span class="label">Music while driving</span>
+          <div class="choices" data-setting="driveMusic"></div>
+        </div>
         <div class="row">
           <button type="button" id="btn-restart" class="big ghost">BACK TO THE START</button>
           <button type="button" id="btn-race2" class="big">RACE</button>
