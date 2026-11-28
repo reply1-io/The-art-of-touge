@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <title>Art of Touge Car Builder</title>
+    <style>*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{color:#eee;touch-action:none;-webkit-user-select:none;user-select:none;background:#101216;height:100%;margin:0;font:600 13px/1.2 system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Noto Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif;overflow:hidden}canvas{display:block}button{font:inherit;color:#eee;cursor:pointer;background:#262a31;border:1px solid #3a404a;border-radius:8px;min-height:38px;padding:9px 11px}button:active{background:#3a404a}button.on{color:#111;background:#e8a33a;border-color:#e8a33a}button.go{color:#fff;background:#d0402f;border-color:#d0402f}input[type=text]{font:inherit;color:#eee;-webkit-user-select:text;user-select:text;background:#1b1e24;border:1px solid #3a404a;border-radius:8px;width:9em;padding:8px}input[type=color]{background:0 0;border:1px solid #3a404a;border-radius:8px;width:40px;height:38px;padding:0}select{font:inherit;color:#eee;background:#262a31;border:1px solid #3a404a;border-radius:8px;min-height:38px;padding:8px}#top{padding:max(8px, env(safe-area-inset-top)) 8px 8px;background:linear-gradient(#101216ee,#10121600);flex-wrap:wrap;align-items:center;gap:6px;display:flex;position:fixed;top:0;left:0;right:0}#top .grow{flex:1}#add{flex-direction:column;gap:6px;display:flex;position:fixed;top:50%;left:8px;transform:translateY(-50%)}#add .lbl,.lbl{color:#8b93a0;letter-spacing:.08em;font-size:11px}#side{flex-direction:column;gap:6px;display:flex;position:fixed;top:50%;right:8px;transform:translateY(-50%)}#panel{padding:8px 8px max(8px, env(safe-area-inset-bottom));background:#15181dee;border-top:1px solid #2c3139;display:none;position:fixed;bottom:0;left:0;right:0}#panel.open{display:block}.row{flex-wrap:wrap;align-items:center;gap:6px;margin:4px 0;display:flex}.axis{grid-template-columns:74px 48px 1fr 48px;align-items:center;gap:6px;margin:4px 0;display:grid}.axis .val{text-align:center;font-variant-numeric:tabular-nums;background:#1b1e24;border-radius:8px;padding:10px 4px}.axis button{padding:4px;font-size:20px}.chips button{min-height:34px;padding:7px 9px}@media (orientation:landscape){#add,#side{top:64px;bottom:40px;overflow-y:auto;transform:none}#add button,#side button{min-height:34px;padding:7px 10px}}@media (orientation:portrait){#panel .chips button{padding:6px 7px;font-size:12px}#panel .row{gap:4px}}#toast{z-index:9;background:#000c;border-radius:8px;padding:9px 14px;display:none;position:fixed;top:70px;left:50%;transform:translate(-50%)}#modal{z-index:8;background:#000a;justify-content:center;align-items:center;display:none;position:fixed;top:0;bottom:0;left:0;right:0}#modal.open{display:flex}#modal .box{background:#1a1d23;border:1px solid #333;border-radius:12px;width:min(92vw,420px);max-height:80vh;padding:14px;overflow:auto}#modal .car{align-items:center;gap:6px;margin:6px 0;display:flex}#modal .car span{flex:1}textarea{color:#ddd;-webkit-user-select:text;user-select:text;background:#101216;border:1px solid #333;border-radius:8px;width:100%;height:140px;font:11px monospace}body.editing #add,body.editing #side{display:none}@media (orientation:portrait){#add{top:auto;bottom:calc(46px + env(safe-area-inset-bottom));flex-flow:wrap;align-items:center;left:8px;right:8px;transform:none}#add button{flex:1;padding:9px 4px}#side{flex-flow:wrap;justify-content:flex-end;top:116px;left:8px;right:8px;transform:none}#side button{min-height:34px;padding:7px 9px}}#drawp{padding:8px 8px max(8px, env(safe-area-inset-bottom));background:#15181dee;border-top:1px solid #2c3139;display:none;position:fixed;bottom:0;left:0;right:0}body.drawing #drawp{display:block}#sketchp{padding:8px 8px max(8px, env(safe-area-inset-bottom));background:#15181dee;border-top:1px solid #2c3139;display:none;position:fixed;bottom:0;left:0;right:0}body.sketching #sketchp{display:block}body.sketching #add,body.sketching #side,body.sketching #panel,body.sketching #hint,body.drawing #add,body.drawing #side,body.drawing #panel,body.drawing #hint{display:none!important}#wheel{touch-action:none;border-radius:50%;width:120px;height:120px}#dark{width:100%}#swatch{border:1px solid #3a404a;border-radius:8px;width:44px;height:30px}#hint{left:0;right:0;bottom:max(10px, env(safe-area-inset-bottom));text-align:center;color:#8b93a0;pointer-events:none;position:fixed}</style>
+    <script type="module" crossorigin src="./assets/builder-bAlU8CKc.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/carModel-BBf1aLHf.js">
+  </head>
+  <body data-mode="artifact">
+    <div id="top">
+      <button type="button" id="b-back">◀ GAME</button>
+      <input type="text" id="name" maxlength="24" placeholder="Car name" aria-label="Car name" />
+      <select id="base" aria-label="Drives like">
+        <option value="e30">Drives like E30</option>
+        <option value="rx7">Drives like RX-7</option>
+      </select>
+      <input type="color" id="paint" value="#efeee6" aria-label="Paint colour" />
+      <span class="grow"></span>
+      <button type="button" id="b-undo">UNDO</button>
+      <button type="button" id="b-cars">MY CARS</button>
+      <button type="button" id="b-save">SAVE</button>
+      <button type="button" id="b-drive" class="go">DRIVE IT</button>
+    </div>
+    <div id="add">
+      <span class="lbl">ADD</span>
+      <button type="button" data-add="box">BOX</button>
+      <button type="button" data-add="wedge">WEDGE</button>
+      <button type="button" data-add="taper">TAPER</button>
+      <button type="button" data-add="cyl">CYLINDER</button>
+      <button type="button" data-add="ball">BALL</button>
+      <button type="button" data-add="e30">E30 BODY</button>
+      <button type="button" data-add="rx7">RX-7 BODY</button>
+    </div>
+    <div id="side">
+      <button type="button" id="b-sketch">SKETCH</button>
+      <button type="button" id="b-draw">DRAW</button>
+      <button type="button" id="b-ghost">GHOST</button>
+      <button type="button" id="b-wheels" class="on">WHEELS</button>
+      <button type="button" id="b-view">VIEW</button>
+      <button type="button" id="b-code">CODE</button>
+    </div>
+    <div id="hint">Tap a shape to pick it · then drag it, its handles or its corners · drag empty space to look around · pinch to zoom</div>
+    <div id="panel">
+      <div class="lbl" id="pname" style="margin: 0 2px 4px"></div>
+      <div class="row chips" id="modes">
+        <button type="button" data-mode="move" class="on">MOVE</button>
+        <button type="button" data-mode="size">SIZE</button>
+        <button type="button" data-mode="turn">TURN</button>
+        <button type="button" data-mode="shape">SHAPE</button>
+        <button type="button" data-mode="style">STYLE</button>
+        <span class="grow" style="flex: 1"></span>
+        <button type="button" id="b-split">SPLIT INTO PIECES</button>
+        <button type="button" id="b-dup">COPY</button>
+        <button type="button" id="b-del">DELETE</button>
+        <button type="button" id="b-done">✕</button>
+      </div>
+      <p class="lbl" id="drag-hint" style="margin: 6px 2px; line-height: 1.35"></p>
+      <div id="shape" style="display: none">
+        <div class="row chips">
+          <button type="button" id="b-sym">MIRROR L/R</button>
+          <span class="lbl">SOFT</span>
+          <button type="button" data-soft="0">OFF</button>
+          <button type="button" data-soft="0.1">10 cm</button>
+          <button type="button" data-soft="0.25">25 cm</button>
+          <button type="button" data-soft="0.5">50 cm</button>
+        </div>
+        <div class="row chips">
+          <span id="detail-row" class="row chips" style="margin: 0"><span class="lbl">CORNERS</span>
+            <button type="button" data-detail="1">FEW</button>
+            <button type="button" data-detail="2">MORE</button>
+            <button type="button" data-detail="4">LOTS</button></span>
+          <button type="button" id="b-reset-shape">RESET SHAPE</button>
+        </div>
+      </div>
+      <div id="axes"></div>
+      <div class="row chips" id="steps"></div>
+      <div id="style" style="display: none">
+        <div class="row chips" id="mats"></div>
+        <div class="row">
+          <input type="color" id="pcolor" value="#888888" aria-label="Part colour" />
+          <button type="button" id="b-mirror">MIRROR L/R</button>
+          <span class="lbl" id="taper-lbl">TOP</span>
+          <input type="range" id="taper" min="0.2" max="1" step="0.05" aria-label="Taper" />
+        </div>
+      </div>
+    </div>
+    <div id="sketchp">
+      <div class="row chips">
+        <button type="button" data-view="side" class="on">SIDE</button>
+        <button type="button" data-view="top">TOP</button>
+        <button type="button" data-view="front">FRONT</button>
+        <span class="grow" style="flex: 1"></span>
+        <button type="button" id="sk-undo">UNDO</button>
+        <button type="button" id="sk-clear">CLEAR</button>
+      </div>
+      <div class="row chips">
+        <button type="button" data-tool="pen" class="on">PEN</button>
+        <button type="button" data-tool="erase">ERASER</button>
+        <span class="lbl">SIZE</span>
+        <input type="range" id="sk-size" min="0.005" max="0.3" step="0.005" value="0.02" aria-label="Pen size" style="flex: 1; min-width: 70px" />
+        <span class="lbl" id="sk-size-v">2 cm</span>
+      </div>
+      <div class="row chips">
+        <span class="lbl">STABILITY</span>
+        <input type="range" id="sk-stab" min="0" max="0.9" step="0.05" value="0.4" aria-label="Stability" style="flex: 1; min-width: 70px" />
+        <span class="lbl" id="sk-stab-v">40%</span>
+      </div>
+      <div class="row chips">
+        <span class="lbl">THICK</span>
+        <input type="range" id="sk-thick" min="0.01" max="2" step="0.01" value="0.1" aria-label="Thickness" style="flex: 1; min-width: 70px" />
+        <span class="lbl" id="sk-thick-v">10 cm</span>
+        <button type="button" id="sk-round">ROUNDED</button>
+      </div>
+      <div class="row chips">
+        <button type="button" id="sk-cancel">CANCEL</button>
+        <span class="lbl" style="flex: 1">Draw a closed shape and it fills in. Two fingers to zoom.</span>
+        <button type="button" id="sk-save" class="go">SAVE SHAPE</button>
+      </div>
+    </div>
+    <div id="drawp">
+      <div class="row chips">
+        <button type="button" data-brush="hard" class="on">HARD</button>
+        <button type="button" data-brush="soft">SOFT</button>
+        <button type="button" data-brush="erase">ERASE</button>
+        <span class="lbl">SIZE</span>
+        <input type="range" id="bsize" min="0.005" max="0.3" step="0.005" value="0.03" aria-label="Brush size" style="flex: 1; min-width: 80px" />
+        <span class="lbl" id="bsize-v">3 cm</span>
+        <button type="button" id="b-draw-done">DONE</button>
+      </div>
+      <div class="row" style="align-items: stretch">
+        <canvas id="wheel" width="240" height="240" aria-label="Colour wheel"></canvas>
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 8px; justify-content: center">
+          <span class="lbl">DARKNESS</span>
+          <input type="range" id="dark" min="0" max="1" step="0.01" value="0" aria-label="Darkness" />
+          <div class="row" style="margin: 0"><div id="swatch"></div><span class="lbl" id="swatch-hex">#E8A33A</span></div>
+          <span class="lbl">Drag on the car to draw. Drag off it to turn the view.</span>
+        </div>
+      </div>
+    </div>
+    <div id="modal"><div class="box" id="modal-box"></div></div>
+    <div id="toast"></div>
+  </body>
+</html>
