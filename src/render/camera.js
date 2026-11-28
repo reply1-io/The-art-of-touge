@@ -86,7 +86,7 @@ export class CameraRig {
     }
     // The camera reacts to the car, barely: it settles back a hair under acceleration, dips
     // forward under braking, and gives over crests and dips. (Not with the locked bucket view.)
-    const locked = this.mode === 'chase' && this.headSway < 0.5;
+    const locked = false;
     if (!locked) {
       const clampAbs = (v, m) => Math.max(-m, Math.min(m, v));
       this.react.x += (clampAbs(-this.acc.z * 0.0009, 0.008) - this.react.x) * (1 - Math.exp(-dt * 4));
@@ -153,18 +153,6 @@ export class CameraRig {
       return;
     }
     cam.up.set(0, 1, 0);
-    // Bucket seats: the camera is bolted to the car. It sits dead behind it and turns with it, with
-    // no lag and no swing toward the slide, so the car never moves on screen.
-    if (this.headSway < 0.5) {
-      const yawQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(fwd.x, fwd.z));
-      const { back, up } = this.#chaseOffset(0);
-      cam.position.copy(new THREE.Vector3(0, up, -back).applyQuaternion(yawQ).add(carObject.position));
-      cam.lookAt(new THREE.Vector3(0, 0.6, 9).applyQuaternion(yawQ).add(carObject.position));
-      this.pos.copy(cam.position);
-      this.look.copy(carObject.position);
-      this.ready = true;
-      return;
-    }
     // Behind the car, leaning toward the direction of travel when sliding.
     const v = new THREE.Vector3(velocity.x, 0, velocity.z);
     const speed = v.length();

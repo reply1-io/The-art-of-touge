@@ -265,7 +265,7 @@ export function fishZoom(fish, hv, aspect, cy = 0.5) {
 }
 
 // Lines in the picture when filmed (DV): about 480.
-export const DV_LINES = 480;
+export const DV_LINES = 640; // (was 480: sharper in the distance; the trees far out are cheap stand-ins now)
 
 export class VhsRenderer {
   constructor(renderer, pixelSize = 2) {

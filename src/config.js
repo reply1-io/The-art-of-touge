@@ -436,7 +436,6 @@ export function cleanPlate(text) {
 
 export const SEATS = {
   stock: { name: 'Road seats', blurb: 'Comfy cloth seats. Your head moves with every corner and brake.' },
-  bucket: { name: 'Bucket seats', blurb: 'Fixed-back race buckets. They hold you tight: every camera stays locked to the car.' },
 };
 
 export const HEADLIGHTS = { white: ['White', 0xfff2d8], yellow: ['Yellow', 0xffc94a], blue: ['Cool blue', 0xcfe2ff] };

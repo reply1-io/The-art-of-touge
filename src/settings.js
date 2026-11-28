@@ -81,6 +81,8 @@ export function loadTuning() {
   if (t && !['bbs', 'bottlecap', 'watanabe', 'te37', 'rpf1'].includes(t.wheel)) t.wheel = 'bbs';
   // Cars already running a turbo from before internals existed keep it, on forged internals.
   if (t && t.turbo && t.turbo !== 'none' && t.internals !== 'forged') t.internals = 'forged';
+  // Bucket seats (and their locked camera) are gone.
+  if (t?.seats === 'bucket') t.seats = 'stock';
   return { ...TUNABLE_DEFAULTS, ...(t || {}) };
 }
 

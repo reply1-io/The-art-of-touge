@@ -15,6 +15,7 @@ import { spruceCrown, redwoodCrown, redwoodTrunk, broadCrown, broadTrunk, conife
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const DEFAULT_SCENE = { trees: 1, maple: 0, rock: 0.5, ponds: 0, forest: 'cedar', ground: 'forest', bush: 1, snow: 0 };
 const ROAD_CHUNK = 60; // samples per road chunk (120 m)
+const LOD_NEAR = 110; // trees in chunks closer than this (plus a bit of the chunk's size) get full detail
 const TILE = 24; // terrain cells per tile
 
 // Asphalt (rough, full of tiny glass-like chips) throws light back towards where it came from. A
@@ -1722,6 +1723,27 @@ export class Mountain {
     const rwTrunk = redwoodTrunk();
     const BROAD_VARIANTS = [5, 17, 29].map((seed) => [broadTrunk(seed), broadCrown(seed)]);
     const bush = new THREE.IcosahedronGeometry(1, 0);
+    // Stand-ins for trees further than ~150 m: the same size and colour, a few triangles each.
+    const lodSpruce = new THREE.ConeGeometry(0.95, 1.08, 6, 1, true);
+    lodSpruce.translate(0, 0.45, 0);
+    const lodRedwood = new THREE.ConeGeometry(1.15, 1.35, 6, 1, true);
+    lodRedwood.translate(0, 0.4, 0);
+    const lodBroad = new THREE.IcosahedronGeometry(0.5, 0);
+    lodBroad.scale(0.9, 0.95, 0.9);
+    lodBroad.translate(0.03, 0.69, 0);
+    const lodMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+    // A far version of an instanced crown: same matrices and colours, shown instead of it when
+    // the chunk is far away (see update).
+    const lodOf = (group, near, geo, scale = 1) => {
+      const far = new THREE.InstancedMesh(geo, lodMat, near.count);
+      far.instanceMatrix.array.set(near.instanceMatrix.array);
+      if (near.instanceColor) {
+        far.instanceColor = new THREE.InstancedBufferAttribute(near.instanceColor.array.map((c) => Math.min(1, c * scale)), 3);
+      }
+      far.visible = false;
+      group.add(far);
+      (group.userData.lod ??= []).push([near, far]);
+    };
     const trunkMat = new THREE.MeshLambertMaterial({ color: 0x3b2a1e, vertexColors: true, flatShading: true });
     const redwoodMat = new THREE.MeshLambertMaterial({ color: 0x7a3c24, vertexColors: true, flatShading: true });
     const crownMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
@@ -1773,6 +1795,7 @@ export class Mountain {
         });
         q.identity();
         group.add(trunks, crowns);
+        lodOf(group, crowns, lodSpruce, 0.85);
       }
       // Broadleaf trees (maples and the rest) come in three branch patterns, so neighbours differ.
       const leafVariants = (list, color) => {
@@ -1795,6 +1818,7 @@ export class Mountain {
           });
           q.identity();
           group.add(trunks, crowns);
+          lodOf(group, crowns, lodBroad, 0.85);
         }
       };
       if (g.maples.length) {
@@ -1827,6 +1851,7 @@ export class Mountain {
         });
         q.identity();
         group.add(trunks, crowns);
+        lodOf(group, crowns, lodRedwood, 0.85);
       }
       if (g.broad.length) {
         // Broadleaf trees. Appalachian hardwoods, coastal oaks (wide), junipers, aspens.
@@ -2730,7 +2755,20 @@ export class Mountain {
       const dx = c.x - camPos.x;
       const dz = c.z - camPos.z;
       const lim = (c.ground ? groundRange : detailRange) + c.r;
-      c.group.visible = dx * dx + dz * dz < lim * lim;
+      const d2 = dx * dx + dz * dz;
+      c.group.visible = d2 < lim * lim;
+      // Trees: full detail near, the simple stand-ins further out.
+      const lod = c.group.userData.lod;
+      if (lod && c.group.visible) {
+        const near = d2 < (LOD_NEAR + c.r * 0.3) ** 2;
+        if (near !== c.lodNear) {
+          c.lodNear = near;
+          for (const [a, b] of lod) {
+            a.visible = near;
+            b.visible = !near;
+          }
+        }
+      }
     }
     this.cloudSea.update(dt);
     this.waterfalls.update(dt);

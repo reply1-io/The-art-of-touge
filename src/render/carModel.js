@@ -986,7 +986,7 @@ export class CarModel {
 
   // ---------- Looks from the tuning shop: paint, body kit, light colours, number boards ----------
   #applyLooks(t) {
-    this.cockpit.setSeats(t.seats === 'bucket' ? 'bucket' : 'stock');
+    this.cockpit.setSeats('stock');
     this.paintMat.color.set(t.paint || '#efeee6');
     this.lidMat.color.set(t.paint || '#efeee6');
     this.headColor = 'white'; // (lamp colours are not customisable)
